@@ -803,8 +803,8 @@ pub struct Frame<'a> {
     pub menu_blur: Option<f32>,
     /// Cache the last live gameplay image and reuse it behind in-world menus.
     pub fast_background_enabled: bool,
-    /// An in-world screen currently covers the gameplay scene with a menu.
-    pub in_world_menu: bool,
+    /// A menu, inventory or pause screen currently covers the gameplay scene.
+    pub fast_background_menu: bool,
     /// `Options.chunkSectionFadeInTime`, in seconds: how long a section takes to fade in once
     /// uploaded (0 draws it whole at once).
     pub chunk_fade: f32,
@@ -6420,7 +6420,7 @@ impl Renderer {
             && self.hdr.is_none()
             && !frame.title
             && frame.menu_blur.is_none()
-            && !(frame.fast_background_enabled && frame.in_world_menu)
+            && !(frame.fast_background_enabled && frame.fast_background_menu)
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
             && self.native.as_ref().is_none_or(|n| n.post.is_none())
             && (self.surface.is_none()
@@ -6520,7 +6520,7 @@ impl Renderer {
             cache.valid = false;
         }
         if frame.fast_background_enabled
-            && frame.in_world_menu
+            && frame.fast_background_menu
             && self.hdr.is_none()
             && target_texture.format() == self.config.format
             && target_texture.usage().contains(wgpu::TextureUsages::COPY_DST)
@@ -10007,7 +10007,7 @@ impl Renderer {
         if overlay.real
             && frame.fast_background_enabled
             && !frame.title
-            && (!frame.in_world_menu || !cache_matches)
+            && (!frame.fast_background_menu || !cache_matches)
         {
             self.capture_fast_background(encoder, target_texture);
         }

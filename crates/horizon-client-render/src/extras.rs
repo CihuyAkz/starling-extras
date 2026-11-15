@@ -70,7 +70,7 @@ impl Optimization {
     pub fn label(self) -> &'static str {
         match self {
             Self::FastBackground => "Fast Background",
-            Self::MenuBackground => "Reduce Menu Background Blur",
+            Self::MenuBackground => "Disable Menu Blur",
             Self::GameAnimations => "Disable Game Animations",
             Self::FastChunkUpload => "Fast Chunk Mesh Upload",
             Self::BatteryPerformance => "Battery Performance (60 FPS)",
@@ -81,7 +81,7 @@ impl Optimization {
     pub fn description(self) -> &'static str {
         match self {
             Self::FastBackground => {
-                "Caches the last gameplay scene in a GPU texture. In an in-world menu, Starling reuses that frozen image and draws only the menu UI, skipping the 3D world render. The cache refreshes during gameplay; the first menu frame builds it. GPU texture-copy support is required; unsupported devices keep normal rendering."
+                "Caches the last gameplay scene in a GPU texture. In an inventory or in-world menu, Starling reuses that frozen image and draws only the screen UI, skipping the 3D world render. The cache refreshes during gameplay; the first menu frame builds it. GPU texture-copy support is required; unsupported devices keep normal rendering."
             }
             Self::MenuBackground => {
                 "Skip the blurred gameplay or panorama background while a menu is open."
@@ -295,14 +295,12 @@ fn bool_text(v: bool) -> &'static str {
     if v { "true" } else { "false" }
 }
 impl Extras {
-    /// Counts optional boosts, treating battery and maximum-FPS modes as alternatives.
-    /// Android frame hints are excluded because they already run by default in Starling.
+    /// Counts the three user-selectable optimization levels on Extra Features.
+    /// Android frame hints are excluded because they are a separate system toggle.
     pub fn optimization_level(&self) -> usize {
         self.fast_background as usize
             + self.menu_background_optimization as usize
-            + self.disable_game_animations as usize
             + self.fast_chunk_upload as usize
-            + (self.battery_performance || self.max_fps_mode) as usize
     }
     pub fn load(dir: &Path) -> Self {
         fs::read_to_string(dir.join(FILE))

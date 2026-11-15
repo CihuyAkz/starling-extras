@@ -76,7 +76,7 @@ pub struct TouchUi {
     relative: Option<RelativeTouch>,
     relative_click: Option<bool>,
     pub keyboard: Option<Keyboard>,
-    gesture: Option<(u64, [f32; 2], [f32; 2], bool)>,
+    gesture: Option<GestureTouch>,
     pointer_drag: Option<u64>,
     held_keys: BTreeMap<u64, KeyCode>,
     pub f3_latched: bool,
@@ -328,9 +328,21 @@ struct RelativeTouch {
     dragged: bool,
     right_sent: bool,
 }
+struct GestureTouch {
+    id: u64,
+    start: [f32; 2],
+    previous: [f32; 2],
+    dragged: bool,
+    since: Instant,
+    right_sent: bool,
+}
+
+const TOUCH_RIGHT_CLICK_HOLD: Duration = Duration::from_millis(500);
+
 pub enum Gesture {
     None,
     Tap,
+    RightClick,
     Scroll(f32),
 }
 pub enum Action {
@@ -701,9 +713,7 @@ impl TouchUi {
         self.relative.as_ref().is_some_and(|t| t.id == id)
     }
     pub fn owns_gesture(&self, id: u64) -> bool {
-        self.gesture
-            .as_ref()
-            .is_some_and(|(owner, _, _, _)| *owner == id)
+        self.gesture.as_ref().is_some_and(|touch| touch.id == id)
             || self.pointer_drag == Some(id)
     }
     /// Relative motion: touching down does not teleport the cursor, and movement
@@ -801,31 +811,63 @@ impl TouchUi {
     }
     /// A drag scrolls; a tap clicks only on release. Never activate a row while scrolling it.
     pub fn gesture(&mut self, id: u64, p: [f32; 2], phase: TouchPhase) -> Gesture {
+        self.gesture_with_right_click(id, p, phase, false)
+    }
+
+    /// Inventory touch with Bedrock Inventory disabled follows mouse semantics: a tap is
+    /// left-click, while a stationary hold of 500 ms is right-click. Movement still scrolls.
+    pub fn gesture_with_right_click(
+        &mut self,
+        id: u64,
+        p: [f32; 2],
+        phase: TouchPhase,
+        right_click_on_hold: bool,
+    ) -> Gesture {
         if phase == TouchPhase::Cancelled {
             self.cancel();
             return Gesture::None;
         }
         if phase == TouchPhase::Started {
             if self.gesture.is_none() {
-                self.gesture = Some((id, p, p, false));
+                self.gesture = Some(GestureTouch {
+                    id,
+                    start: p,
+                    previous: p,
+                    dragged: false,
+                    since: Instant::now(),
+                    right_sent: false,
+                });
             }
             return Gesture::None;
         }
-        let Some((owner, start, previous, dragged)) = &mut self.gesture else {
+        let Some(touch) = self.gesture.as_mut().filter(|touch| touch.id == id) else {
             return Gesture::None;
         };
-        if *owner != id {
+        touch.dragged |= (p[0] - touch.start[0]).hypot(p[1] - touch.start[1]) > 12.0;
+        let dy = p[1] - touch.previous[1];
+        touch.previous = p;
+        if phase == TouchPhase::Ended {
+            let tap = !touch.dragged && !touch.right_sent;
+            let right = right_click_on_hold
+                && tap
+                && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
+            self.cancel();
+            return if right {
+                Gesture::RightClick
+            } else if tap {
+                Gesture::Tap
+            } else {
+                Gesture::None
+            };
+        }
+        if touch.right_sent {
             return Gesture::None;
         }
-        *dragged |= (p[0] - start[0]).hypot(p[1] - start[1]) > 12.0;
-        let dy = p[1] - previous[1];
-        *previous = p;
-        if phase == TouchPhase::Ended {
-            let tap = !*dragged;
-            self.cancel();
-            return if tap { Gesture::Tap } else { Gesture::None };
+        if right_click_on_hold && !touch.dragged && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
+            touch.right_sent = true;
+            return Gesture::RightClick;
         }
-        if *dragged {
+        if touch.dragged {
             Gesture::Scroll(dy / 30.0)
         } else {
             Gesture::None
@@ -8430,6 +8472,56 @@ mod tests {
             Gesture::None
         ));
     }
+    #[test]
+    fn inventory_touch_long_hold_is_a_right_click_but_drag_still_scrolls() {
+        let mut ui = TouchUi::default();
+        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
+        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        assert!(matches!(
+            ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Ended, true),
+            Gesture::RightClick
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Started, true),
+            Gesture::None
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Moved, true),
+            Gesture::None
+        ));
+        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Moved, true),
+            Gesture::Scroll(_)
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Ended, true),
+            Gesture::None
+        ));
+
+        // A held finger can fire once while still down; its release must not
+        // become a second (left) click.
+        ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Started, true);
+        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        assert!(matches!(
+            ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Moved, true),
+            Gesture::RightClick
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Ended, true),
+            Gesture::None
+        ));
+
+        // Other menus keep their ordinary tap behavior even after a long hold.
+        let mut normal_menu = TouchUi::default();
+        normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Started);
+        normal_menu.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        assert!(matches!(
+            normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Ended),
+            Gesture::Tap
+        ));
+    }
+
     #[test]
     fn tap_release_cancel_and_second_finger() {
         let mut u = TouchUi::default();

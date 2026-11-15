@@ -16210,7 +16210,7 @@ impl Game<'_> {
                 .darken_amount(self.clock.fraction() as f32),
             menu_blur: self.menu_blur(),
             fast_background_enabled: self.settings.extras.fast_background,
-            in_world_menu: self.in_world_menu_open(),
+            fast_background_menu: self.fast_background_menu_open(),
             post_effects: horizon_client::post_chain::Request {
                 effects: &requested_post_effects,
                 root: &self.options.resources,
@@ -16325,6 +16325,17 @@ impl Game<'_> {
             && (self.screen.blurs_background(self.pause_menu)
                 || self.dialog_open()
                 || (self.screen == Screen::Win && self.win_screen_pauses()))
+    }
+    /// Screens whose world background can be reused by Fast Background. Inventory screens do
+    /// not blur their background in vanilla, but they still cover the live world render.
+    fn fast_background_menu_open(&self) -> bool {
+        self.in_world_menu_open()
+            || (self.title.is_none()
+                && self.player.is_some()
+                && matches!(
+                    self.screen,
+                    Screen::Paused | Screen::Inventory | Screen::Creative
+                ))
     }
     fn menu_blur(&self) -> Option<f32> {
         if self.settings.extras.menu_background_optimization
@@ -20973,7 +20984,7 @@ fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         post_effects: horizon_client::post_chain::Request::none(),
         menu_blur: None,
         fast_background_enabled: false,
-        in_world_menu: false,
+        fast_background_menu: false,
     }
 }
 

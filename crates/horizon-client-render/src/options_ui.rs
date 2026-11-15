@@ -4277,21 +4277,16 @@ impl OptionsUi {
                     0 => "Standard",
                     1 => "Basic",
                     2 => "Enhanced",
-                    3 => "High",
-                    4 => "Extreme",
-                    _ => "Maximum",
+                    _ => "High",
                 };
                 let mut rows = vec![Row::Note(format!(
-                    "Optimization Level: {enabled}/5 - {level}"
+                    "Optimization Level: {enabled}/3 - {level}"
                 ))];
                 let options = {
                     let mut options = vec![
                         O::FastBackground,
                         O::MenuBackground,
-                        O::GameAnimations,
                         O::FastChunkUpload,
-                        O::BatteryPerformance,
-                        O::MaxFps,
                     ];
                     #[cfg(target_os = "android")]
                     options.push(O::AndroidPerformanceHints);
@@ -4299,7 +4294,7 @@ impl OptionsUi {
                 };
                 let short_label = |option: O| match option {
                     O::FastBackground => "Fast Background",
-                    O::MenuBackground => "Menu Blur",
+                    O::MenuBackground => "Disable Menu Blur",
                     O::GameAnimations => "Game Animations",
                     O::FastChunkUpload => "Fast Chunk Upload",
                     O::BatteryPerformance => "Battery Mode",
@@ -8510,7 +8505,7 @@ mod tests {
         let (extras_widgets, ..) = ui.layout(&s, size.0, size.1);
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
-            WKind::Text { text, .. } if text.plain().starts_with("Optimization Level: 0/5")
+            WKind::Text { text, .. } if text.plain().starts_with("Optimization Level: 0/3")
         )));
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
@@ -8526,8 +8521,18 @@ mod tests {
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
             WKind::Button { label, act: Act::Optimization(crate::extras::Optimization::MenuBackground), .. }
-                if label.plain() == "Menu Blur: Off"
+                if label.plain() == "Disable Menu Blur: Off"
         )));
+        for removed in [
+            crate::extras::Optimization::GameAnimations,
+            crate::extras::Optimization::BatteryPerformance,
+            crate::extras::Optimization::MaxFps,
+        ] {
+            assert!(!extras_widgets.iter().any(|w| matches!(
+                &w.kind,
+                WKind::Button { act: Act::Optimization(option), .. } if *option == removed
+            )));
+        }
         // The compact two-column layout keeps the first two controls on one row.
         let fast_background = extras_widgets.iter().find(|w| matches!(
             &w.kind,

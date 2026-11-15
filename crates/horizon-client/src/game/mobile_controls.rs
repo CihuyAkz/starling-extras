@@ -1801,34 +1801,47 @@ impl Game<'_> {
             self.android_menu_touch_release(t.phase);
             return;
         }
-        let gesture =
-            self.mobile
-                .ui
-                .gesture(t.id, [t.location.x as f32, t.location.y as f32], t.phase);
+        let touch_inventory_without_bedrock =
+            !self.settings.bedrock_inventory
+                && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let gesture = self.mobile.ui.gesture_with_right_click(
+            t.id,
+            [t.location.x as f32, t.location.y as f32],
+            t.phase,
+            touch_inventory_without_bedrock,
+        );
         // Gesture deltas are physical pixels / 30; lists scroll 18 GUI pixels
         // per wheel step. Convert once, independent of display GUI scale.
         let gesture = match gesture {
             Gesture::Scroll(y) => Gesture::Scroll(y * 30. / (b.scale * 18.)),
             other => other,
         };
+        let right_click = matches!(&gesture, Gesture::RightClick);
         match gesture {
-            Gesture::Tap => {
+            Gesture::Tap | Gesture::RightClick => {
                 let field = mobile_platform::field_at(p);
+                let button = if right_click {
+                    MouseButton::Right
+                } else {
+                    MouseButton::Left
+                };
                 for state in [ElementState::Pressed, ElementState::Released] {
                     self.handle_window_event(
                         events,
                         id,
                         WindowEvent::MouseInput {
                             device_id: t.device_id,
-                            button: MouseButton::Left,
+                            button,
                             state,
                         },
                         InputOrigin::User,
                     );
                 }
-                self.keyboard_after_tap(t, [t.location.x as f32, t.location.y as f32]);
-                if field || self.sign_edit.is_some() {
-                    self.android_show_keyboard();
+                if !right_click {
+                    self.keyboard_after_tap(t, [t.location.x as f32, t.location.y as f32]);
+                    if field || self.sign_edit.is_some() {
+                        self.android_show_keyboard();
+                    }
                 }
             }
             Gesture::Scroll(y) if self.screen == Screen::Options => {

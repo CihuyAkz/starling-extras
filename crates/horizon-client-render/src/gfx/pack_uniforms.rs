@@ -1064,7 +1064,7 @@ mod initial_history_tests {
             boss_darken: 0.0,
             menu_blur: None,
             fast_background_enabled: false,
-            in_world_menu: false,
+            fast_background_menu: false,
             chunk_fade: 0.0,
             post_effects: crate::post_chain::Request::none(),
         }
