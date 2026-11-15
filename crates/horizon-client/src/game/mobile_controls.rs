@@ -1746,7 +1746,9 @@ impl Game<'_> {
     fn android_menu_touch_release(&mut self, phase: TouchPhase) {
         if matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled) {
             self.ui.options.release_touch_focus();
-            self.cursor = (-1., -1.);
+            // Keep the last touch position as the mouse cursor. Resetting this to (-1, -1)
+            // moves the pointer to the top-left corner and can produce a large camera delta
+            // when Bedrock Inventory is disabled and inventory touches use the mouse path.
         }
     }
     pub(super) fn android_menu_touch(

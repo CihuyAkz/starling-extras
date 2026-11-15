@@ -3350,7 +3350,7 @@ impl OptionsUi {
             Page::StarlingExtra => "Starling Extras",
             Page::StarlingExtraClient => "starling.mods.category.client",
             Page::StarlingExtraServer => "starling.mods.category.server",
-            Page::StarlingExtraExtras => "Extra Feature",
+            Page::StarlingExtraExtras => "Extra Features",
             Page::NativeMod(_) => "Mod Settings",
             Page::NativeModHandEditor(_) => "Hand Editor",
             Page::ShaderPacks => "horizon.pages.shader_packs",
@@ -4241,7 +4241,7 @@ impl OptionsUi {
                             0.0,
                             0.0,
                             310.0,
-                            Text::literal("Extra Feature"),
+                            Text::literal("Extra Features"),
                             Act::Push(Page::StarlingExtraExtras),
                         ),
                         None,
@@ -4281,55 +4281,50 @@ impl OptionsUi {
                     4 => "Extreme",
                     _ => "Maximum",
                 };
-                let mut rows = vec![
-                    Row::Note(format!("Optimization Level: {enabled}/5 - {level}")),
-                    Row::Note(
-                        "Each feature can be toggled separately. Battery Performance and Maximum FPS are mutually exclusive."
-                            .to_owned(),
-                    ),
-                ];
-                rows.push(Row::Buttons(
+                let mut rows = vec![Row::Note(format!(
+                    "Optimization Level: {enabled}/5 - {level}"
+                ))];
+                let options = {
+                    let mut options = vec![
+                        O::FastBackground,
+                        O::MenuBackground,
+                        O::GameAnimations,
+                        O::FastChunkUpload,
+                        O::BatteryPerformance,
+                        O::MaxFps,
+                    ];
+                    #[cfg(target_os = "android")]
+                    options.push(O::AndroidPerformanceHints);
+                    options
+                };
+                let short_label = |option: O| match option {
+                    O::FastBackground => "Fast Background",
+                    O::MenuBackground => "Menu Blur",
+                    O::GameAnimations => "Game Animations",
+                    O::FastChunkUpload => "Fast Chunk Upload",
+                    O::BatteryPerformance => "Battery Mode",
+                    O::MaxFps => "Maximum FPS",
+                    O::AndroidPerformanceHints => "Android Perf Hints",
+                };
+                let toggle_button = |option: O, width: f32| {
+                    let state = if option.enabled(&s.extras) { "On" } else { "Off" };
                     button(
                         0.0,
                         0.0,
-                        310.0,
-                        Text::literal(format!(
-                            "{}: {}",
-                            O::FastBackground.label(),
-                            if O::FastBackground.enabled(&s.extras) { "On" } else { "Off" }
-                        )),
-                        Act::Optimization(O::FastBackground),
-                    ),
-                    None,
-                ));
-                rows.extend([
-                    Row::Note("Caches the latest gameplay frame in a GPU texture.".to_owned()),
-                    Row::Note("In a world menu, reuses it and draws only the menu UI.".to_owned()),
-                    Row::Note("This skips rendering the 3D world each menu frame.".to_owned()),
-                    Row::Note("The first menu frame builds it; gameplay refreshes the cache.".to_owned()),
-                    Row::Note("Devices without texture-copy support keep normal rendering.".to_owned()),
-                ]);
-                let mut options = vec![
-                    O::MenuBackground,
-                    O::GameAnimations,
-                    O::FastChunkUpload,
-                    O::BatteryPerformance,
-                    O::MaxFps,
-                ];
-                #[cfg(target_os = "android")]
-                options.push(O::AndroidPerformanceHints);
-                for option in options {
-                    let state = if option.enabled(&s.extras) { "On" } else { "Off" };
-                    rows.push(Row::Buttons(
-                        button(
-                            0.0,
-                            0.0,
-                            310.0,
-                            Text::literal(format!("{}: {state}", option.label())),
-                            Act::Optimization(option),
+                        width,
+                        Text::literal(format!("{}: {state}", short_label(option))),
+                        Act::Optimization(option),
+                    )
+                };
+                let mut options = options.into_iter();
+                while let Some(first) = options.next() {
+                    rows.push(match options.next() {
+                        Some(second) => Row::Buttons(
+                            toggle_button(first, 150.0),
+                            Some(toggle_button(second, 150.0)),
                         ),
-                        None,
-                    ));
+                        None => Row::Buttons(toggle_button(first, 310.0), None),
+                    });
                 }
                 rows
             }
@@ -8494,7 +8489,7 @@ mod tests {
                     && text.plain() == "You need to restart the game to apply this change."
         )));
 
-        // Extra Feature lists the independently toggleable performance options.
+        // Extra Features lists the independently toggleable performance options.
         ui.show(Page::StarlingExtra);
         let (categories, ..) = ui.layout(&s, size.0, size.1);
         let extras = categories
@@ -8522,16 +8517,28 @@ mod tests {
             WKind::Button { label, act: Act::Optimization(crate::extras::Optimization::FastBackground), .. }
                 if label.plain() == "Fast Background: Off"
         )));
-        assert!(extras_widgets.iter().any(|w| matches!(
+        assert!(!extras_widgets.iter().any(|w| matches!(
             &w.kind,
             WKind::Text { text, .. }
                 if text.plain().contains("In a world menu, reuses it and draws only the menu UI")
+                    || text.plain().contains("Each feature can be toggled separately")
         )));
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
             WKind::Button { label, act: Act::Optimization(crate::extras::Optimization::MenuBackground), .. }
-                if label.plain() == "Reduce Menu Background Blur: Off"
+                if label.plain() == "Menu Blur: Off"
         )));
+        // The compact two-column layout keeps the first two controls on one row.
+        let fast_background = extras_widgets.iter().find(|w| matches!(
+            &w.kind,
+            WKind::Button { act: Act::Optimization(crate::extras::Optimization::FastBackground), .. }
+        )).unwrap();
+        let menu_blur = extras_widgets.iter().find(|w| matches!(
+            &w.kind,
+            WKind::Button { act: Act::Optimization(crate::extras::Optimization::MenuBackground), .. }
+        )).unwrap();
+        assert_eq!(fast_background.y, menu_blur.y);
+        assert!(fast_background.x < menu_blur.x);
     }
 
     #[test]

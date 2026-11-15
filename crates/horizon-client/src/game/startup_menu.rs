@@ -626,7 +626,7 @@ impl Loading {
         self.restart_menu_resources()
     }
     pub(super) fn apply_menu_settings(&mut self) {
-        // Loading has no MobileControls state yet; only persisted Extra Feature
+        // Loading has no MobileControls state yet; only persisted Extra Features
         // settings are available until the playable Game is constructed.
         let game_animations_disabled = self.settings.extras.disable_game_animations;
         #[cfg(target_os = "android")]

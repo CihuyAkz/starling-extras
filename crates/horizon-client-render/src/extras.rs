@@ -55,7 +55,7 @@ impl Corner {
     }
 }
 
-/// Performance switches shown on Mods > Starling Extras > Extra Feature.
+/// Performance switches shown on Mods > Starling Extras > Extra Features.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Optimization {
     FastBackground,
