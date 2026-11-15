@@ -890,18 +890,14 @@ impl TouchUi {
         let Some(touch) = self.gesture.as_mut().filter(|touch| touch.id == id) else {
             return Gesture::None;
         };
-        // Remember whether this gesture had already become a drag before the current event.
-        // If the first movement arrives at the 500 ms boundary, it must start the held
-        // right-click gesture rather than disqualifying it before the timer gets a frame.
-        let was_dragged = touch.dragged;
+        // Keep long-press eligible after movement: dragging with the right button held is
+        // how a regular (non-Bedrock) inventory distributes items between slots.
         touch.dragged |= (p[0] - touch.start[0]).hypot(p[1] - touch.start[1]) > 12.0;
         let dy = p[1] - touch.previous[1];
         touch.previous = p;
         if phase == TouchPhase::Ended {
             let tap = !touch.dragged && !touch.right_sent;
-            let right = right_click_on_hold
-                && !was_dragged
-                && !touch.right_sent
+            let right = right_click_on_hold && !touch.right_sent
                 && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
             let held = touch.right_sent;
             self.cancel();
@@ -918,7 +914,7 @@ impl TouchUi {
         if touch.right_sent {
             return Gesture::None;
         }
-        if right_click_on_hold && !was_dragged && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
+        if right_click_on_hold && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
             touch.right_sent = true;
             return Gesture::RightPress;
         }
@@ -938,9 +934,7 @@ impl TouchUi {
         let Some(touch) = self.gesture.as_mut() else {
             return false;
         };
-        if !touch.right_sent
-            && !touch.dragged
-            && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
+        if !touch.right_sent && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
         {
             touch.right_sent = true;
             return true;
@@ -8613,7 +8607,7 @@ mod tests {
         ));
     }
     #[test]
-    fn inventory_touch_long_hold_starts_right_press_but_early_drag_scrolls() {
+    fn inventory_touch_long_hold_starts_right_press_even_after_drag_begins() {
         let mut ui = TouchUi::default();
         ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
         ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
@@ -8625,8 +8619,8 @@ mod tests {
             ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Started, true),
             Gesture::None
         ));
-        // A drag that starts before the long-press threshold remains a scroll,
-        // even after the threshold has elapsed.
+        // A drag that began before the hold threshold becomes a held right-click once
+        // the finger has stayed down for the long-press interval.
         assert!(matches!(
             ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Moved, true),
             Gesture::Scroll(_)
@@ -8634,11 +8628,15 @@ mod tests {
         ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
         assert!(matches!(
             ui.gesture_with_right_click(2, [80.0, 100.0], TouchPhase::Moved, true),
-            Gesture::Scroll(_)
+            Gesture::RightPress
         ));
         assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 100.0], TouchPhase::Ended, true),
+            ui.gesture_with_right_click(2, [80.0, 110.0], TouchPhase::Moved, true),
             Gesture::None
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 110.0], TouchPhase::Ended, true),
+            Gesture::RightRelease
         ));
 
         // The first movement after the hold threshold starts a real held
@@ -8675,17 +8673,22 @@ mod tests {
         ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
         ui.gesture.as_mut().unwrap().since = start;
 
+        // Movement before the threshold must not prevent the hold from activating.
+        assert!(matches!(
+            ui.gesture_with_right_click(1, [100.0, 60.0], TouchPhase::Moved, true),
+            Gesture::Scroll(_)
+        ));
         assert!(!ui.right_click_hold_due(start + Duration::from_millis(499), true));
         assert!(ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
         assert!(!ui.right_click_hold_due(start + Duration::from_millis(1000), true));
 
         // Once pressed, moving the finger keeps the button down and moves the cursor.
         assert!(matches!(
-            ui.gesture_with_right_click(1, [110.0, 60.0], TouchPhase::Moved, true),
+            ui.gesture_with_right_click(1, [120.0, 60.0], TouchPhase::Moved, true),
             Gesture::None
         ));
         assert!(matches!(
-            ui.gesture_with_right_click(1, [110.0, 60.0], TouchPhase::Ended, true),
+            ui.gesture_with_right_click(1, [120.0, 60.0], TouchPhase::Ended, true),
             Gesture::RightRelease
         ));
         assert!(!ui.right_click_hold_due(start + Duration::from_millis(1500), true));
