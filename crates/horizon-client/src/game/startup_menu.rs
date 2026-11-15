@@ -626,18 +626,9 @@ impl Loading {
         self.restart_menu_resources()
     }
     pub(super) fn apply_menu_settings(&mut self) {
-        let mobile_animations_disabled = {
-            #[cfg(target_os = "android")]
-            {
-                self.mobile.controls.settings.disable_game_animations
-            }
-            #[cfg(not(target_os = "android"))]
-            {
-                false
-            }
-        };
-        let game_animations_disabled =
-            self.settings.extras.disable_game_animations || mobile_animations_disabled;
+        // Loading has no MobileControls state yet; only persisted Extra Feature
+        // settings are available until the playable Game is constructed.
+        let game_animations_disabled = self.settings.extras.disable_game_animations;
         #[cfg(target_os = "android")]
         horizon_client::android_control_theme::motion::set_game_animations_disabled(
             game_animations_disabled,
