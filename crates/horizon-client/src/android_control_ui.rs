@@ -771,6 +771,11 @@ impl TouchUi {
         }
         position
     }
+    /// The finger that owns the current relative pointer gesture, if any.
+    pub fn relative_id(&self) -> Option<u64> {
+        self.relative.as_ref().map(|touch| touch.id)
+    }
+
     /// false = LMB, true = RMB. A stationary hold clicks once, even before release.
     pub fn relative_click(&mut self, clicks: bool) -> Option<bool> {
         if !clicks {
@@ -8479,6 +8484,28 @@ mod tests {
         ui.relative_touch(4, p, TouchPhase::Ended, p, size, 1.0, true);
         assert_eq!(ui.relative_click(true), None);
     }
+    #[test]
+    fn virtual_mouse_long_hold_keeps_right_button_down_until_touch_release() {
+        let mut ui = TouchUi::default();
+        let p = [100.0, 80.0];
+        let size = [400.0, 240.0];
+        ui.relative_touch(41, p, TouchPhase::Started, p, size, 1.0, true);
+        ui.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
+
+        let id = ui.relative_id().expect("the held finger owns the pointer");
+        assert_eq!(id, 41);
+        assert_eq!(ui.relative_click(true), Some(true));
+        assert!(ui.press_mouse(id, true));
+        assert!(ui.mouse_held());
+
+        ui.relative_touch(41, [140.0, 90.0], TouchPhase::Moved, p, size, 1.0, false);
+        assert_eq!(ui.relative_click(true), None);
+        ui.relative_touch(41, [140.0, 90.0], TouchPhase::Ended, p, size, 1.0, false);
+        assert_eq!(ui.relative_click(true), None);
+        assert_eq!(ui.release_mouse(id), Some((true, true)));
+        assert!(!ui.mouse_held());
+    }
+
     #[test]
     fn simultaneous_f3_f4_and_f6_release_independently() {
         let mut ui = TouchUi::default();

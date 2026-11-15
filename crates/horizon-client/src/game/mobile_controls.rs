@@ -1935,6 +1935,13 @@ impl Game<'_> {
             },
             InputOrigin::User,
         );
+        if matches!(t.phase, TouchPhase::Ended | TouchPhase::Cancelled)
+            && let Some((right, last)) = self.mobile.ui.release_mouse(t.id)
+            && last
+            && let Err(error) = self.android_menu_mouse(events, id, right, false)
+        {
+            log::warn!("Release held virtual mouse button: {error}");
+        }
         if t.phase == TouchPhase::Ended {
             self.android_virtual_mouse_clicks(events);
         }
@@ -1957,9 +1964,30 @@ impl Game<'_> {
         if !self.pad_in_menu() {
             return;
         }
+        let relative_id = self.mobile.ui.relative_id();
         let Some(right) = self.mobile.ui.relative_click(true) else {
             return;
         };
+        // In the regular inventory, a virtual-mouse long press is a held right
+        // button, not a quick click. Keep ownership by touch id so the matching
+        // release happens on finger-up (including a drag between slots).
+        if right
+            && !self.settings.bedrock_inventory
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && let Some(touch_id) = relative_id
+        {
+            if self.mobile.ui.press_mouse(touch_id, true)
+                && let Err(error) = self.android_menu_mouse(
+                    events,
+                    self.window.as_ref().map_or(WindowId::dummy(), |w| w.id()),
+                    true,
+                    true,
+                )
+            {
+                log::warn!("Virtual mouse hold: {error}");
+            }
+            return;
+        }
         let button = if right {
             MouseButton::Right
         } else {

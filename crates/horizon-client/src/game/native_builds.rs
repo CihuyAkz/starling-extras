@@ -292,7 +292,6 @@ fn folder_mods_on(off: &BTreeSet<String>) -> BTreeSet<String> {
         .map(|bundle| bundle.manifest.id)
         .filter(|id| !horizon_client::mod_list::is_retired_map_mod(id))
         .filter(|id| !off.contains(id))
-        .filter(|id| !horizon_client::mod_list::is_android_bundled(id))
         .collect()
 }
 
@@ -458,7 +457,6 @@ fn bundles_body() -> Result<Vec<u8>, String> {
         };
         if horizon_client::mod_list::is_retired_map_mod(&bundle.manifest.id)
             || off.contains(&bundle.manifest.id)
-            || horizon_client::mod_list::is_android_bundled(&bundle.manifest.id)
         {
             continue;
         }
