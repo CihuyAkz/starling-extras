@@ -523,7 +523,7 @@ fn fetch_library(
                 .map_err(service_error)?;
             let resumed = response.status() == 206;
             let mut file = if resumed {
-                std::fs::OpenOptions::new().append(true).open(part)
+                std::fs::OpenOptions::new().create(true).append(true).open(part)
             } else {
                 std::fs::File::create(part)
             }
