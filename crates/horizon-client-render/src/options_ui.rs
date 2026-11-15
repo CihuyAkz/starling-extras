@@ -4272,16 +4272,7 @@ impl OptionsUi {
             }
             Page::StarlingExtraExtras => {
                 use crate::extras::Optimization as O;
-                let enabled = s.extras.optimization_level();
-                let level = match enabled {
-                    0 => "Standard",
-                    1 => "Basic",
-                    2 => "Enhanced",
-                    _ => "High",
-                };
-                let mut rows = vec![Row::Note(format!(
-                    "Optimization Level: {enabled}/3 - {level}"
-                ))];
+                let mut rows = Vec::new();
                 let options = {
                     let mut options = vec![
                         O::FastBackground,
@@ -8503,9 +8494,9 @@ mod tests {
         );
         assert_eq!(ui.page(), Page::StarlingExtraExtras);
         let (extras_widgets, ..) = ui.layout(&s, size.0, size.1);
-        assert!(extras_widgets.iter().any(|w| matches!(
+        assert!(!extras_widgets.iter().any(|w| matches!(
             &w.kind,
-            WKind::Text { text, .. } if text.plain().starts_with("Optimization Level: 0/3")
+            WKind::Text { text, .. } if text.plain().starts_with("Optimization Level:")
         )));
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
