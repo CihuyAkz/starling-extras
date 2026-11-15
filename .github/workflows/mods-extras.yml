@@ -1,0 +1,30 @@
+
+name: Sync Starling to Main
+
+on:
+  push:
+    branches:
+      - starling
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync Starling → Main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Starling
+        uses: actions/checkout@v7
+        with:
+          ref: starling
+          fetch-depth: 0
+
+      - name: Sync Branch to Main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git push origin starling:main
