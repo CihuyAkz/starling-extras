@@ -552,7 +552,7 @@ impl<'a> Split<'a> {
         let renderers: Vec<_> = std::iter::once(&self.host.renderer)
             .chain(self.guests.iter().map(|g| &g.game.renderer))
             .collect();
-        let vsync = self.host.settings.vsync;
+        let vsync = self.host.settings.vsync && !self.host.settings.extras.max_fps_mode;
         let paced = windows::paced_surface(self.window1_shown, self.surfaces.len());
         for (k, surface) in self.surfaces.iter_mut().enumerate() {
             let frames: Vec<_> = renderers
@@ -838,7 +838,10 @@ impl ApplicationHandler for Split<'_> {
             ))
             .and_then(|s| s.window.current_monitor()?.refresh_rate_millihertz())
             .map_or(60, |mhz| mhz.div_ceil(1000) as i32);
-        if !(self.host.settings.vsync && limit >= refresh_hz) {
+        if !(self.host.settings.vsync
+            && !self.host.settings.extras.max_fps_mode
+            && limit >= refresh_hz)
+        {
             horizon_client::window::end_frame(&mut self.limiter, limit, &mut self.clock);
         }
     }

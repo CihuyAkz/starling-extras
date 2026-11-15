@@ -626,9 +626,30 @@ impl Loading {
         self.restart_menu_resources()
     }
     pub(super) fn apply_menu_settings(&mut self) {
+        let mobile_animations_disabled = {
+            #[cfg(target_os = "android")]
+            {
+                self.mobile.controls.settings.disable_game_animations
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                false
+            }
+        };
+        let game_animations_disabled =
+            self.settings.extras.disable_game_animations || mobile_animations_disabled;
+        #[cfg(target_os = "android")]
+        horizon_client::android_control_theme::motion::set_game_animations_disabled(
+            game_animations_disabled,
+        );
         if let Some(renderer) = &mut self.renderer {
             renderer.gamma = self.settings.gamma;
-            renderer.set_present_mode(self.settings.vsync, self.settings.horizon.present_mode);
+            renderer.animated_textures =
+                self.settings.horizon.animated_textures && !game_animations_disabled;
+            renderer.set_present_mode(
+                self.settings.vsync && !self.settings.extras.max_fps_mode,
+                self.settings.horizon.present_mode,
+            );
         }
         horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
         super::narrator::sync(&self.settings);

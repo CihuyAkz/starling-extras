@@ -11040,7 +11040,7 @@ impl Game<'_> {
             };
             let visible = r
                 .visible_block_entities_in_frustum(
-                    self.settings.chunk_fade,
+                    self.effective_chunk_fade(),
                     camera,
                     view,
                     &off_screen,
@@ -11098,7 +11098,7 @@ impl Game<'_> {
             } else {
                 let cache_candidates = r
                     .visible_block_entities_in_frustum(
-                        self.settings.chunk_fade,
+                        self.effective_chunk_fade(),
                         camera,
                         None,
                         |_| false,
@@ -11131,7 +11131,7 @@ impl Game<'_> {
                 .block_entities
                 .has_mods()
                 .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade)
+                    r.visible_block_entities(self.effective_chunk_fade())
                         .filter(|(_, state)| !self.res.block_entity_render().renders(*state))
                 })
                 .into_iter()
@@ -16209,10 +16209,18 @@ impl Game<'_> {
                 .boss_overlay
                 .darken_amount(self.clock.fraction() as f32),
             menu_blur: self.menu_blur(),
+            fast_background_enabled: self.settings.extras.fast_background,
+            in_world_menu: self.in_world_menu_open(),
             post_effects: horizon_client::post_chain::Request {
                 effects: &requested_post_effects,
                 root: &self.options.resources,
-                menu_blur_radius: self.settings.menu_blur as f32,
+                menu_blur_radius: if self.settings.extras.menu_background_optimization
+                    || (self.settings.extras.fast_background && self.in_world_menu_open())
+                {
+                    0.0
+                } else {
+                    self.settings.menu_blur as f32
+                },
                 // GlobalSettingsUniform.update.
                 globals: horizon_client::post_chain::Globals {
                     camera_block_pos: [
@@ -16229,7 +16237,7 @@ impl Game<'_> {
                     ..Default::default()
                 },
             },
-            chunk_fade: self.settings.chunk_fade,
+            chunk_fade: self.effective_chunk_fade(),
         };
         let result = match self.renderer.as_mut() {
             Some(renderer) => {
@@ -16301,19 +16309,35 @@ impl Game<'_> {
             .chain(self.spectated_post_effect.map(str::to_owned))
             .collect()
     }
+    /// The chunk section fade, or zero when the game-animation optimization is on.
+    fn effective_chunk_fade(&self) -> f32 {
+        if self.settings.extras.disable_game_animations {
+            0.0
+        } else {
+            self.settings.chunk_fade
+        }
+    }
     /// `Screen.extractBlurredBackground` over the panorama or the world and
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
+    fn in_world_menu_open(&self) -> bool {
+        self.title.is_none()
+            && self.player.is_some()
+            && (self.screen.blurs_background(self.pause_menu)
+                || self.dialog_open()
+                || (self.screen == Screen::Win && self.win_screen_pauses()))
+    }
     fn menu_blur(&self) -> Option<f32> {
+        if self.settings.extras.menu_background_optimization
+            || (self.settings.extras.fast_background && self.in_world_menu_open())
+        {
+            return None;
+        }
         let blurred = self.remote_loading()
             || self.title.as_ref().is_some_and(|t| {
                 matches!(self.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, horizon_client::title::Mode::Main)
             })
-            || (self.title.is_none()
-                && self.player.is_some()
-                && (self.screen.blurs_background(self.pause_menu)
-                    || self.dialog_open()
-                    || (self.screen == Screen::Win && self.win_screen_pauses())));
+            || self.in_world_menu_open();
         let radius = self.settings.menu_blur as f32;
         (blurred && radius >= 1.0).then_some(radius)
     }
@@ -16949,7 +16973,12 @@ impl Game<'_> {
         let arriving = self.view_arrival.arriving(view, now, has) || self.remote_backlog() > 0;
         if let Some(renderer) = self.renderer.as_mut() {
             let g = &self.settings.horizon;
-            let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
+            let upload_budget_kib = if self.settings.extras.fast_chunk_upload {
+                g.upload_budget_kib.max(4096)
+            } else {
+                g.upload_budget_kib
+            };
+            let budgeted = g.chunk_updates > 0 || upload_budget_kib > 0;
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
             if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
@@ -16985,7 +17014,7 @@ impl Game<'_> {
                 let (limit, budget) = if budgeted {
                     (
                         g.chunk_updates as usize,
-                        u64::from(g.upload_budget_kib) * 1024,
+                        u64::from(upload_budget_kib) * 1024,
                     )
                 } else {
                     (0, 0)
@@ -20943,6 +20972,8 @@ fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         chunk_fade: 0.0,
         post_effects: horizon_client::post_chain::Request::none(),
         menu_blur: None,
+        fast_background_enabled: false,
+        in_world_menu: false,
     }
 }
 
@@ -23141,7 +23172,7 @@ impl Game<'_> {
     }
     fn platform_frame_hint(&self, _rendered: bool, _cpu: Duration) {
         #[cfg(target_os = "android")]
-        if _rendered {
+        if _rendered && self.settings.extras.android_performance_hints {
             crate::android::frame_hint(_cpu, self.framerate_limit());
         }
     }

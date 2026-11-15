@@ -1,8 +1,9 @@
 //! Horizon's optional extras (lighting, inventory tools): their
 //! settings, kept in `horizon-extras.txt` next to `options.txt` so that file
-//! stays exactly vanilla's, and the logic behind them. Every extra is off by
-//! default; see `docs/extras.md`. Horizon's own switches outside the Extras page
-//! (No AI, Agent Control, Discord Rich Presence) are kept here too.
+//! stays exactly vanilla's, and the logic behind them. Most opt-in features are
+//! off by default; existing Android frame hints remain on to preserve behavior.
+//! Horizon's own switches outside the Extras page (No AI, Agent Control,
+//! Discord Rich Presence) are kept here too.
 use std::{collections::VecDeque, fs, path::Path};
 
 pub const FILE: &str = "horizon-extras.txt";
@@ -51,6 +52,94 @@ impl Corner {
     }
     pub fn left(self) -> bool {
         matches!(self, Corner::TopLeft | Corner::BottomLeft)
+    }
+}
+
+/// Performance switches shown on Mods > Starling Extras > Extra Feature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Optimization {
+    FastBackground,
+    MenuBackground,
+    GameAnimations,
+    FastChunkUpload,
+    BatteryPerformance,
+    MaxFps,
+    AndroidPerformanceHints,
+}
+impl Optimization {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FastBackground => "Fast Background",
+            Self::MenuBackground => "Reduce Menu Background Blur",
+            Self::GameAnimations => "Disable Game Animations",
+            Self::FastChunkUpload => "Fast Chunk Mesh Upload",
+            Self::BatteryPerformance => "Battery Performance (60 FPS)",
+            Self::MaxFps => "Maximum FPS Mode",
+            Self::AndroidPerformanceHints => "Android Performance Hints",
+        }
+    }
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::FastBackground => {
+                "Caches the last gameplay scene in a GPU texture. In an in-world menu, Starling reuses that frozen image and draws only the menu UI, skipping the 3D world render. The cache refreshes during gameplay; the first menu frame builds it. GPU texture-copy support is required; unsupported devices keep normal rendering."
+            }
+            Self::MenuBackground => {
+                "Skip the blurred gameplay or panorama background while a menu is open."
+            }
+            Self::GameAnimations => {
+                "Disable animated textures, chunk fade and view bobbing without changing saved graphics settings; also disables Android menu motion where supported."
+            }
+            Self::FastChunkUpload => {
+                "Raise the per-frame chunk mesh upload budget to at least 4 MiB."
+            }
+            Self::BatteryPerformance => {
+                "Limit the effective frame rate to 60 FPS to reduce power use."
+            }
+            Self::MaxFps => {
+                "Disable VSync and remove the configured frame-rate cap (in-game inactivity limits still apply)."
+            }
+            Self::AndroidPerformanceHints => {
+                "Send CPU frame-time hints to Android's Dynamic Performance Framework."
+            }
+        }
+    }
+    pub fn enabled(self, extras: &Extras) -> bool {
+        match self {
+            Self::FastBackground => extras.fast_background,
+            Self::MenuBackground => extras.menu_background_optimization,
+            Self::GameAnimations => extras.disable_game_animations,
+            Self::FastChunkUpload => extras.fast_chunk_upload,
+            Self::BatteryPerformance => extras.battery_performance,
+            Self::MaxFps => extras.max_fps_mode,
+            Self::AndroidPerformanceHints => extras.android_performance_hints,
+        }
+    }
+    pub fn toggle(self, extras: &mut Extras) {
+        match self {
+            Self::FastBackground => extras.fast_background = !extras.fast_background,
+            Self::MenuBackground => {
+                extras.menu_background_optimization = !extras.menu_background_optimization
+            }
+            Self::GameAnimations => {
+                extras.disable_game_animations = !extras.disable_game_animations
+            }
+            Self::FastChunkUpload => extras.fast_chunk_upload = !extras.fast_chunk_upload,
+            Self::BatteryPerformance => {
+                extras.battery_performance = !extras.battery_performance;
+                if extras.battery_performance {
+                    extras.max_fps_mode = false;
+                }
+            }
+            Self::MaxFps => {
+                extras.max_fps_mode = !extras.max_fps_mode;
+                if extras.max_fps_mode {
+                    extras.battery_performance = false;
+                }
+            }
+            Self::AndroidPerformanceHints => {
+                extras.android_performance_hints = !extras.android_performance_hints
+            }
+        }
     }
 }
 
@@ -137,6 +226,20 @@ pub struct Extras {
     /// players' (`cosmeticsMine`, `cosmeticsOthers`; both on by default).
     pub cosmetics_mine: bool,
     pub cosmetics_others: bool,
+    /// Reuse the last gameplay scene as a static GPU-cached menu background.
+    pub fast_background: bool,
+    /// Reduce the cost of menus by skipping the blurred gameplay/panorama background.
+    pub menu_background_optimization: bool,
+    /// Disable animated textures, chunk fade and view bobbing while preserving their saved values.
+    pub disable_game_animations: bool,
+    /// Allow up to 4 MiB of chunk mesh uploads per frame, unless a higher budget is set.
+    pub fast_chunk_upload: bool,
+    /// Cap the effective frame rate at 60 FPS to reduce power use.
+    pub battery_performance: bool,
+    /// Use the highest frame-rate limit instead of the configured cap.
+    pub max_fps_mode: bool,
+    /// Android Dynamic Performance Framework frame hints (enabled by default, as before).
+    pub android_performance_hints: bool,
 }
 impl Default for Extras {
     fn default() -> Self {
@@ -178,6 +281,13 @@ impl Default for Extras {
             music_page: false,
             cosmetics_mine: true,
             cosmetics_others: true,
+            fast_background: false,
+            menu_background_optimization: false,
+            disable_game_animations: false,
+            fast_chunk_upload: false,
+            battery_performance: false,
+            max_fps_mode: false,
+            android_performance_hints: true,
         }
     }
 }
@@ -185,6 +295,15 @@ fn bool_text(v: bool) -> &'static str {
     if v { "true" } else { "false" }
 }
 impl Extras {
+    /// Counts optional boosts, treating battery and maximum-FPS modes as alternatives.
+    /// Android frame hints are excluded because they already run by default in Starling.
+    pub fn optimization_level(&self) -> usize {
+        self.fast_background as usize
+            + self.menu_background_optimization as usize
+            + self.disable_game_animations as usize
+            + self.fast_chunk_upload as usize
+            + (self.battery_performance || self.max_fps_mode) as usize
+    }
     pub fn load(dir: &Path) -> Self {
         fs::read_to_string(dir.join(FILE))
             .map(|t| Self::parse(&t))
@@ -260,6 +379,19 @@ impl Extras {
                 "musicPage" => e.music_page = flag(e.music_page),
                 "cosmeticsMine" => e.cosmetics_mine = flag(e.cosmetics_mine),
                 "cosmeticsOthers" => e.cosmetics_others = flag(e.cosmetics_others),
+                "fastBackground" => e.fast_background = flag(e.fast_background),
+                "menuBackgroundOptimization" => {
+                    e.menu_background_optimization = flag(e.menu_background_optimization)
+                }
+                "disableGameAnimations" => {
+                    e.disable_game_animations = flag(e.disable_game_animations)
+                }
+                "fastChunkUpload" => e.fast_chunk_upload = flag(e.fast_chunk_upload),
+                "batteryPerformance" => e.battery_performance = flag(e.battery_performance),
+                "maxFpsMode" => e.max_fps_mode = flag(e.max_fps_mode),
+                "androidPerformanceHints" => {
+                    e.android_performance_hints = flag(e.android_performance_hints)
+                }
                 _ => {}
             }
         }
@@ -267,7 +399,7 @@ impl Extras {
     }
     pub fn serialize(&self) -> String {
         format!(
-            "fullbright:{}\ndynamicLights:{}\nzoom:{}\nzoomKey:{}\nzoomLevel:{}\nzoomSmooth:{}\nzoomSensitivity:{}\nfps:{}\nfpsCorner:{}\nfpsLows:{}\nkeystrokes:{}\nkeystrokesCorner:{}\nkeystrokesCps:{}\nmovedToMods:{}\nautoReconnect:{}\nuiSoundReserve:{}\nownNameTag:{}\nhideBlockParticles:{}\nmouseTweaks:{}\nmouseTweaksWheel:{}\nsort:{}\nsortKey:{}\nchatAnimation:{}\nchatIndicator:{}\n{}:{}\nagentControl:{}\nreproKeys:{}\ndiscordPresence:{}\nsplitscreen:{}\nsplitscreenTwo:{}\nsplitscreenThree:{}\nsplitscreenNames:{}\nwheelCyclesSettings:{}\nmusicOff:{}\nmusicPage:{}\ncosmeticsMine:{}\ncosmeticsOthers:{}\n",
+            "fullbright:{}\ndynamicLights:{}\nzoom:{}\nzoomKey:{}\nzoomLevel:{}\nzoomSmooth:{}\nzoomSensitivity:{}\nfps:{}\nfpsCorner:{}\nfpsLows:{}\nkeystrokes:{}\nkeystrokesCorner:{}\nkeystrokesCps:{}\nmovedToMods:{}\nautoReconnect:{}\nuiSoundReserve:{}\nownNameTag:{}\nhideBlockParticles:{}\nmouseTweaks:{}\nmouseTweaksWheel:{}\nsort:{}\nsortKey:{}\nchatAnimation:{}\nchatIndicator:{}\n{}:{}\nagentControl:{}\nreproKeys:{}\ndiscordPresence:{}\nsplitscreen:{}\nsplitscreenTwo:{}\nsplitscreenThree:{}\nsplitscreenNames:{}\nwheelCyclesSettings:{}\nmusicOff:{}\nmusicPage:{}\ncosmeticsMine:{}\ncosmeticsOthers:{}\nfastBackground:{}\nmenuBackgroundOptimization:{}\ndisableGameAnimations:{}\nfastChunkUpload:{}\nbatteryPerformance:{}\nmaxFpsMode:{}\nandroidPerformanceHints:{}\n",
             bool_text(self.fullbright),
             bool_text(self.dynamic_lights),
             bool_text(self.zoom),
@@ -306,6 +438,13 @@ impl Extras {
             bool_text(self.music_page),
             bool_text(self.cosmetics_mine),
             bool_text(self.cosmetics_others),
+            bool_text(self.fast_background),
+            bool_text(self.menu_background_optimization),
+            bool_text(self.disable_game_animations),
+            bool_text(self.fast_chunk_upload),
+            bool_text(self.battery_performance),
+            bool_text(self.max_fps_mode),
+            bool_text(self.android_performance_hints),
         )
     }
     /// Binds the extra key `name` (`SORT_KEY`); false for
@@ -757,7 +896,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn everything_is_off_by_default_and_round_trips() {
+    fn defaults_and_round_trips() {
         let d = Extras::default();
         assert!(!d.fullbright && !d.dynamic_lights);
         assert!(!d.zoom && !d.fps && !d.keystrokes && !d.auto_reconnect);
@@ -765,6 +904,8 @@ mod tests {
         assert!(!d.hide_block_particles);
         assert!(!d.music_page && d.music_off.is_empty());
         assert!(d.discord_presence && d.wheel_cycles_settings);
+        assert!(d.android_performance_hints);
+        assert_eq!(d.optimization_level(), 0);
         assert_eq!(Extras::parse(""), d);
         assert_eq!(Extras::parse(&d.serialize()), d);
         let mut e = d.clone();
@@ -801,6 +942,17 @@ mod tests {
         assert_eq!(Item::Splitscreen.switch(&e), Some(true));
         Item::WheelCyclesSettings.cycle(&mut e, false);
         assert_eq!(Item::WheelCyclesSettings.switch(&e), Some(false));
+        e.fast_background = true;
+        e.menu_background_optimization = true;
+        e.disable_game_animations = true;
+        e.fast_chunk_upload = true;
+        e.battery_performance = true;
+        e.android_performance_hints = false;
+        assert_eq!(e.optimization_level(), 5);
+        Optimization::MaxFps.toggle(&mut e);
+        assert!(e.max_fps_mode && !e.battery_performance);
+        assert_eq!(e.optimization_level(), 5);
+        assert_eq!(Extras::parse(&e.serialize()), e);
         e.music_off = vec![
             "minecraft:music/game/calm1".into(),
             "minecraft:music.menu".into(),

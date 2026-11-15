@@ -89,6 +89,13 @@ impl Game<'_> {
     pub(in crate::game) fn mobile_controls_enabled(&self) -> bool {
         cfg!(target_os = "android")
     }
+    /// GoyControl's virtual Shift must count as sneak even when Android has no physical Shift.
+    pub(in crate::game) fn mobile_sneak_held(&self) -> bool {
+        self.screen == Screen::Playing
+            && self.title.is_none()
+            && (self.mobile.custom_keys.contains(&KeyCode::ShiftLeft)
+                || self.mobile.custom_keys.contains(&KeyCode::ShiftRight))
+    }
     pub(in crate::game) fn mobile_pad_end(&mut self, released: bool) {
         if released {
             self.mobile.touch_aim = None;
@@ -1530,11 +1537,13 @@ impl Game<'_> {
                     let next = !self.mobile.controls.settings.disable_game_animations;
                     self.mobile.controls.settings.disable_game_animations = next;
                     horizon_client::android_control_theme::motion::set_game_animations_disabled(
-                        next,
+                        next || self.settings.extras.disable_game_animations,
                     );
                     let _ = self.mobile.controls.settings.save();
                     if let Some(r) = self.renderer.as_mut() {
-                        r.animated_textures = self.settings.horizon.animated_textures && !next;
+                        r.animated_textures = self.settings.horizon.animated_textures
+                            && !next
+                            && !self.settings.extras.disable_game_animations;
                     }
                 }
                 InGameMenuAction::SendCustomInput(token) => {

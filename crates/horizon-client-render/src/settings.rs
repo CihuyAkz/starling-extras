@@ -985,6 +985,20 @@ mod tests {
     }
 
     #[test]
+    fn bedrock_inventory_setting_persists_in_options_txt() {
+        let defaults = Settings::parse("");
+        assert!(defaults.bedrock_inventory);
+        assert!(defaults.serialize().contains("\njavaCreativeInventory:false\n"));
+
+        for (stored, expected) in [("true", false), ("false", true)] {
+            let settings = Settings::parse(&format!("javaCreativeInventory:{stored}\n"));
+            assert_eq!(settings.bedrock_inventory, expected);
+            let serialized = settings.serialize();
+            assert!(serialized.contains(&format!("\njavaCreativeInventory:{stored}\n")));
+            assert_eq!(Settings::parse(&serialized).bedrock_inventory, expected);
+        }
+    }
+    #[test]
     fn round_trips_vanilla_options_txt() {
         let text = "version:4000\nfov:0.5\nrenderDistance:16\nmaxFps:260\nrenderClouds:\"fast\"\nkey_key.jump:key.keyboard.j\nsoundCategory_music:0.25\nresourcePacks:[\"vanilla\",\"file/x.zip\"]\nlang:fr_fr\nsomeFutureOption:42\n";
         let s = Settings::parse(text);

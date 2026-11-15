@@ -801,6 +801,10 @@ pub struct Frame<'a> {
     /// `Screen.extractBlurredBackground`: blur the frame by this radius
     /// (`menuBackgroundBlurriness`) before the screen is drawn over it.
     pub menu_blur: Option<f32>,
+    /// Cache the last live gameplay image and reuse it behind in-world menus.
+    pub fast_background_enabled: bool,
+    /// An in-world screen currently covers the gameplay scene with a menu.
+    pub in_world_menu: bool,
     /// `Options.chunkSectionFadeInTime`, in seconds: how long a section takes to fade in once
     /// uploaded (0 draws it whole at once).
     pub chunk_fade: f32,
@@ -833,6 +837,13 @@ pub struct ScreenshotRequest {
     /// F2's: drawn at the game's resolution (Resolution Scale above 100%) times
     /// `Renderer::screenshot_quality`, not the window's.
     pub scaled: bool,
+}
+/// The most recent gameplay image, copied before the HUD so a menu can be drawn over it.
+struct FastBackgroundCache {
+    texture: wgpu::Texture,
+    size: [u32; 2],
+    format: wgpu::TextureFormat,
+    valid: bool,
 }
 pub struct Renderer {
     instance: wgpu::Instance,
@@ -1176,6 +1187,8 @@ pub struct Renderer {
     pub hud: HudRenderer,
     /// Vanilla's menu background blur, made on first use.
     menu_blur: Option<crate::menu_blur::MenuBlur>,
+    /// The last gameplay frame for Starling Extras' Fast Background option.
+    fast_background_cache: Option<FastBackgroundCache>,
     /// `post_effect` chains, made on first use.
     post_effects: Option<crate::post_chain::PostEffects>,
     /// Where a screenshot's frame is drawn when the swapchain cannot be read back.
@@ -4348,6 +4361,7 @@ impl Renderer {
             separate_ao: false,
             hud,
             menu_blur: None,
+            fast_background_cache: None,
             post_effects: None,
             readback: readback::Readback::default(),
             info,
@@ -6406,6 +6420,7 @@ impl Renderer {
             && self.hdr.is_none()
             && !frame.title
             && frame.menu_blur.is_none()
+            && !(frame.fast_background_enabled && frame.in_world_menu)
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
             && self.native.as_ref().is_none_or(|n| n.post.is_none())
             && (self.surface.is_none()
@@ -6498,6 +6513,31 @@ impl Renderer {
                     label: Some("Horizon frame"),
                 })
         });
+        if !frame.fast_background_enabled {
+            self.fast_background_cache = None;
+        }
+        if frame.title && let Some(cache) = &mut self.fast_background_cache {
+            cache.valid = false;
+        }
+        if frame.fast_background_enabled
+            && frame.in_world_menu
+            && self.hdr.is_none()
+            && target_texture.format() == self.config.format
+            && target_texture.usage().contains(wgpu::TextureUsages::COPY_DST)
+            && self.fast_background_cache.as_ref().is_some_and(|cache| {
+                cache.valid && cache.size == size && cache.format == target_texture.format()
+            })
+        {
+            return self.draw_fast_background_frame(
+                frame,
+                surface_frame,
+                target_texture,
+                encoder,
+                reconfigure,
+                started,
+                has_section_copies,
+            );
+        }
         // Horizon's own passes are timed like a shader pack's, from the frame's first pass.
         if self.own_timing.is_some() != self.pass_timing {
             self.own_timing = self
@@ -9553,6 +9593,183 @@ impl Renderer {
     }
 }
 impl Renderer {
+    /// A menu frame that reuses the last gameplay image instead of rendering the 3D world.
+    /// Only the current HUD/menu batch is drawn on top of the cached texture.
+    fn draw_fast_background_frame(
+        &mut self,
+        frame: &Frame,
+        surface_frame: Option<wgpu::SurfaceTexture>,
+        target_texture: wgpu::Texture,
+        mut encoder: wgpu::CommandEncoder,
+        reconfigure: bool,
+        started: Instant,
+        has_section_copies: bool,
+    ) -> Result<bool> {
+        let size = [self.config.width, self.config.height];
+        let cache = self
+            .fast_background_cache
+            .as_ref()
+            .ok_or("Fast Background cache disappeared")?;
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &cache.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &target_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: size[0],
+                height: size[1],
+                depth_or_array_layers: 1,
+            },
+        );
+        let view_target = target_texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.config.format.remove_srgb_suffix()),
+            ..Default::default()
+        });
+        self.hud.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            frame.hud,
+            size,
+        );
+        self.hud.draw_range(
+            &mut encoder,
+            &view_target,
+            &self.depth,
+            frame.hud,
+            size,
+            0..frame.hud.vertices.len() as u32,
+            None,
+        );
+        let readback = self
+            .screenshot
+            .take_if(|request| request.size.is_none())
+            .and_then(|request| self.take_readback(request, &mut encoder, &target_texture));
+        self.uploads.finish(&encoder);
+        if has_section_copies {
+            self.section_copy_bytes = 0;
+            self.section_uploads.finish(&encoder);
+        }
+        if let Some(surface) = &surface_frame {
+            self.readback
+                .present(&self.device, &mut encoder, &surface.texture);
+        }
+        let first_frame = self.first_frame == FirstFrame::Submit;
+        let commands = encoder.finish();
+        if first_frame {
+            startup_step(format_args!("submitting the first frame"));
+            self.first_frame = FirstFrame::Drawn;
+        }
+        let submission = self.queue.submit([commands]);
+        if let Some((request, buffer)) = readback {
+            self.screenshot_halvings = 0;
+            self.screenshot_result = Some(
+                self.write_screenshot(&request, &buffer)
+                    .map_err(|e| e.to_string()),
+            );
+        }
+        self.last_wait += self.queue.take_waited();
+        let present = Instant::now();
+        if let Some(surface) = surface_frame {
+            if self.config.present_mode == wgpu::PresentMode::Fifo {
+                self.window.pre_present_notify();
+            }
+            if first_frame {
+                startup_step(format_args!("presenting the first frame"));
+            }
+            self.queue.present(surface);
+            if let Some(marker) = self.start_marker.take() {
+                let _ = std::fs::remove_file(marker);
+            }
+            if reconfigure {
+                self.configure_surface();
+            }
+        } else if self.surface.is_none() {
+            self.in_flight.push_back(submission);
+            if !self.paced_elsewhere {
+                self.wait_in_flight();
+            }
+        }
+        self.last_wait += present.elapsed();
+        self.queue.take_waited();
+        self.last_encode = started.elapsed().saturating_sub(self.last_wait);
+        self.drawn_sections = 0;
+        self.section_draws = 0;
+        self.section_draw_calls = 0;
+        Ok(true)
+    }
+    /// Create or resize the one-frame GPU cache and copy the world before its HUD is drawn.
+    fn capture_fast_background(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &wgpu::Texture,
+    ) {
+        let size = [self.config.width, self.config.height];
+        if size.contains(&0)
+            || self.hdr.is_some()
+            || source.format() != self.config.format
+            || !source.usage().contains(wgpu::TextureUsages::COPY_SRC)
+        {
+            return;
+        }
+        let format = self.config.format;
+        if self
+            .fast_background_cache
+            .as_ref()
+            .is_none_or(|cache| cache.size != size || cache.format != format)
+        {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Fast Background cache"),
+                size: wgpu::Extent3d {
+                    width: size[0],
+                    height: size[1],
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            self.fast_background_cache = Some(FastBackgroundCache {
+                texture,
+                size,
+                format,
+                valid: false,
+            });
+        }
+        if let Some(cache) = &mut self.fast_background_cache {
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: source,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &cache.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: size[0],
+                    height: size[1],
+                    depth_or_array_layers: 1,
+                },
+            );
+            cache.valid = true;
+        }
+    }
     /// What draws over the world, on the real frame and frame generation's made one:
     /// the hand, entity outlines, post effects, screen effects, the debug crosshair and
     /// the HUD. Returns the world icon's readback, taken on the real frame.
@@ -9779,6 +9996,20 @@ impl Renderer {
                     }
                 }
             }
+        }
+        // Keep the post-processed gameplay background, but not the crosshair or HUD.
+        // On first entering a menu, the normal render fills the cache for the next frame.
+        let cache_matches = self.fast_background_cache.as_ref().is_some_and(|cache| {
+            cache.valid
+                && cache.size == [self.config.width, self.config.height]
+                && cache.format == self.config.format
+        });
+        if overlay.real
+            && frame.fast_background_enabled
+            && !frame.title
+            && (!frame.in_world_menu || !cache_matches)
+        {
+            self.capture_fast_background(encoder, target_texture);
         }
         // GameRenderer.render3dHud: the debug crosshair after the hand and
         // the screen effects.

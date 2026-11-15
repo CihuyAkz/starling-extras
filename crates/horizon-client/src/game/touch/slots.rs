@@ -85,7 +85,8 @@ struct Picked {
 impl Game<'_> {
     /// The screens whose slots the fingers work as Bedrock's.
     fn slot_touch_screen(&self) -> bool {
-        matches!(self.screen, Screen::Inventory | Screen::Creative)
+        self.settings.bedrock_inventory
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
             && self.title.is_none()
             && self.carried.is_none()
             && self.has_touch()
@@ -135,7 +136,7 @@ impl Game<'_> {
     /// How far a finger turned the inventory's player, in degrees, on a touch screen (where the
     /// player does not follow a cursor).
     pub(in crate::game) fn player_spin(&self) -> Option<f32> {
-        self.has_touch().then_some(self.touch.slots.spin)
+        self.slot_touch_screen().then_some(self.touch.slots.spin)
     }
 
     /// The slot whose cell holds `gui` (its frame, a little past it), the nearest if two do.

@@ -3,8 +3,9 @@
 //! touch-layout.json says (edited in place: a long press on pause); on every other screen the
 //! first finger is the pointer, with a close button over the screens a world opens. Android's
 //! back key is Escape, and the chat raises the on-screen keyboard and moves above it. On the
-//! screens with slots a finger works them as Bedrock's touch inventory does (slots.rs). The player's
-//! own buttons are in the layout as the game's own.
+//! screens with slots, Bedrock Inventory enables Bedrock-style touch handling (slots.rs); when it
+//! is disabled, touches follow the ordinary mouse-pointer path used by Horizon Android. The
+//! player's own buttons are in the layout as the game's own.
 mod slots;
 mod text_mirror;
 
@@ -1341,11 +1342,12 @@ impl Game<'_> {
     pub(super) fn touch_sneaking(&self) -> bool {
         #[cfg(target_os = "android")]
         if self.mobile_controls_enabled() {
-            return self
-                .mobile
-                .controls
-                .state()
-                .held(horizon_client::gamepad::Button::RightStick);
+            return self.mobile_sneak_held()
+                || self
+                    .mobile
+                    .controls
+                    .state()
+                    .held(horizon_client::gamepad::Button::RightStick);
         }
         self.touch.sneaking
     }

@@ -607,12 +607,31 @@ impl Game<'_> {
         }
         self.apply_fullscreen();
         let s = &self.settings;
+        let mobile_animations_disabled = {
+            #[cfg(target_os = "android")]
+            {
+                self.mobile.controls.settings.disable_game_animations
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                false
+            }
+        };
+        let game_animations_disabled =
+            s.extras.disable_game_animations || mobile_animations_disabled;
+        #[cfg(target_os = "android")]
+        horizon_client::android_control_theme::motion::set_game_animations_disabled(
+            game_animations_disabled,
+        );
         if let Some(r) = self.renderer.as_mut() {
             r.gamma = s.gamma;
             r.fullbright = s.extras.fullbright;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.horizon.present_mode);
-            r.animated_textures = s.horizon.animated_textures;
+            r.set_present_mode(
+                s.vsync && !s.extras.max_fps_mode,
+                s.horizon.present_mode,
+            );
+            r.animated_textures = s.horizon.animated_textures && !game_animations_disabled;
             r.screenshot_quality = s.horizon.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
             r.set_texture_filtering(
@@ -727,7 +746,17 @@ impl Game<'_> {
             has_screen: self.title.is_some() || self.screen != super::Screen::Playing,
             has_overlay: false,
         };
-        let limit = framerate_limit(self.settings.max_fps as i32, context);
+        let requested_fps = if self.settings.extras.max_fps_mode {
+            260
+        } else {
+            self.settings.max_fps as i32
+        };
+        let limit = framerate_limit(requested_fps, context);
+        let limit = if self.settings.extras.battery_performance {
+            limit.min(60)
+        } else {
+            limit
+        };
         let limit = self
             .settings
             .horizon

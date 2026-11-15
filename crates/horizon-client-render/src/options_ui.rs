@@ -1803,6 +1803,7 @@ enum Act {
     Done,
     Cycle(Opt),
     Extra(crate::extras::Item),
+    Optimization(crate::extras::Optimization),
     Key(&'static str),
     ResetKey(&'static str),
     ResetKeys,
@@ -2726,6 +2727,9 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
     if let Act::Extra(item) = act {
         tip = Some(Text::literal(item.description_text()));
     }
+    if let Act::Optimization(option) = act {
+        tip = Some(Text::literal(option.description()));
+    }
     if let Act::Push(page) = act
         && let Some(text) = horizon_page_tooltip(*page)
     {
@@ -3346,7 +3350,7 @@ impl OptionsUi {
             Page::StarlingExtra => "Starling Extras",
             Page::StarlingExtraClient => "starling.mods.category.client",
             Page::StarlingExtraServer => "starling.mods.category.server",
-            Page::StarlingExtraExtras => "Extras",
+            Page::StarlingExtraExtras => "Extra Feature",
             Page::NativeMod(_) => "Mod Settings",
             Page::NativeModHandEditor(_) => "Hand Editor",
             Page::ShaderPacks => "horizon.pages.shader_packs",
@@ -4237,7 +4241,7 @@ impl OptionsUi {
                             0.0,
                             0.0,
                             310.0,
-                            Text::literal("Extras"),
+                            Text::literal("Extra Feature"),
                             Act::Push(Page::StarlingExtraExtras),
                         ),
                         None,
@@ -4267,7 +4271,67 @@ impl OptionsUi {
                 rows
             }
             Page::StarlingExtraExtras => {
-                vec![Row::Note("Nobody here but us chickens!".to_owned())]
+                use crate::extras::Optimization as O;
+                let enabled = s.extras.optimization_level();
+                let level = match enabled {
+                    0 => "Standard",
+                    1 => "Basic",
+                    2 => "Enhanced",
+                    3 => "High",
+                    4 => "Extreme",
+                    _ => "Maximum",
+                };
+                let mut rows = vec![
+                    Row::Note(format!("Optimization Level: {enabled}/5 - {level}")),
+                    Row::Note(
+                        "Each feature can be toggled separately. Battery Performance and Maximum FPS are mutually exclusive."
+                            .to_owned(),
+                    ),
+                ];
+                rows.push(Row::Buttons(
+                    button(
+                        0.0,
+                        0.0,
+                        310.0,
+                        Text::literal(format!(
+                            "{}: {}",
+                            O::FastBackground.label(),
+                            if O::FastBackground.enabled(&s.extras) { "On" } else { "Off" }
+                        )),
+                        Act::Optimization(O::FastBackground),
+                    ),
+                    None,
+                ));
+                rows.extend([
+                    Row::Note("Caches the latest gameplay frame in a GPU texture.".to_owned()),
+                    Row::Note("In a world menu, reuses it and draws only the menu UI.".to_owned()),
+                    Row::Note("This skips rendering the 3D world each menu frame.".to_owned()),
+                    Row::Note("The first menu frame builds it; gameplay refreshes the cache.".to_owned()),
+                    Row::Note("Devices without texture-copy support keep normal rendering.".to_owned()),
+                ]);
+                let mut options = vec![
+                    O::MenuBackground,
+                    O::GameAnimations,
+                    O::FastChunkUpload,
+                    O::BatteryPerformance,
+                    O::MaxFps,
+                ];
+                #[cfg(target_os = "android")]
+                options.push(O::AndroidPerformanceHints);
+                for option in options {
+                    let state = if option.enabled(&s.extras) { "On" } else { "Off" };
+                    rows.push(Row::Buttons(
+                        button(
+                            0.0,
+                            0.0,
+                            310.0,
+                            Text::literal(format!("{}: {state}", option.label())),
+                            Act::Optimization(option),
+                        ),
+                        None,
+                    ));
+                }
+                rows
             }
             Page::NativeMod(i) => self.native_rows(s, i, false),
             Page::NativeModHandEditor(i) => self.native_rows(s, i, true),
@@ -6274,6 +6338,10 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
+                        Act::Optimization(option) => {
+                            option.toggle(&mut s.extras);
+                            events.push(Event::Changed);
+                        }
                         Act::PlayMusicTrack(event, track) => {
                             events.push(Event::PlayMusicTrack(event, track));
                         }
@@ -6485,7 +6553,10 @@ impl OptionsUi {
                             }
                         }
                         Act::TouchLayout => events.push(Event::TouchLayout),
-                        Act::BedrockInventory => s.bedrock_inventory = !s.bedrock_inventory,
+                        Act::BedrockInventory => {
+                            s.bedrock_inventory = !s.bedrock_inventory;
+                            events.push(Event::Changed);
+                        }
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
                         Act::NextSkin => {
@@ -7500,6 +7571,10 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
+                        Act::Optimization(option) => {
+                            option.toggle(&mut s.extras);
+                            events.push(Event::Changed);
+                        }
                         Act::PlayMusicTrack(event, track) => {
                             events.push(Event::PlayMusicTrack(event, track));
                         }
@@ -8419,7 +8494,7 @@ mod tests {
                     && text.plain() == "You need to restart the game to apply this change."
         )));
 
-        // Extras is intentionally empty and shows the requested message.
+        // Extra Feature lists the independently toggleable performance options.
         ui.show(Page::StarlingExtra);
         let (categories, ..) = ui.layout(&s, size.0, size.1);
         let extras = categories
@@ -8440,7 +8515,22 @@ mod tests {
         let (extras_widgets, ..) = ui.layout(&s, size.0, size.1);
         assert!(extras_widgets.iter().any(|w| matches!(
             &w.kind,
-            WKind::Text { text, .. } if text.plain() == "Nobody here but us chickens!"
+            WKind::Text { text, .. } if text.plain().starts_with("Optimization Level: 0/5")
+        )));
+        assert!(extras_widgets.iter().any(|w| matches!(
+            &w.kind,
+            WKind::Button { label, act: Act::Optimization(crate::extras::Optimization::FastBackground), .. }
+                if label.plain() == "Fast Background: Off"
+        )));
+        assert!(extras_widgets.iter().any(|w| matches!(
+            &w.kind,
+            WKind::Text { text, .. }
+                if text.plain().contains("In a world menu, reuses it and draws only the menu UI")
+        )));
+        assert!(extras_widgets.iter().any(|w| matches!(
+            &w.kind,
+            WKind::Button { label, act: Act::Optimization(crate::extras::Optimization::MenuBackground), .. }
+                if label.plain() == "Reduce Menu Background Blur: Off"
         )));
     }
 
