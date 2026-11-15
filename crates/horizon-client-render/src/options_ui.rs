@@ -2681,6 +2681,8 @@ enum Row {
     YellowNote(String),
     /// A button, and another after it.
     Buttons(Widget, Option<Widget>),
+    /// Optimization toggles with a bold performance-impact caption below each button.
+    PerformanceButtons(Widget, String, Option<(Widget, String)>),
     NativeSlider(usize, usize, String, f32),
     /// Skin Customization's name box, after its label.
     Field,
@@ -4292,24 +4294,42 @@ impl OptionsUi {
                     O::MaxFps => "Maximum FPS",
                     O::AndroidPerformanceHints => "Android Perf Hints",
                 };
+                let impact = |option: O| match option {
+                    O::FastBackground => "High",
+                    O::MenuBackground => "Low",
+                    O::FastChunkUpload => "Medium",
+                    O::AndroidPerformanceHints => "Low",
+                    O::GameAnimations => "Medium",
+                    O::BatteryPerformance => "Medium",
+                    O::MaxFps => "High",
+                };
                 let toggle_button = |option: O, width: f32| {
                     let state = if option.enabled(&s.extras) { "On" } else { "Off" };
-                    button(
+                    let button = button(
                         0.0,
                         0.0,
                         width,
                         Text::literal(format!("{}: {state}", short_label(option))),
                         Act::Optimization(option),
-                    )
+                    );
+                    (button, format!("Performance Impact [{}]", impact(option)))
                 };
                 let mut options = options.into_iter();
                 while let Some(first) = options.next() {
                     rows.push(match options.next() {
-                        Some(second) => Row::Buttons(
-                            toggle_button(first, 150.0),
-                            Some(toggle_button(second, 150.0)),
-                        ),
-                        None => Row::Buttons(toggle_button(first, 310.0), None),
+                        Some(second) => {
+                            let (first_button, first_impact) = toggle_button(first, 150.0);
+                            let (second_button, second_impact) = toggle_button(second, 150.0);
+                            Row::PerformanceButtons(
+                                first_button,
+                                first_impact,
+                                Some((second_button, second_impact)),
+                            )
+                        }
+                        None => {
+                            let (button, impact) = toggle_button(first, 310.0);
+                            Row::PerformanceButtons(button, impact, None)
+                        }
                     });
                 }
                 rows
@@ -5274,6 +5294,47 @@ impl OptionsUi {
                                 out.push(b);
                             }
                             y += 25.0;
+                        }
+                        Row::PerformanceButtons(mut a, first_impact, b) => {
+                            a.x = cx - 155.0;
+                            a.y = y + 2.0;
+                            let first_x = a.x;
+                            let first_w = a.w;
+                            out.push(a);
+                            out.push(Widget {
+                                x: first_x,
+                                y: y + 25.0,
+                                w: first_w,
+                                h: 9.0,
+                                kind: WKind::Text {
+                                    text: Text::literal(first_impact).bold(),
+                                    color: crate::text::AQUA,
+                                    centered: true,
+                                },
+                                list: false,
+                                row: 0,
+                            });
+                            if let Some((mut b, second_impact)) = b {
+                                b.x = cx + 5.0;
+                                b.y = y + 2.0;
+                                let second_x = b.x;
+                                let second_w = b.w;
+                                out.push(b);
+                                out.push(Widget {
+                                    x: second_x,
+                                    y: y + 25.0,
+                                    w: second_w,
+                                    h: 9.0,
+                                    kind: WKind::Text {
+                                        text: Text::literal(second_impact).bold(),
+                                        color: crate::text::AQUA,
+                                        centered: true,
+                                    },
+                                    list: false,
+                                    row: 0,
+                                });
+                            }
+                            y += 39.0;
                         }
                         Row::NativeSlider(mod_index, slider_index, label, value) => {
                             out.push(Widget {
