@@ -70,7 +70,7 @@ impl Optimization {
     pub fn label(self) -> &'static str {
         match self {
             Self::FastBackground => "Fast Background",
-            Self::MenuBackground => "Disable Menu Background Blur",
+            Self::MenuBackground => "Disable Menu Blur",
             Self::GameAnimations => "Disable Game Animations",
             Self::FastChunkUpload => "Fast Chunk Mesh Upload",
             Self::BatteryPerformance => "Battery Performance (60 FPS)",
@@ -84,7 +84,7 @@ impl Optimization {
                 "Caches the last gameplay scene in a GPU texture. Inventory, the pause menu, and other in-world menus reuse that image and draw only their UI, skipping the 3D world render. The cache refreshes during gameplay; unsupported devices keep normal rendering."
             }
             Self::MenuBackground => {
-                "Disable the blurred gameplay or panorama background while a menu is open. On means the menu background blur is removed."
+                "On removes the menu background blur; Off keeps the configured blur."
             }
             Self::GameAnimations => {
                 "Disable animated textures, chunk fade and view bobbing without changing saved graphics settings; also disables Android menu motion where supported."

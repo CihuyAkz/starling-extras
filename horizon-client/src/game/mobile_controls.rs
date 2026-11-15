@@ -1806,6 +1806,10 @@ impl Game<'_> {
             return;
         };
         let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
+        // Keep the absolute mouse position synchronized with the most recent touch. In
+        // Bedrock Inventory OFF mode this is the Java-style mouse cursor; leaving a stale
+        // cursor (often at 0,0) makes the player preview/camera jump toward the top-left.
+        self.cursor = (p[0], p[1]);
         if t.phase == TouchPhase::Started && self.screen == Screen::Options {
             // Starling tracks list and slider presses through its window events.
         }

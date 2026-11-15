@@ -16326,13 +16326,14 @@ impl Game<'_> {
                 || self.dialog_open()
                 || (self.screen == Screen::Win && self.win_screen_pauses()))
     }
-    /// Fast Background also covers inventory/creative and the pause menu, whose screens
-    /// draw over the last gameplay frame even though vanilla does not blur them.
+    /// Fast Background also covers inventory/creative and the actual pause menu, whose screens
+    /// draw over the last gameplay frame even though vanilla does not blur all of them.
     fn fast_background_menu_open(&self) -> bool {
         self.in_world_menu_open()
             || (self.title.is_none()
                 && self.player.is_some()
-                && matches!(self.screen, Screen::Inventory | Screen::Creative | Screen::Paused))
+                && (matches!(self.screen, Screen::Inventory | Screen::Creative)
+                    || (self.screen == Screen::Paused && self.pause_menu)))
     }
     fn menu_blur(&self) -> Option<f32> {
         if self.settings.extras.menu_background_optimization

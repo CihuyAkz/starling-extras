@@ -824,6 +824,11 @@ impl Game<'_> {
         // The mouse finger stays the mouse until it lifts, even if the screen closed under it.
         if !self.touch_playing() || self.touch.pointer.owns(t.id) {
             let slop = touch::slop(layout.width, layout.height);
+            self.touch.pointer.set_right_clicks(
+                self.title.is_none()
+                    && !self.settings.bedrock_inventory
+                    && matches!(self.screen, Screen::Inventory | Screen::Creative),
+            );
             // A finger on a scrollbar drags it, as the mouse would. One on an option's button
             // scrolls the list whichever way it moves: only a tap presses the button.
             if t.phase == TouchPhase::Started && self.on_scrollbar(p) {
@@ -917,8 +922,11 @@ impl Game<'_> {
             self.touch.faces = faces;
         }
         if let Some(id) = self.window.as_ref().map(|w| w.id()) {
-            self.touch.pointer.set_hold_presses(
-                self.title.is_none() && matches!(self.screen, Screen::Inventory | Screen::Creative),
+            let mouse_inventory = self.title.is_none()
+                && matches!(self.screen, Screen::Inventory | Screen::Creative);
+            self.touch.pointer.set_hold_presses(mouse_inventory);
+            self.touch.pointer.set_right_clicks(
+                mouse_inventory && !self.settings.bedrock_inventory,
             );
             for mouse in self.touch.pointer.frame_events(now) {
                 self.handle_window_event(event_loop, id, mouse, InputOrigin::User);

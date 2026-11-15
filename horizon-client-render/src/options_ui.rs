@@ -2727,9 +2727,8 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
     if let Act::Extra(item) = act {
         tip = Some(Text::literal(item.description_text()));
     }
-    if let Act::Optimization(option) = act {
-        tip = Some(Text::literal(option.description()));
-    }
+    // Extra Features deliberately keeps its explanatory prose out of the widget tooltip:
+    // the compact mobile page should show only the toggle state and Optimization Level.
     if let Act::Push(page) = act
         && let Some(text) = horizon_page_tooltip(*page)
     {

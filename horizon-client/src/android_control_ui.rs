@@ -839,12 +839,17 @@ impl TouchUi {
         *previous = p;
         if phase == TouchPhase::Ended {
             let tap = !*dragged;
-            let right_click = tap && !*right_sent && since.elapsed() >= Duration::from_millis(500);
+            let right_already_sent = *right_sent;
+            let right_click = tap
+                && !right_already_sent
+                && since.elapsed() >= Duration::from_millis(500);
             *right_sent |= right_click;
             self.cancel();
             return if right_click {
                 Gesture::RightClick
-            } else if tap {
+            } else if tap && !right_already_sent {
+                // A long press may already have emitted RMB in the frame loop. Do not turn
+                // its release into a second, unintended LMB click.
                 Gesture::Tap
             } else {
                 Gesture::None
