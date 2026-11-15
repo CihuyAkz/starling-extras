@@ -322,6 +322,23 @@ impl Game<'_> {
 
         self.android_custom_events();
         self.android_virtual_mouse_clicks(events);
+        let inventory_right_click = !self.settings.bedrock_inventory
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && self.focused;
+        if self.mobile.ui.right_click_hold_due(now, inventory_right_click)
+            && let Some(id) = self.window.as_ref().map(|w| w.id())
+        {
+            self.handle_window_event(
+                events,
+                id,
+                WindowEvent::MouseInput {
+                    device_id: winit::event::DeviceId::dummy(),
+                    button: MouseButton::Right,
+                    state: ElementState::Pressed,
+                },
+                InputOrigin::User,
+            );
+        }
         let ticking = self.title.is_none() && self.screen == Screen::Playing && !self.pause;
         for token in std::mem::take(&mut self.mobile.late_custom_releases) {
             if !ticking || self.mobile.custom_pressed_at.get(&token) != Some(&self.ticks) {
@@ -1198,8 +1215,8 @@ impl Game<'_> {
             return Ok(true);
         }
         if t.phase == TouchPhase::Cancelled {
-            self.mobile.ui.cancel();
             self.android_release_touch_keys(true);
+            self.mobile.ui.cancel();
             return Ok(true);
         }
         if t.phase == TouchPhase::Ended && self.mobile.ui.owns_key(t.id) {
@@ -1705,6 +1722,11 @@ impl Game<'_> {
     }
     pub(super) fn android_release_touch_keys(&mut self, cancelled: bool) {
         self.mobile.ui.clear_modifiers();
+        if cancelled && self.mobile.ui.cancel_gesture_right_click()
+            && let Err(error) = self.android_custom_mouse(MouseButton::Right, false)
+        {
+            log::warn!("Release held inventory mouse button: {error}");
+        }
         if cancelled && matches!(self.screen, Screen::Inventory | Screen::Creative) {
             self.inv_clicks = Default::default();
             self.inv_drag = None;
@@ -1816,7 +1838,7 @@ impl Game<'_> {
             Gesture::Scroll(y) => Gesture::Scroll(y * 30. / (b.scale * 18.)),
             other => other,
         };
-        let right_click = matches!(&gesture, Gesture::RightClick);
+        let right_click = matches!(&gesture, Gesture::RightClick | Gesture::RightPress | Gesture::RightRelease);
         match gesture {
             Gesture::Tap | Gesture::RightClick => {
                 let field = mobile_platform::field_at(p);
@@ -1843,6 +1865,22 @@ impl Game<'_> {
                         self.android_show_keyboard();
                     }
                 }
+            }
+            Gesture::RightPress | Gesture::RightRelease => {
+                self.handle_window_event(
+                    events,
+                    id,
+                    WindowEvent::MouseInput {
+                        device_id: t.device_id,
+                        button: MouseButton::Right,
+                        state: if matches!(gesture, Gesture::RightPress) {
+                            ElementState::Pressed
+                        } else {
+                            ElementState::Released
+                        },
+                    },
+                    InputOrigin::User,
+                );
             }
             Gesture::Scroll(y) if self.screen == Screen::Options => {
                 self.ui

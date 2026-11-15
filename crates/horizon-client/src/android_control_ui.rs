@@ -343,6 +343,8 @@ pub enum Gesture {
     None,
     Tap,
     RightClick,
+    RightPress,
+    RightRelease,
     Scroll(f32),
 }
 pub enum Action {
@@ -814,8 +816,8 @@ impl TouchUi {
         self.gesture_with_right_click(id, p, phase, false)
     }
 
-    /// Inventory touch with Bedrock Inventory disabled follows mouse semantics: a tap is
-    /// left-click, while a stationary hold of 500 ms is right-click. Movement still scrolls.
+    /// With Bedrock Inventory disabled, a short tap is left-click. Holding for 500 ms
+    /// presses the right mouse button; moving the finger then drags with that button held.
     pub fn gesture_with_right_click(
         &mut self,
         id: u64,
@@ -824,8 +826,16 @@ impl TouchUi {
         right_click_on_hold: bool,
     ) -> Gesture {
         if phase == TouchPhase::Cancelled {
+            let held = self
+                .gesture
+                .as_ref()
+                .is_some_and(|touch| touch.id == id && touch.right_sent);
             self.cancel();
-            return Gesture::None;
+            return if held {
+                Gesture::RightRelease
+            } else {
+                Gesture::None
+            };
         }
         if phase == TouchPhase::Started {
             if self.gesture.is_none() {
@@ -843,16 +853,24 @@ impl TouchUi {
         let Some(touch) = self.gesture.as_mut().filter(|touch| touch.id == id) else {
             return Gesture::None;
         };
+        // Remember whether this gesture had already become a drag before the current event.
+        // If the first movement arrives at the 500 ms boundary, it must start the held
+        // right-click gesture rather than disqualifying it before the timer gets a frame.
+        let was_dragged = touch.dragged;
         touch.dragged |= (p[0] - touch.start[0]).hypot(p[1] - touch.start[1]) > 12.0;
         let dy = p[1] - touch.previous[1];
         touch.previous = p;
         if phase == TouchPhase::Ended {
             let tap = !touch.dragged && !touch.right_sent;
             let right = right_click_on_hold
-                && tap
+                && !was_dragged
+                && !touch.right_sent
                 && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
+            let held = touch.right_sent;
             self.cancel();
-            return if right {
+            return if held {
+                Gesture::RightRelease
+            } else if right {
                 Gesture::RightClick
             } else if tap {
                 Gesture::Tap
@@ -863,9 +881,9 @@ impl TouchUi {
         if touch.right_sent {
             return Gesture::None;
         }
-        if right_click_on_hold && !touch.dragged && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
+        if right_click_on_hold && !was_dragged && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
             touch.right_sent = true;
-            return Gesture::RightClick;
+            return Gesture::RightPress;
         }
         if touch.dragged {
             Gesture::Scroll(dy / 30.0)
@@ -873,6 +891,33 @@ impl TouchUi {
             Gesture::None
         }
     }
+
+    /// Starts holding the right mouse button once the inventory long-press threshold is reached.
+    /// The matching release is emitted by `gesture_with_right_click` when the finger lifts.
+    pub fn right_click_hold_due(&mut self, now: Instant, enabled: bool) -> bool {
+        if !enabled {
+            return false;
+        }
+        let Some(touch) = self.gesture.as_mut() else {
+            return false;
+        };
+        if !touch.right_sent
+            && !touch.dragged
+            && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
+        {
+            touch.right_sent = true;
+            return true;
+        }
+        false
+    }
+
+    /// Cancels a gesture and reports whether it had a right mouse button held down.
+    pub fn cancel_gesture_right_click(&mut self) -> bool {
+        self.gesture
+            .take()
+            .is_some_and(|touch| touch.right_sent)
+    }
+
     pub fn action(&self, w: f32, h: f32, p: [f32; 2], menu: bool) -> Option<Action> {
         let right = w - if self.virtual_mouse_available {
             115.
@@ -8473,7 +8518,7 @@ mod tests {
         ));
     }
     #[test]
-    fn inventory_touch_long_hold_is_a_right_click_but_drag_still_scrolls() {
+    fn inventory_touch_long_hold_starts_right_press_but_early_drag_scrolls() {
         let mut ui = TouchUi::default();
         ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
         ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
@@ -8485,31 +8530,37 @@ mod tests {
             ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Started, true),
             Gesture::None
         ));
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Moved, true),
-            Gesture::None
-        ));
-        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        // A drag that starts before the long-press threshold remains a scroll,
+        // even after the threshold has elapsed.
         assert!(matches!(
             ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Moved, true),
             Gesture::Scroll(_)
         ));
+        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
         assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Ended, true),
+            ui.gesture_with_right_click(2, [80.0, 100.0], TouchPhase::Moved, true),
+            Gesture::Scroll(_)
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(2, [80.0, 100.0], TouchPhase::Ended, true),
             Gesture::None
         ));
 
-        // A held finger can fire once while still down; its release must not
-        // become a second (left) click.
+        // The first movement after the hold threshold starts a real held
+        // right-button press. The release is emitted only when the finger lifts.
         ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Started, true);
         ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
         assert!(matches!(
-            ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Moved, true),
-            Gesture::RightClick
+            ui.gesture_with_right_click(3, [110.0, 60.0], TouchPhase::Moved, true),
+            Gesture::RightPress
         ));
         assert!(matches!(
-            ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Ended, true),
+            ui.gesture_with_right_click(3, [140.0, 60.0], TouchPhase::Moved, true),
             Gesture::None
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(3, [140.0, 60.0], TouchPhase::Ended, true),
+            Gesture::RightRelease
         ));
 
         // Other menus keep their ordinary tap behavior even after a long hold.
@@ -8519,6 +8570,41 @@ mod tests {
         assert!(matches!(
             normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Ended),
             Gesture::Tap
+        ));
+    }
+
+    #[test]
+    fn inventory_hold_keeps_right_mouse_pressed_until_release() {
+        let mut ui = TouchUi::default();
+        let start = Instant::now();
+        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
+        ui.gesture.as_mut().unwrap().since = start;
+
+        assert!(!ui.right_click_hold_due(start + Duration::from_millis(499), true));
+        assert!(ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
+        assert!(!ui.right_click_hold_due(start + Duration::from_millis(1000), true));
+
+        // Once pressed, moving the finger keeps the button down and moves the cursor.
+        assert!(matches!(
+            ui.gesture_with_right_click(1, [110.0, 60.0], TouchPhase::Moved, true),
+            Gesture::None
+        ));
+        assert!(matches!(
+            ui.gesture_with_right_click(1, [110.0, 60.0], TouchPhase::Ended, true),
+            Gesture::RightRelease
+        ));
+        assert!(!ui.right_click_hold_due(start + Duration::from_millis(1500), true));
+    }
+
+    #[test]
+    fn inventory_hold_releases_right_mouse_when_cancelled() {
+        let mut ui = TouchUi::default();
+        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
+        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        assert!(ui.right_click_hold_due(Instant::now(), true));
+        assert!(matches!(
+            ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Cancelled, true),
+            Gesture::RightRelease
         ));
     }
 
