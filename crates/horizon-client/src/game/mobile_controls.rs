@@ -1913,7 +1913,10 @@ impl Game<'_> {
         let Some(b) = self.gui_scale() else {
             return;
         };
-        let position = self.mobile.ui.relative_touch(
+        let non_bedrock_inventory =
+            !self.settings.bedrock_inventory
+                && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let position = self.mobile.ui.relative_touch_with_inventory_hold(
             t.id,
             [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale],
             t.phase,
@@ -1921,6 +1924,7 @@ impl Game<'_> {
             [b.width, b.height],
             self.mobile.controls.settings.virtual_mouse_sensitivity,
             !self.mobile.ui.mouse_held(),
+            non_bedrock_inventory,
         );
         self.cursor = (position[0], position[1]);
         self.handle_window_event(

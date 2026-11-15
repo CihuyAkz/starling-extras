@@ -730,6 +730,23 @@ impl TouchUi {
         sensitivity: f32,
         clicks: bool,
     ) -> [f32; 2] {
+        self.relative_touch_with_inventory_hold(
+            id, point, phase, cursor, size, sensitivity, clicks, false,
+        )
+    }
+
+    /// Relative virtual-mouse motion with the optional non-Bedrock inventory hold gesture.
+    pub fn relative_touch_with_inventory_hold(
+        &mut self,
+        id: u64,
+        point: [f32; 2],
+        phase: TouchPhase,
+        cursor: [f32; 2],
+        size: [f32; 2],
+        sensitivity: f32,
+        clicks: bool,
+        inventory_hold: bool,
+    ) -> [f32; 2] {
         if phase == TouchPhase::Cancelled {
             self.cancel();
             return cursor;
@@ -756,7 +773,18 @@ impl TouchUi {
         if (touch.cursor[0] - cursor[0]).abs() > 1.0 || (touch.cursor[1] - cursor[1]).abs() > 1.0 {
             touch.cursor = cursor;
         }
+        // Match the regular inventory gesture when the first move arrives at the hold boundary.
+        let was_dragged = touch.dragged;
         touch.dragged |= (point[0] - touch.origin[0]).hypot(point[1] - touch.origin[1]) > 3.0;
+        let hold_started = inventory_hold
+            && phase == TouchPhase::Moved
+            && clicks
+            && !was_dragged
+            && !touch.right_sent
+            && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
+        if hold_started {
+            touch.right_sent = true;
+        }
         let position = [0, 1].map(|i| {
             let max_bound = (size[i] - 1.0).max(0.0);
             (touch.cursor[i] + (point[i] - touch.last[i]) * sens).clamp(0.0, max_bound)
@@ -765,9 +793,13 @@ impl TouchUi {
         touch.last = point;
         if phase == TouchPhase::Ended {
             if clicks && !touch.dragged && !touch.right_sent {
-                self.relative_click = Some(touch.since.elapsed() >= Duration::from_millis(500));
+                self.relative_click = Some(touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD);
             }
             self.relative = None;
+        }
+        if hold_started {
+            // The per-frame virtual-mouse handler sends RMB down while this finger still owns it.
+            self.relative_click = Some(true);
         }
         position
     }
@@ -788,7 +820,7 @@ impl TouchUi {
         let touch = self.relative.as_mut()?;
         if !touch.dragged
             && !touch.right_sent
-            && touch.since.elapsed() >= Duration::from_millis(500)
+            && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD
         {
             touch.right_sent = true;
             return Some(true);
@@ -8484,6 +8516,42 @@ mod tests {
         ui.relative_touch(4, p, TouchPhase::Ended, p, size, 1.0, true);
         assert_eq!(ui.relative_click(true), None);
     }
+    #[test]
+    fn virtual_mouse_inventory_hold_starts_on_first_move_after_threshold() {
+        let mut ui = TouchUi::default();
+        let p = [100.0, 80.0];
+        let size = [400.0, 240.0];
+        ui.relative_touch_with_inventory_hold(41, p, TouchPhase::Started, p, size, 1.0, true, true);
+        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+
+        let moved = ui.relative_touch_with_inventory_hold(
+            41, [140.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
+        );
+        assert_eq!(ui.relative_click(true), Some(true));
+        let id = ui.relative_id().expect("the held finger still owns the pointer");
+        assert!(ui.press_mouse(id, true));
+
+        ui.relative_touch_with_inventory_hold(
+            41, [140.0, 80.0], TouchPhase::Ended, moved, size, 1.0, false, true,
+        );
+        assert_eq!(ui.release_mouse(id), Some((true, true)));
+        assert!(!ui.mouse_held());
+    }
+
+    #[test]
+    fn virtual_mouse_move_after_hold_does_not_enable_inventory_hold_when_disabled() {
+        let mut ui = TouchUi::default();
+        let p = [100.0, 80.0];
+        let size = [400.0, 240.0];
+        ui.relative_touch_with_inventory_hold(42, p, TouchPhase::Started, p, size, 1.0, true, false);
+        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+
+        ui.relative_touch_with_inventory_hold(
+            42, [140.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, false,
+        );
+        assert_eq!(ui.relative_click(true), None);
+    }
+
     #[test]
     fn virtual_mouse_long_hold_keeps_right_button_down_until_touch_release() {
         let mut ui = TouchUi::default();
