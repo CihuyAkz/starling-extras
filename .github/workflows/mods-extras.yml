@@ -2,9 +2,6 @@
 name: Sync Starling to Main
 
 on:
-  push:
-    branches:
-      - starling
   workflow_dispatch:
 
 permissions:
