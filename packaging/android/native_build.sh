@@ -96,7 +96,7 @@ key=$(
 )
 echo "native_build: build $key of $commit with $(ls "$work/mods" | tr '\n' ' ')"
 
-cargo fetch --locked --manifest-path "$work/source/Cargo.toml" > /dev/null
+cargo fetch --manifest-path "$work/source/Cargo.toml" > /dev/null
 "$tools/bin/horizon-mixins" apply --workspace "$work/source" --mods "$work/mods" \
   --out "$work/stage"
 
