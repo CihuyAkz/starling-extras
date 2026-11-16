@@ -324,7 +324,8 @@ impl Game<'_> {
         self.android_virtual_mouse_clicks(events);
         // GestureTouch records whether this finger began on a real inventory slot.
         let inventory_right_click = self.focused;
-        if self.mobile.ui.right_click_hold_due(now, inventory_right_click)
+        if !self.mobile.ui.virtual_mouse
+            && self.mobile.ui.right_click_hold_due(now, inventory_right_click)
             && let Some(id) = self.window.as_ref().map(|w| w.id())
         {
             self.handle_window_event(
@@ -1028,6 +1029,11 @@ impl Game<'_> {
             }
             self.mobile.ui.virtual_mouse = false;
             return;
+        }
+        if self.mobile.ui.cancel_gesture_right_click()
+            && let Err(error) = self.android_custom_mouse(MouseButton::Right, false)
+        {
+            log::warn!("Release held gesture mouse button: {error}");
         }
         self.mobile.ui.virtual_mouse = true;
         if let Some(b) = self.gui_scale() {
@@ -1911,9 +1917,7 @@ impl Game<'_> {
         let Some(b) = self.gui_scale() else {
             return;
         };
-        let inventory_slot = t.phase == TouchPhase::Started
-            && self.non_bedrock_inventory_slot_at((self.cursor.0, self.cursor.1));
-        let position = self.mobile.ui.relative_touch_with_inventory_hold(
+        let position = self.mobile.ui.relative_touch(
             t.id,
             [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale],
             t.phase,
@@ -1921,7 +1925,6 @@ impl Game<'_> {
             [b.width, b.height],
             self.mobile.controls.settings.virtual_mouse_sensitivity,
             !self.mobile.ui.mouse_held(),
-            inventory_slot,
         );
         self.cursor = (position[0], position[1]);
         self.handle_window_event(

@@ -933,7 +933,7 @@ impl TouchUi {
     /// Starts holding the right mouse button once the inventory long-press threshold is reached.
     /// The matching release is emitted by `gesture_with_right_click` when the finger lifts.
     pub fn right_click_hold_due(&mut self, now: Instant, enabled: bool) -> bool {
-        if !enabled {
+        if !enabled || self.virtual_mouse {
             return false;
         }
         let Some(touch) = self.gesture.as_mut() else {
@@ -8747,6 +8747,35 @@ mod tests {
             Gesture::RightRelease
         ));
         assert!(!ui.right_click_hold_due(start + Duration::from_millis(1500), true));
+    }
+
+    #[test]
+    fn gesture_inventory_hold_is_disabled_while_virtual_mouse_is_active() {
+        let mut ui = TouchUi::default();
+        ui.virtual_mouse = true;
+        let start = Instant::now();
+        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
+        ui.gesture.as_mut().unwrap().since = start;
+        assert!(!ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
+    }
+
+    #[test]
+    fn virtual_mouse_relative_touch_does_not_start_inventory_right_hold() {
+        let mut ui = TouchUi::default();
+        let point = [100.0, 80.0];
+        let size = [400.0, 240.0];
+        ui.relative_touch(1, point, TouchPhase::Started, point, size, 1.0, true);
+        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
+        ui.relative_touch(
+            1,
+            [110.0, 80.0],
+            TouchPhase::Moved,
+            point,
+            size,
+            1.0,
+            true,
+        );
+        assert_eq!(ui.relative_click(true), None);
     }
 
     #[test]
