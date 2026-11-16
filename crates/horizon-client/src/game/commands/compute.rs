@@ -363,7 +363,8 @@ impl Game<'_> {
                     "floor" => field(self, "input")?.floor(),
                     // Mth.ceil returns an int.
                     "ceil" => field(self, "input")?.ceil() as i32 as f32,
-                    "round" => horizon_core::jmath::round_f32(field(self, "input")?) as f32,
+                    // Math.round(float): floor(x + 0.5) as int.
+                    "round" => (field(self, "input")? + 0.5).floor() as i32 as f32,
                     "truncate" => field(self, "input")?.trunc(),
                     "sqrt" => field(self, "input")?.sqrt(),
                     "sin" => horizon_core::geometry::trig::sin(f64::from(field(self, "input")?)),
@@ -530,7 +531,7 @@ impl Game<'_> {
                     }
                     _ => {
                         let source = self.command_source.unwrap_or_else(|| self.player_source());
-                        let view = source.entity.map(|t| self.entity_view_asked(t, cond));
+                        let view = source.entity.map(|t| self.entity_view_of(t));
                         self.conditions_hold(cond, view.as_ref(), source.pos)
                     }
                 }

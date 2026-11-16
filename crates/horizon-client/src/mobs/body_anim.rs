@@ -983,7 +983,7 @@ pub fn anim(m: &Mob, s: &State, p: &mut Poses, a: &Animations) -> bool {
             // `Parrot.isFlying` is `!onGround`, in water too.
             let pose = if m.extra.party_jukebox.is_some() {
                 ParrotPose::Party
-            } else if m.extra.sitting_pose {
+            } else if m.extra.sitting {
                 ParrotPose::Sitting
             } else if !m.on_ground {
                 ParrotPose::Flying

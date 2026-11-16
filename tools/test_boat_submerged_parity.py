@@ -16,11 +16,10 @@ EXPECTED = []
 PROBES = []
 
 
-def probe(label, mounted, player='Alice', actions=()):
-    """A step running `actions`, at whose end `player` must be (or no longer be) a passenger."""
+def probe(label, mounted, player='Alice'):
     PROBES.append((label, player))
     EXPECTED.append(f'{label} mounted={str(mounted).lower()}')
-    SCRIPT.append((label, list(actions)))
+    SCRIPT.append((label, []))
 
 
 for kind, water in [('oak_boat', 'water'), ('birch_chest_boat', 'water'),
@@ -39,12 +38,11 @@ for kind, water in [('oak_boat', 'water'), ('birch_chest_boat', 'water'),
     for n in range(3):
         SCRIPT.append((f'{case}-surface-wait-{n}', []))
     probe(case + '-surface', True)
-    # Each dip is one step (20 ticks, plus the ticks the client's syncs take) observed at its own end, far from
-    # the 60 that eject: observed a step later, a loaded machine's syncs pushed a short dip past 60 (2026-11-02).
-    probe(case + '-short', True, actions=[f'cmd Alice fill -3 81 -3 3 84 3 minecraft:{water}'])
+    SCRIPT.append((case + '-short-dip', [f'cmd Alice fill -3 81 -3 3 84 3 minecraft:{water}']))
+    probe(case + '-short', True)
     SCRIPT.append((case + '-surface-reset', ['cmd Alice fill -3 81 -3 3 84 3 minecraft:air']))
-    probe(case + '-reset', True, actions=[f'cmd Alice fill -3 81 -3 3 84 3 minecraft:{water}'])
-    # 20 + 40 + 20 ticks under water by the last observation: past 60 however fast the steps go.
+    SCRIPT.append((case + '-submerge', [f'cmd Alice fill -3 81 -3 3 84 3 minecraft:{water}']))
+    probe(case + '-reset', True)
     for n in range(2):
         SCRIPT.append((f'{case}-underwater-wait-{n}', []))
     probe(case + '-ejected', False)

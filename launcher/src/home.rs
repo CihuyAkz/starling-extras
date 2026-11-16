@@ -67,13 +67,7 @@ impl Launcher {
                 .id("official-players")
                 .cursor_pointer()
                 .hover(move |s| s.text_color(ink))
-                .child(format!(
-                    "· {}",
-                    trf(
-                        "{count} on the official SMP",
-                        &[("count", &thousands(count))]
-                    )
-                ))
+                .child(format!("· {} on the official SMP", thousands(count)))
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                     this.go(Page::Servers);
                     cx.notify();
@@ -247,14 +241,14 @@ impl Launcher {
             PlayPress::Nothing => play = disabled(play),
             PlayPress::Play => {
                 play = play.on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.picker.open = false;
+                    this.picker_open = false;
                     this.play();
                     cx.notify();
                 }))
             }
             PlayPress::PrepareThenPlay => {
                 play = play.on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.picker.open = false;
+                    this.picker_open = false;
                     this.play_when_prepared = this.selected().cloned();
                     this.prepare(backend::MinecraftFrom::Install);
                     cx.notify();
@@ -283,7 +277,7 @@ impl Launcher {
                     .child(label(tr("Folder").to_string()))
                     .on_click(move |_, _, cx| {
                         let _ = std::fs::create_dir_all(&home);
-                        crate::glass_toast::open(cx, &home);
+                        cx.open_with_system(&home);
                     })
             }))
     }

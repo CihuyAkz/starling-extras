@@ -119,10 +119,7 @@ pub fn join(config: &GuestConfig) -> Result<Tunnel, JoinError> {
         Parsed::Long(invite) => {
             if config.path != PathMode::RelayOnly
                 && !invite.endpoints.is_empty()
-                && let Some(t) = join_direct(
-                    &invite,
-                    invite.relay.is_some() && config.path != PathMode::DirectOnly,
-                )?
+                && let Some(t) = join_direct(&invite)?
             {
                 return Ok(t);
             }
@@ -136,12 +133,9 @@ pub fn join(config: &GuestConfig) -> Result<Tunnel, JoinError> {
     }
 }
 
-/// Dial every endpoint of the code; each that answers as a Horizon host gets the handshake in
-/// turn until one takes the code. Another host can answer first (a housemate's game at the same
-/// private address on the default port), so a failed handshake moves on rather than ending the
-/// join. None when no endpoint took it and `fallback` (the relay) is still to be tried; else the
-/// last failure.
-fn join_direct(invite: &Invite, fallback: bool) -> Result<Option<Tunnel>, JoinError> {
+/// Dial every endpoint of the code; the first that answers as a Horizon
+/// host gets the handshake, the others are dropped before it.
+fn join_direct(invite: &Invite) -> Result<Option<Tunnel>, JoinError> {
     let (tx, rx) = channel();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut session = [0u8; 8];
@@ -160,33 +154,23 @@ fn join_direct(invite: &Invite, fallback: bool) -> Result<Option<Tunnel>, JoinEr
             });
     }
     drop(tx);
-    let mut failure = None;
-    while let Ok(mut stream) = rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-        let key = match crypto::exchange(&mut stream, &invite.secret_text(), "direct", session) {
-            Ok(key) => key,
-            Err(e) => {
-                failure.get_or_insert(JoinError::Failed(e.to_string()));
-                continue;
-            }
-        };
-        match session::secure(stream, &key, Role::Guest) {
-            Ok(secure) => {
-                return Ok(Some(Tunnel {
-                    secure,
-                    direct: true,
-                }));
-            }
-            // A wrong code says more than any other failure: it is the one kept.
-            Err(e) if crypto::is_wrong_code(&e) => failure = Some(JoinError::WrongCode),
-            Err(e) => {
-                failure.get_or_insert(JoinError::Failed(e.to_string()));
-            }
+    let left = deadline.saturating_duration_since(Instant::now());
+    let Ok(mut stream) = rx.recv_timeout(left) else {
+        return Ok(None);
+    };
+    let key = crypto::exchange(&mut stream, &invite.secret_text(), "direct", session)
+        .map_err(|e| JoinError::Failed(e.to_string()))?;
+    let secure = session::secure(stream, &key, Role::Guest).map_err(|e| {
+        if crypto::is_wrong_code(&e) {
+            JoinError::WrongCode
+        } else {
+            JoinError::Failed(e.to_string())
         }
-    }
-    match failure {
-        Some(failure) if !fallback => Err(failure),
-        _ => Ok(None),
-    }
+    })?;
+    Ok(Some(Tunnel {
+        secure,
+        direct: true,
+    }))
 }
 
 /// Through a relay with its short code (its own direct race, then the
@@ -275,42 +259,20 @@ fn join_relay(config: &GuestConfig, relay_url: &str, code: &Code) -> Result<Tunn
     })
 }
 
-/// The bytes a client sends first on the loopback port, before its handshake: what
-/// [`Tunnel::serve_loopback`] handed it.
-pub const TOKEN_LEN: usize = 16;
-
-/// The session offered on a loopback port ([`Tunnel::serve_loopback`]).
-pub struct Loopback {
-    pub port: u16,
-    /// What the connection must send first: any other local process or a web page that finds
-    /// the port gets nothing.
-    pub token: [u8; TOKEN_LEN],
-    /// Ends when the connection does, or when none came in time.
-    pub thread: JoinHandle<()>,
-}
-
 impl Tunnel {
-    /// Offer the session on `127.0.0.1:port` for one connection (the game's client), the first
-    /// that sends `token` within a second of connecting. Another process on the computer could
-    /// otherwise reach the port first and take the authenticated session to the host's server.
-    pub fn serve_loopback(self) -> io::Result<Loopback> {
+    /// Offer the session on `127.0.0.1:port` for one connection (the game's
+    /// client); the returned thread ends when that connection does.
+    pub fn serve_loopback(self) -> io::Result<(u16, JoinHandle<()>)> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         listener.set_nonblocking(true)?;
-        let mut token = [0u8; TOKEN_LEN];
-        crate::fill_random(&mut token)?;
         let thread = std::thread::Builder::new()
             .name("horizon-friends-guest".into())
             .spawn(move || {
                 let deadline = std::time::Instant::now() + Duration::from_secs(30);
                 let plain = loop {
                     match listener.accept() {
-                        Ok((s, from)) if from.ip().is_loopback() => {
-                            if sends_token(&s, &token) {
-                                break Some(s);
-                            }
-                            // Anything else is dropped, and the port waits on.
-                        }
+                        Ok((s, from)) if from.ip().is_loopback() => break Some(s),
                         Ok(_) => {}
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                             if std::time::Instant::now() > deadline {
@@ -327,25 +289,11 @@ impl Tunnel {
                     let _ = reader.get_ref().shutdown(std::net::Shutdown::Both);
                     return;
                 };
+                let _ = plain.set_nonblocking(false);
                 if let Ok(t) = crate::pump(plain, reader, writer) {
                     let _ = t.join();
                 }
             })?;
-        Ok(Loopback {
-            port,
-            token,
-            thread,
-        })
+        Ok((port, thread))
     }
-}
-
-/// Whether `s` sends `token` within a second, compared in constant time. Leaves it blocking.
-fn sends_token(mut s: &TcpStream, token: &[u8; TOKEN_LEN]) -> bool {
-    use std::io::Read;
-    let mut got = [0u8; TOKEN_LEN];
-    let read = s.set_nonblocking(false).is_ok()
-        && s.set_read_timeout(Some(Duration::from_secs(1))).is_ok()
-        && s.read_exact(&mut got).is_ok()
-        && s.set_read_timeout(None).is_ok();
-    read && got.iter().zip(token).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
 }

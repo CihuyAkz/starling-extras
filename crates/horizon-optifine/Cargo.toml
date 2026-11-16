@@ -13,7 +13,7 @@ regex = { version = "1", default-features = false, features = ["std", "unicode-p
 
 [dev-dependencies]
 # `cpu_seconds` for cem_expr_bench.
-horizon-system = { path = "../horizon-system" }
+horizon-bench = { path = "../horizon-bench" }
 
 [lints]
 workspace = true

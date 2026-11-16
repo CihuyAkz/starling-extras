@@ -5,31 +5,27 @@ import subprocess
 import tempfile
 import unittest
 
-from test_world_input_capture import method
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class MouseScrollingHookTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_axes_accumulation_context_gates_and_cancellation(self):
-        source = "".join((ROOT / "crates/horizon-client/src" / path).read_text(encoding="utf-8")
-                         for path in ("game/play_input.rs", "game.rs"))
+        source = (ROOT / "crates/horizon-client/src/game.rs").read_text(encoding="utf-8")
         start = source.index("                    let (raw_x, raw_y) = match delta")
         normalize = source[start:source.index("                    // ScreenEvent.MouseScrolled.Pre", start)]
-        start = source.index("                    if self.hotbar_takes_wheel()", start)
+        start = source.index("                    if self.screen == Screen::Playing", start)
         dispatch = source[start:source.index("                    if self.screen == Screen::Chat", start)]
-        hotbar = "\n".join(method(source, name) for name in
-                            ("hotbar_takes_wheel", "hotbar_scroll_canceled", "hotbar_wheel_step"))
         fixture = r"""
 use std::collections::HashSet;
+const MOBILE_PLATFORM: bool = false;
 #[allow(dead_code)]
 #[path = "MOUSE_PATH"] mod mouse;
 mod horizon_client { pub mod mouse { pub use crate::mouse::*; } }
 #[derive(Clone, Copy, PartialEq, Eq, Hash)] enum MouseButton { Left, Middle, Right }
 #[derive(Clone, Copy, PartialEq)] enum Screen { Playing, Other }
-struct Point { x: f64, y: f64 }
-enum MouseScrollDelta { LineDelta(f32, f32), PixelDelta(Point) }
+#[derive(Clone, Copy)] struct Point { x: f64, y: f64 }
+#[derive(Clone, Copy)] enum MouseScrollDelta { LineDelta(f32, f32), PixelDelta(Point) }
 struct Settings { discrete_scroll: bool, mouse_wheel_sensitivity: f32 }
 struct Player { flying_speed: f32 }
 struct SpectatorGui { active: bool }
@@ -57,7 +53,6 @@ impl Game {
         cursor: [f32;2], modifiers: u32, canceled: &mut bool) {
         self.calls.push((scroll, accumulated, buttons, cursor, modifiers)); *canceled = self.cancel;
     }
-    HOTBAR
     fn wheel(&mut self, delta: MouseScrollDelta) -> Result<(), ()> {
         NORMALIZE
         DISPATCH
@@ -110,7 +105,7 @@ fn source_and_legacy_gates() {
         assert_eq!(game.selected, if gate==5 {3} else {4});
     }
 }
-""".replace("MOUSE_PATH", (ROOT / "crates/horizon-client-input/src/mouse.rs").as_posix()).replace("NORMALIZE", normalize).replace("HOTBAR", hotbar).replace("DISPATCH", dispatch)
+""".replace("MOUSE_PATH", (ROOT / "crates/horizon-client-input/src/mouse.rs").as_posix()).replace("NORMALIZE", normalize).replace("DISPATCH", dispatch)
         with tempfile.TemporaryDirectory() as folder:
             src, exe = Path(folder) / "scroll.rs", Path(folder) / "scroll.exe"
             src.write_text(fixture, encoding="utf-8")

@@ -93,18 +93,7 @@ fn condition_property_is_false() {
             "on_false":{"type":"minecraft:model","model":"a:no"}}"#,
     )
     .unwrap();
-    // A mod's property stays a condition its mod answers per stack
-    // (`item_model_property`); with no mod answering it, `on_false` is drawn.
-    let ItemModelNode::Condition {
-        property: ConditionProperty::Custom(property),
-        on_false,
-        ..
-    } = &n
-    else {
-        panic!("not a custom condition: {n:?}")
-    };
-    assert_eq!(property, "mod:flag");
-    assert_eq!(model_id(on_false), "a:no");
+    assert_eq!(model_id(&n), "a:no");
 }
 
 #[test]

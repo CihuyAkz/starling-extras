@@ -35,9 +35,6 @@ enum Control {
     Path { direct: bool },
 }
 
-/// Streams of the direct race a session authenticates, at most.
-const MAX_RACE_STREAMS: usize = 16;
-
 fn send(w: &mut SecureWriter<TcpStream>, c: &Control) -> io::Result<()> {
     w.write_control(&serde_json::to_vec(c).map_err(io::Error::other)?)
 }
@@ -117,16 +114,12 @@ pub(crate) fn settle(
         let _ = std::thread::Builder::new()
             .name("horizon-friends-auth".into())
             .spawn(move || {
-                // A few streams a session, each with one deadline for all of its handshake: whoever
-                // knows a live session id could otherwise open stream after stream to the direct
-                // port and drip bytes, a thread for each.
-                for raw in raw_rx.into_iter().take(MAX_RACE_STREAMS) {
+                for raw in raw_rx {
                     let (key, atx) = (key.clone(), atx.clone());
                     let _ = std::thread::Builder::new()
                         .name("horizon-friends-auth".into())
                         .spawn(move || {
-                            let Ok(_deadline) = crate::deadline(&raw, Duration::from_secs(6))
-                            else {
+                            let Ok(_) = raw.set_read_timeout(Some(Duration::from_secs(6))) else {
                                 return;
                             };
                             let Ok(mut s) = secure(raw, &key, role) else {

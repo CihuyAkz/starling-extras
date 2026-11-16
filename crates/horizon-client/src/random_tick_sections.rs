@@ -2,12 +2,11 @@
 //! (`LevelChunkSection.isRandomlyTicking`), memoized per section.
 use crate::{
     blocks::BlockFacts,
-    chunk::{Chunk, MIN_Y, Section},
+    chunk::{Chunk, MIN_Y, SECTIONS, Section},
     fast_hash::FxHashMap,
     section_mask::SectionMask,
 };
 use horizon_world::{level::RandomTickMask, registry::BlockStateId};
-use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
 /// A value snapshot, in ascending section order, with no per-chunk allocation.
@@ -56,10 +55,58 @@ struct Cached {
     read: Vec<Weak<Section>>,
     sections: Sections,
     /// Each ticking section's [`RandomTickMask`], built at its first draw
-    /// and dropped when the section is read again. `Rc`, not `Arc`: the
-    /// tick thread hands one out per ticking section per tick, and an atomic
-    /// count on a mask out of cache stalled the whole random tick loop.
-    masks: Vec<Option<Rc<RandomTickMask>>>,
+    /// and dropped when the section is read again.
+    masks: Vec<Option<Arc<RandomTickMask>>>,
+}
+/// Where one version of a section holds states that take random ticks.
+struct SectionPositions {
+    section: Weak<Section>,
+    /// By `chunk::index`.
+    bits: Box<[u64; 64]>,
+}
+impl SectionPositions {
+    fn new(section: &Arc<Section>, ticks: &impl Fn(u32) -> bool) -> Self {
+        let mut bits = Box::new([0; 64]);
+        let ticking: Option<Vec<u32>> = section
+            .blocks
+            .palette_values()
+            .map(|values| values.iter().copied().filter(|&v| ticks(v)).collect());
+        if !ticking.as_ref().is_some_and(Vec::is_empty) {
+            let mut states = [0; 4096];
+            section.unpack(&mut states);
+            for (i, &state) in states.iter().enumerate() {
+                let hit = match &ticking {
+                    Some(ticking) => ticking.contains(&state),
+                    None => ticks(state),
+                };
+                if hit {
+                    bits[i / 64] |= 1 << (i % 64);
+                }
+            }
+        }
+        Self {
+            section: Arc::downgrade(section),
+            bits,
+        }
+    }
+    /// Bit `w` set when `bits[w]` holds any position.
+    fn summary(&self) -> u64 {
+        self.bits
+            .iter()
+            .enumerate()
+            .fold(0, |summary, (w, &bits)| summary | u64::from(bits != 0) << w)
+    }
+}
+/// A chunk's [`SectionPositions`], found as its sections are asked about.
+/// The summaries sit together: most picks need nothing else.
+struct ChunkPositions {
+    key: (i32, i32),
+    /// The version the sections were checked against.
+    chunk: Weak<Chunk>,
+    /// The sections found, by bit.
+    known: u32,
+    summaries: [u64; SECTIONS],
+    sections: [Option<SectionPositions>; SECTIONS],
 }
 /// Vanilla keeps a count of randomly ticking blocks and fluids per section,
 /// updated by every `setBlockState`, and ticks the sections where it is above
@@ -70,17 +117,96 @@ struct Cached {
 /// next edit, and prevents address reuse. An unchanged chunk costs one
 /// pointer comparison; a changed one, a comparison per section and a read of
 /// the sections that changed. Clear this cache whenever the gameplay facts
-/// change (including resource reload).
+/// change (including resource reload). The ticking positions
+/// ([`Self::may_tick`]) follow sections the same way.
 #[derive(Default)]
 pub struct RandomTickSections {
     chunks: FxHashMap<(i32, i32), Cached>,
+    positions: Vec<ChunkPositions>,
+    position_index: FxHashMap<(i32, i32), usize>,
+    /// The chunk of the last [`Self::may_tick`]: a chunk's picks come in a row.
+    last: Option<usize>,
 }
 impl RandomTickSections {
     pub fn clear(&mut self) {
         self.chunks.clear();
+        self.positions.clear();
+        self.position_index.clear();
+        self.last = None;
     }
     pub fn remove(&mut self, key: &(i32, i32)) {
         self.chunks.remove(key);
+        if let Some(i) = self.position_index.remove(key) {
+            self.positions.swap_remove(i);
+            if let Some(moved) = self.positions.get(i) {
+                self.position_index.insert(moved.key, i);
+            }
+            self.last = None;
+        }
+    }
+    /// Whether the block at `(x, y, z)` of `chunk` (at `key`) may take a
+    /// random tick: false only when its section, as it is now, holds no
+    /// state `ticks` accepts there. Each version of a section is scanned
+    /// once; the same `ticks` must be passed until the cache is cleared.
+    pub fn may_tick(
+        &mut self,
+        key: (i32, i32),
+        chunk: &Arc<Chunk>,
+        x: i32,
+        y: i32,
+        z: i32,
+        ticks: impl Fn(u32) -> bool,
+    ) -> bool {
+        // A taller column's sections past the vanilla height are not kept.
+        let Some(s) = usize::try_from((y - chunk.min_y()) >> 4)
+            .ok()
+            .filter(|&s| s < chunk.sections.len().min(SECTIONS))
+        else {
+            return true;
+        };
+        let i = match self.last {
+            Some(i) if self.positions[i].key == key => i,
+            _ => {
+                let positions = &mut self.positions;
+                let i = *self.position_index.entry(key).or_insert_with(|| {
+                    positions.push(ChunkPositions {
+                        key,
+                        chunk: Weak::new(),
+                        known: 0,
+                        summaries: [0; SECTIONS],
+                        sections: std::array::from_fn(|_| None),
+                    });
+                    positions.len() - 1
+                });
+                self.last = Some(i);
+                i
+            }
+        };
+        let positions = &mut self.positions[i];
+        // An edit replaces the chunk (`Arc::make_mut` with this weak one):
+        // keep the sections it still shares.
+        if positions.chunk.as_ptr() != Arc::as_ptr(chunk) {
+            for (s, section) in chunk.sections.iter().enumerate().take(SECTIONS) {
+                if positions.sections[s]
+                    .as_ref()
+                    .is_some_and(|p| p.section.as_ptr() != Arc::as_ptr(section))
+                {
+                    positions.known &= !(1 << s);
+                }
+            }
+            positions.chunk = Arc::downgrade(chunk);
+        }
+        if positions.known & 1 << s == 0 {
+            let found = SectionPositions::new(&chunk.sections[s], &ticks);
+            positions.summaries[s] = found.summary();
+            positions.sections[s] = Some(found);
+            positions.known |= 1 << s;
+        }
+        let i = crate::chunk::index(x, y, z);
+        positions.summaries[s] & 1 << (i / 64) != 0
+            && positions.sections[s]
+                .as_ref()
+                .is_some_and(|p| p.bits[i / 64] & 1 << (i % 64) != 0)
     }
     /// The sections of `chunk` holding a randomly ticking block or fluid.
     pub fn get(&mut self, key: (i32, i32), chunk: &Arc<Chunk>, facts: &BlockFacts) -> Sections {
@@ -94,87 +220,30 @@ impl RandomTickSections {
     ) -> Sections {
         Self::refresh(&mut self.chunks, key, chunk, &mut random).sections
     }
-    /// The lowest ticking section of `chunk` ([`Self::get`]) from block
-    /// `from_y` up: its minimum Y and its mask of the blocks a random tick can
-    /// do anything for (`candidate`: `Behaviours::random_tick_candidate`),
-    /// built at the section's first tick and kept until it changes. Only the
-    /// section asked for is built and shared.
-    pub fn next_masked(
+    /// The ticking sections of `chunk` ([`Self::get`]) into `out`, bottom up:
+    /// each one's minimum Y and its mask of the blocks a random tick can do
+    /// anything for (`candidate`: `Behaviours::random_tick_candidate`), built
+    /// at the section's first tick and kept until it changes.
+    pub fn masked(
         &mut self,
         key: (i32, i32),
         chunk: &Arc<Chunk>,
         facts: &BlockFacts,
         mut candidate: impl FnMut(u32) -> bool,
-        from_y: i32,
-    ) -> Option<(i32, Rc<RandomTickMask>)> {
+        out: &mut Vec<(i32, Arc<RandomTickMask>)>,
+    ) {
+        out.clear();
         let cached = Self::refresh(&mut self.chunks, key, chunk, &mut |id| {
             facts.get(BlockStateId(id)).random_ticks
         });
-        let y = cached.sections.from(from_y)?;
-        let index = ((y - cached.sections.base) >> 4) as usize;
-        let mask = cached.masks[index].get_or_insert_with(|| {
-            Rc::new(Self::candidate_mask(&chunk.sections[index], &mut candidate))
-        });
-        Some((y, mask.clone()))
-    }
-    /// Builds, on the tick's helper threads (`crate::parallel`), the masks [`Self::next_masked`]
-    /// will build at the first draw in each ticking section of the chunks `keys` names, from their
-    /// blocks now (`chunk_of`), so the random tick loop finds them built. A mask only tells the loop
-    /// which drawn blocks to read: the draws and the ticks are the same either way, and an edit
-    /// before the loop reaches a section drops its mask as usual.
-    pub fn prepare_masks(
-        &mut self,
-        keys: &[(i32, i32)],
-        chunk_of: impl Fn((i32, i32)) -> Option<Arc<Chunk>>,
-        facts: &BlockFacts,
-        candidate: &(impl Fn(u32) -> bool + Sync),
-    ) {
-        let mut todo: Vec<((i32, i32), usize, Arc<Chunk>)> = Vec::new();
-        for &key in keys {
-            let Some(chunk) = chunk_of(key) else {
-                continue;
-            };
-            let cached = Self::refresh(&mut self.chunks, key, &chunk, &mut |id| {
-                facts.get(BlockStateId(id)).random_ticks
+        for y in cached.sections {
+            let index = ((y - cached.sections.base) >> 4) as usize;
+            let mask = cached.masks[index].get_or_insert_with(|| {
+                let mut blocks = [0u32; 4096];
+                chunk.sections[index].blocks.unpack(&mut blocks);
+                Arc::new(RandomTickMask::of(&blocks, &mut candidate))
             });
-            for i in cached.sections.mask.iter() {
-                if cached.masks.get(i).is_some_and(Option::is_none) {
-                    todo.push((key, i, Arc::clone(&chunk)));
-                }
-            }
-        }
-        let masks = crate::parallel::par_map(&todo, 128, |part, out| {
-            out.extend(
-                (part.iter())
-                    .map(|(_, i, chunk)| Self::candidate_mask(&chunk.sections[*i], candidate)),
-            );
-        });
-        for ((key, i, _), mask) in todo.into_iter().zip(masks) {
-            if let Some(cached) = self.chunks.get_mut(&key) {
-                cached.masks[i] = Some(Rc::new(mask));
-            }
-        }
-    }
-    fn candidate_mask(section: &Section, mut candidate: impl FnMut(u32) -> bool) -> RandomTickMask {
-        let blocks = &section.blocks;
-        let mut ids = [0u16; 4096];
-        if let Some(palette) = blocks.unpack_ids(&mut ids) {
-            // ServerLevel.tickChunk's per-state eligibility is constant
-            // across a section: resolve it once per palette entry, not
-            // once per block when an edited section rebuilds its mask.
-            let mut candidates = [false; 256];
-            for (i, &state) in palette.iter().enumerate() {
-                candidates[i] = candidate(state);
-            }
-            let mut bits = [0u64; 64];
-            for (i, &id) in ids.iter().enumerate() {
-                bits[i >> 6] |= u64::from(candidates[id as usize]) << (i & 63);
-            }
-            RandomTickMask(bits)
-        } else {
-            let mut states = [0u32; 4096];
-            blocks.unpack(&mut states);
-            RandomTickMask::of(&states, candidate)
+            out.push((y, mask.clone()));
         }
     }
     fn refresh<'a>(
@@ -223,78 +292,6 @@ mod tests {
     use super::*;
     use crate::chunk::SECTIONS;
     use crate::chunk::Section;
-
-    #[test]
-    fn palette_masks_preserve_positions_and_rng() {
-        use horizon_core::position::BlockPos;
-        use horizon_world::level::Ticks;
-
-        // Alternating states defeat the old mask builder's consecutive-state
-        // shortcut. Include single, local and global palettes and unused IDs.
-        for distinct in [1, 2, 256, 300] {
-            let states = std::array::from_fn::<_, 4096, _>(|i| (i % distinct) as u32);
-            let mut section = Section {
-                blocks: Section::from_blocks(&states),
-                ..Default::default()
-            };
-            if distinct == 2 {
-                section.set(0, 999);
-                section.set(0, states[0]);
-            }
-            let candidate = |id| id % 3 == 0;
-            let reference = RandomTickMask::of(&states, candidate);
-            let mut calls = 0;
-            let optimized = RandomTickSections::candidate_mask(&section, |id| {
-                calls += 1;
-                candidate(id)
-            });
-            assert_eq!(reference, optimized);
-            if distinct == 2 {
-                assert_eq!(calls, 3); // two live states and one stale palette entry
-            }
-            let (mut before, mut after) = (Ticks::new(12345), Ticks::new(12345));
-            let mut expected = Vec::new();
-            let mut actual = Vec::new();
-            // Non-ticking sections consume no draws; each ticking section
-            // gets three, even if none hits a candidate.
-            for (y, ticking) in [(-64, false), (-48, true), (-32, false), (16, true)] {
-                if !ticking {
-                    continue;
-                }
-                for _ in 0..3 {
-                    let p = before.block_random_pos(-32, y, 48, 15);
-                    if reference.may_tick(p) {
-                        expected.push(p);
-                    }
-                    let p = after.block_random_pos(-32, y, 48, 15);
-                    if optimized.may_tick(p) {
-                        actual.push(p);
-                    }
-                }
-            }
-            assert_eq!(expected, actual);
-            assert_eq!(before.random_tick_value, after.random_tick_value);
-            // Independent wrapping i32 LCG oracle, including coordinate bits.
-            let mut value = 12345u32;
-            let mut oracle = Vec::new();
-            for y in [-48, 16] {
-                for _ in 0..3 {
-                    value = value.wrapping_mul(3).wrapping_add(1_013_904_223);
-                    let p = BlockPos::new(
-                        -32 + ((value >> 2) & 15) as i32,
-                        y + ((value >> 18) & 15) as i32,
-                        48 + ((value >> 10) & 15) as i32,
-                    );
-                    let i = ((p.y & 15) << 8 | (p.z & 15) << 4 | (p.x & 15)) as usize;
-                    if candidate(states[i]) {
-                        oracle.push(p);
-                    }
-                }
-            }
-            assert_eq!(actual, oracle);
-            assert_eq!(after.random_tick_value as u32, value);
-        }
-    }
 
     #[test]
     fn a_tall_chunk_ticks_its_sections_near_the_top() {
@@ -349,6 +346,32 @@ mod tests {
         assert_eq!(cache.get_with((0, 0), &chunk, |id| id == 0).len(), SECTIONS);
         cache.remove(&(0, 0));
         assert!(cache.chunks.is_empty());
+    }
+
+    #[test]
+    fn ticking_positions_follow_edits() {
+        let mut cache = RandomTickSections::default();
+        let mut chunk = Arc::new(Chunk::empty(1, -1));
+        let ticks = |id: u32| id == 7;
+        let at = |cache: &mut RandomTickSections, chunk: &Arc<Chunk>, x, y, z| {
+            cache.may_tick((1, -1), chunk, x, y, z, ticks)
+        };
+        assert!(!at(&mut cache, &chunk, 3, 70, 9));
+        Arc::make_mut(&mut chunk).set(3, 70, 9, 7);
+        assert!(at(&mut cache, &chunk, 3, 70, 9));
+        assert!(!at(&mut cache, &chunk, 4, 70, 9));
+        assert!(!at(&mut cache, &chunk, 3, 54, 9));
+        // A held copy keeps its version: the worker still has the block.
+        let worker = chunk.clone();
+        Arc::make_mut(&mut chunk).set(3, 70, 9, 2);
+        Arc::make_mut(&mut chunk).set(15, 79, 0, 7);
+        assert!(!at(&mut cache, &chunk, 3, 70, 9));
+        assert!(at(&mut cache, &chunk, 15, 79, 0));
+        assert!(at(&mut cache, &worker, 3, 70, 9));
+        // Outside the height there is no section to know about.
+        assert!(at(&mut cache, &chunk, 0, MIN_Y - 1, 0));
+        cache.remove(&(1, -1));
+        assert!(cache.positions.is_empty() && cache.position_index.is_empty());
     }
 
     #[test]
@@ -519,41 +542,25 @@ mod tick_parity {
             time: 0,
             speed: 3,
         };
-        // More than 128 ticking sections: prepare_masks must exercise its
-        // helper path when HORIZON_PARALLEL_TICK is enabled, not just defer work.
-        for x in 2..=65 {
-            original.chunks.insert((x, 0), chunk(x));
-        }
         Arc::make_mut(original.chunks.get_mut(&(1, 0)).unwrap()).lit = true; // precipitation-only chunk
         let mut cached = original.clone();
         // The masked path reads only the drawn blocks that can tick.
         let mut masked = original.clone();
-        // The masked path again, its masks built ahead of each tick (`prepare_masks`).
-        let mut prepared = original.clone();
-        let mut prep_cache = RandomTickSections::default();
-        let mut d = Ticks::new(12345);
         let mut cache = RandomTickSections::default();
         let mut mask_cache = RandomTickSections::default();
         let (mut a, mut b, mut c) = (Ticks::new(12345), Ticks::new(12345), Ticks::new(12345));
-        for x in -1..=65 {
+        for x in -1..=1 {
             a.add_empty_chunk(ChunkPos::new(x, 0)).unwrap();
             b.add_empty_chunk(ChunkPos::new(x, 0)).unwrap();
             c.add_empty_chunk(ChunkPos::new(x, 0)).unwrap();
-            d.add_empty_chunk(ChunkPos::new(x, 0)).unwrap();
         }
         for step in 0..128 {
-            for level in [&mut original, &mut cached, &mut masked, &mut prepared] {
+            for level in [&mut original, &mut cached, &mut masked] {
                 level.time = step;
                 level.speed = [0, 1, 3, 9][step as usize % 4];
                 level.reads.borrow_mut().clear();
                 level.events.clear();
                 match step {
-                    4 => {
-                        // The large fixture has exercised every tick speed and
-                        // helper-mask invalidation; keep the remaining edit,
-                        // unload and reload cases small as before.
-                        level.chunks.retain(|&(x, _), _| x <= 1);
-                    }
                     12 => {
                         level.chunks.remove(&(-1, 0));
                     }
@@ -582,17 +589,15 @@ mod tick_parity {
             if step == 12 {
                 cache.remove(&(-1, 0));
                 mask_cache.remove(&(-1, 0));
-                prep_cache.remove(&(-1, 0));
             }
             if step == 50 || step == 60 {
                 facts.states[grass.0 as usize].random_ticks = step == 60;
                 cache.clear();
                 mask_cache.clear();
-                prep_cache.clear();
             }
             // A write between ticks.
             if step == 20 {
-                for level in [&mut original, &mut cached, &mut masked, &mut prepared] {
+                for level in [&mut original, &mut cached, &mut masked] {
                     level.set_raw(BlockPos::new(0, MIN_Y + 16, 0), grass);
                 }
             }
@@ -628,72 +633,30 @@ mod tick_parity {
                 };
                 behaviours.tick_chunk_random(&mut cached, &mut b, ChunkPos::new(x, z), memoized);
             }
+            let mut sections = Vec::new();
             for (x, z) in lit(&masked) {
+                let mut read = None;
                 let next = |level: &mut Level, from| {
-                    // Read at every ask, so an edit of the chunk reads its
-                    // section again.
+                    // An edit of the chunk reads its masks again (the game
+                    // asks again after any write: the world's revision).
                     let now = level.chunks[&(x, z)].clone();
-                    mask_cache
-                        .next_masked(
+                    if read.as_ref().is_none_or(|r| !Arc::ptr_eq(r, &now)) {
+                        mask_cache.masked(
                             (x, z),
                             &now,
                             &facts,
                             |id| behaviours.random_tick_candidate(BlockStateId(id)),
-                            from,
-                        )
-                        .map(|(y, mask)| (y, Some(mask)))
+                            &mut sections,
+                        );
+                        read = Some(now);
+                    }
+                    sections
+                        .iter()
+                        .find(|(y, _)| *y >= from)
+                        .map(|(y, mask)| (*y, Some(mask.clone())))
                 };
                 behaviours.tick_chunk_random_masked(&mut masked, &mut c, ChunkPos::new(x, z), next);
             }
-            let keys = lit(&prepared);
-            let candidate = |id| behaviours.random_tick_candidate(BlockStateId(id));
-            prep_cache.prepare_masks(
-                &keys,
-                |key| prepared.chunks.get(&key).cloned(),
-                &facts,
-                &candidate,
-            );
-            for &(x, z) in &keys {
-                // Every ticking section's mask is there before the tick asks.
-                let now = prepared.chunks[&(x, z)].clone();
-                let mut from = MIN_Y;
-                while let Some((y, _)) = prep_cache.next_masked(
-                    (x, z),
-                    &now,
-                    &facts,
-                    |_| unreachable!("built ahead"),
-                    from,
-                ) {
-                    from = y + 16;
-                }
-            }
-            for (x, z) in keys {
-                let next = |level: &mut Level, from| {
-                    let now = level.chunks[&(x, z)].clone();
-                    prep_cache
-                        .next_masked((x, z), &now, &facts, candidate, from)
-                        .map(|(y, mask)| (y, Some(mask)))
-                };
-                behaviours.tick_chunk_random_masked(
-                    &mut prepared,
-                    &mut d,
-                    ChunkPos::new(x, z),
-                    next,
-                );
-            }
-            assert_eq!(
-                original.events, prepared.events,
-                "prepared events at tick {step}"
-            );
-            assert_eq!(
-                a.random_tick_value, d.random_tick_value,
-                "prepared position RNG at tick {step}"
-            );
-            assert_eq!(
-                original.random.clone().next_long(),
-                prepared.random.next_long(),
-                "prepared level RNG at tick {step}"
-            );
             assert_eq!(original.reads, cached.reads, "ordered reads at tick {step}");
             assert_eq!(
                 original.events, masked.events,
@@ -732,9 +695,6 @@ mod tick_parity {
                 assert_eq!(s.blocks, t.blocks);
             }
             for (s, t) in c.sections.iter().zip(&masked.chunks[key].sections) {
-                assert_eq!(s.blocks, t.blocks);
-            }
-            for (s, t) in c.sections.iter().zip(&prepared.chunks[key].sections) {
                 assert_eq!(s.blocks, t.blocks);
             }
         }

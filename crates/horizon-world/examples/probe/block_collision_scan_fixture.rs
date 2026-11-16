@@ -5,7 +5,7 @@ use horizon_core::{
 };
 use horizon_world::{
     block_collision_scan::{BlockCollisionScan, BlockCollisionWorld, CollisionBlock},
-    collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
+    collision_context::{CollisionContext, CollisionEntity},
     entity_obstruction::EntityIdentity,
     ground_support::find_supporting_block,
     registry::BlockStateId,
@@ -130,6 +130,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     large_collision_shape: v[1].as_bool().unwrap(),
                     moving_piston: v[2].as_bool().unwrap(),
                     empty_shape: false,
+                    full_block: false,
                 },
                 shape: shape(v[0].as_u64().unwrap()),
                 suffocating: v[3].as_bool().unwrap(),
@@ -153,7 +154,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             let context = CollisionContext::for_entity(
                 CollisionEntity {
                     identity: EntityIdentity(1),
-                    kind: EntityContextKind::Other,
                     y: position.y,
                     descending: false,
                     main_hand: None,

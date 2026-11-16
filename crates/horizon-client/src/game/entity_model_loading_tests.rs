@@ -226,13 +226,13 @@ fn armor_equipment_loads_without_an_entity_model_document() {
     assert!(assets.main.is_none());
     assert!(assets.layers.is_empty());
     assert_eq!(
-        assets.equipment["minecraft:leather"]["humanoid"],
+        assets.equipment_layers["minecraft:leather"]["humanoid"],
         vec![
             ("entity/equipment/humanoid/leather".into(), Some(0x123456)),
             ("entity/equipment/humanoid/leather_overlay".into(), None),
         ]
     );
-    assert!(!assets.equipment.contains_key("minecraft:invalid"));
+    assert!(!assets.equipment_layers.contains_key("minecraft:invalid"));
 }
 
 #[test]
@@ -249,8 +249,12 @@ fn content_mods_equipment_loads_under_its_namespace() {
         .unwrap(),
     )
     .unwrap();
-    // Not a content root: other namespaces stay unread, as before.
-    assert!(ArmorStandAssets::load(&root.0, None).equipment.is_empty());
+    // Every namespace is read (a server's pack adds its own), content root or not.
+    assert!(
+        ArmorStandAssets::load(&root.0, None)
+            .equipment_layers
+            .contains_key("gems:ruby")
+    );
     fs::write(
         root.0.join(horizon_items::content_namespaces::MARKER),
         br#"["gems"]"#,
@@ -258,7 +262,7 @@ fn content_mods_equipment_loads_under_its_namespace() {
     .unwrap();
     let assets = ArmorStandAssets::load(&root.0, None);
     assert_eq!(
-        assets.equipment["gems:ruby"]["humanoid_leggings"],
+        assets.equipment_layers["gems:ruby"]["humanoid_leggings"],
         vec![("gems:entity/equipment/humanoid_leggings/ruby".into(), None)]
     );
 }

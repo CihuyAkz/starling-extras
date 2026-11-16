@@ -8,15 +8,11 @@ use horizon_client::{
     blocks::BlockFacts,
     items::Items,
     mobs::{
-        Mob, MobTypes, Species, cube, drops, enderman, gear, raider, render::DYE_NAMES,
-        species::can_be_a_baby, sulfur_cube,
+        Mob, MobTypes, Species, cube, drops, enderman, gear, raider, render::DYE_NAMES, sulfur_cube,
     },
     random_sequences::RandomSequences,
 };
-use horizon_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, RandomSource},
-};
+use horizon_core::{geometry::Vec3, random::LegacyRandom};
 use horizon_world::loot::{LootDamage, LootData, LootEntity, LootStack, PackOverlay};
 use std::{collections::BTreeMap, fmt::Write as _, fs, path::Path, sync::Arc};
 
@@ -115,7 +111,7 @@ pub fn main() -> horizon_client::Result<()> {
             for slot in drops::SLOTS {
                 drops::clear_slot(&mut m, slot);
             }
-            if get("baby", "0") == "1" && can_be_a_baby(m.species()) {
+            if get("baby", "0") == "1" && drops::can_be_baby(m.species()) {
                 m.extra.age = -24000;
             }
             if get("fire", "0") == "1" {
@@ -168,8 +164,8 @@ pub fn main() -> horizon_client::Result<()> {
                             m.extra.head = item;
                             Some(gear::HEAD)
                         }
-                        "body" => {
-                            m.extra.body = item;
+                        "body" if drops::head_is_body(m.species()) => {
+                            m.extra.head = item;
                             None
                         }
                         "saddle" => {
@@ -206,7 +202,7 @@ pub fn main() -> horizon_client::Result<()> {
                 }
             }
             m.extra.drop_chances = Some(Box::new(chances));
-            m.random.set_seed(rand + k);
+            m.random = LegacyRandom::new(rand + k);
             // The killer, the last player to hurt the victim and the damage source.
             let killer_id = get("killer", "none");
             let weapon = c.get("weapon").map(|w| stack(w));
@@ -286,7 +282,6 @@ pub fn main() -> horizon_client::Result<()> {
                 loot: &loot,
                 damage: Some(source),
                 player: player.filter(|_| pkill),
-                player_killed: pkill,
                 luck: get("luck", "0").parse()?,
                 vehicle: c.get("vehicle").map(|v| LootEntity::new(v)),
                 mob_drops: true,
@@ -318,8 +313,6 @@ pub fn main() -> horizon_client::Result<()> {
                         Ok(())
                     }
                     drops::Drop::Orb(v) => writeln!(out, "orb {v}"),
-                    // The star's `setExtendedLifetime` is no part of the loot.
-                    drops::Drop::Aged(s, _) => writeln!(out, "{}", line(&s)),
                 };
             }
         }

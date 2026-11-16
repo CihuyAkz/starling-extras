@@ -242,7 +242,6 @@ fn stab_attack(
         kind: DamageKind::Spear,
         attacker: Some(Who::Mob(m.id)),
         from: Some(from),
-        attacker_species: Some(m.species()),
     };
     let mut affected = deals_knockback;
     if deals_damage {
@@ -262,7 +261,10 @@ fn stab_attack(
         // `EnchantmentHelper.doPostAttackEffects`: Fire Aspect.
         let burn = gear::fire_aspect(m);
         if burn > 0 {
-            events.push(MobEvent::Ignite(target, burn));
+            events.push(MobEvent::Ignite {
+                target,
+                seconds: burn,
+            });
         }
     }
     if deals_knockback {
@@ -297,7 +299,6 @@ fn cause_extra_knockback(
         x: f64::from((m.yaw * to_rad).msin()),
         z: f64::from(-(m.yaw * to_rad).mcos()),
         source,
-        apply_blocking: None,
     });
     m.velocity = Vec3::new(m.velocity.x * 0.6, m.velocity.y, m.velocity.z * 0.6);
 }

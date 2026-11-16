@@ -227,9 +227,6 @@ pub struct UnarySampler {
     pub operation: UnaryOp,
 }
 impl DensitySampler for UnarySampler {
-    fn pointwise_inputs(&self) -> Option<Vec<&Arc<dyn DensitySampler>>> {
-        Some(vec![&self.input])
-    }
     fn sample_value(
         &self,
         context: &mut SamplerContext,
@@ -247,18 +244,6 @@ impl DensitySampler for UnarySampler {
     ) -> Result<(), SampleError> {
         check_buffer(buffer, volume)?;
         self.input.sample_volume(context, buffer, volume)?;
-        self.operation.apply_bulk(buffer);
-        Ok(())
-    }
-    fn sample_needed(
-        &self,
-        context: &mut SamplerContext,
-        buffer: &mut [f32],
-        volume: DensityVolume,
-        needed: &[u64],
-    ) -> Result<(), SampleError> {
-        check_buffer(buffer, volume)?;
-        self.input.sample_needed(context, buffer, volume, needed)?;
         self.operation.apply_bulk(buffer);
         Ok(())
     }
@@ -323,9 +308,6 @@ pub struct BinarySampler {
     pub operation: BinaryOp,
 }
 impl DensitySampler for BinarySampler {
-    fn pointwise_inputs(&self) -> Option<Vec<&Arc<dyn DensitySampler>>> {
-        Some(vec![&self.left, &self.right])
-    }
     fn sample_value(
         &self,
         context: &mut SamplerContext,
@@ -354,21 +336,6 @@ impl DensitySampler for BinarySampler {
         self.left.sample_volume(context, buffer, volume)?;
         context.with_buffer(volume.size(), |context, right| {
             self.right.sample_volume(context, right, volume)?;
-            self.operation.apply_bulk(buffer, right);
-            Ok(())
-        })
-    }
-    fn sample_needed(
-        &self,
-        context: &mut SamplerContext,
-        buffer: &mut [f32],
-        volume: DensityVolume,
-        needed: &[u64],
-    ) -> Result<(), SampleError> {
-        check_exact_buffer(buffer, volume)?;
-        self.left.sample_needed(context, buffer, volume, needed)?;
-        context.with_buffer(volume.size(), |context, right| {
-            self.right.sample_needed(context, right, volume, needed)?;
             self.operation.apply_bulk(buffer, right);
             Ok(())
         })

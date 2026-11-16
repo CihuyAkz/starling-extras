@@ -77,12 +77,12 @@ impl ParsingContext<'_> {
         {
             let token = self.bump(frontend)?;
             match token.value {
-                // An empty declaration, which GLSL 4.60's grammar allows: GL drivers take one in
-                // every version, and shader packs leave them after a function a macro writes
-                // (`DECLARE_NOISE(fbm, noise);`, DrDestens).
-                TokenValue::Semicolon => Ok(()),
+                TokenValue::Semicolon if frontend.meta.version == 460 => Ok(()),
                 _ => {
-                    let expected = vec![TokenValue::Semicolon.into(), ExpectedToken::Eof];
+                    let expected = match frontend.meta.version {
+                        460 => vec![TokenValue::Semicolon.into(), ExpectedToken::Eof],
+                        _ => vec![ExpectedToken::Eof],
+                    };
                     Err(Error {
                         kind: ErrorKind::InvalidToken(token.value, expected),
                         meta: token.meta,
@@ -167,7 +167,7 @@ impl ParsingContext<'_> {
     pub fn parse_init_declarator_list(
         &mut self,
         frontend: &mut Frontend,
-        ty: Handle<Type>,
+        mut ty: Handle<Type>,
         ctx: &mut DeclarationContext,
     ) -> Result<()> {
         // init_declarator_list:
@@ -216,9 +216,6 @@ impl ParsingContext<'_> {
             // parse an array specifier if it exists
             // NOTE: unlike other parse methods this one doesn't expect an array specifier and
             // returns Ok(None) rather than an error if there is not one
-            // Each declarator extends the common type independently; an earlier
-            // variable's array specifiers do not belong to the next variable.
-            let mut ty = ty;
             self.parse_array_specifier(frontend, ctx.ctx, &mut meta, &mut ty)?;
 
             let is_global_const =
@@ -255,11 +252,7 @@ impl ParsingContext<'_> {
                     init.and_then(|expr| ctx.ctx.lift_up_const_expression(expr).ok());
                 late_initializer = None;
             } else if let Some(init) = init {
-                // A loop runs a declaration again on each pass; a `const` keeps its value.
-                let is_const = ctx.qualifiers.storage.0 == StorageQualifier::Const;
-                if (ctx.is_inside_loop && !is_const)
-                    || !ctx.ctx.local_expression_kind_tracker.is_const(init)
-                {
+                if ctx.is_inside_loop || !ctx.ctx.local_expression_kind_tracker.is_const(init) {
                     decl_initializer = None;
                     late_initializer = Some(init);
                 } else {

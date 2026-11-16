@@ -12,9 +12,7 @@
 //! Aggressive` runs a multi-source breadth-first search from leaves touching
 //! openings, solidifying leaves with a single open face to thin the canopy shell
 //! by one layer. `Hollow` directly drops faces shared between two leaves within
-//! the section, preserving boundaries and cavity faces. `Hidden` drops only
-//! those whose faced leaf has another leaf or an opaque cube behind it
-//! ([`backed`]), so the layer seen through the canopy's outer holes stays.
+//! the section, preserving boundaries and cavity faces.
 
 use super::{B, Info, P, Padded, pi};
 use crate::{blocks::RenderShape, chunk::Chunk, graphics::LeafCullingMode};
@@ -231,21 +229,6 @@ pub(super) fn in_section(x: i32, y: i32, z: i32) -> bool {
     (0..16).contains(&x) && (0..16).contains(&y) && (0..16).contains(&z)
 }
 
-/// `Hidden`: whether the padded cell `[x, y, z]`, the one behind a faced leaf,
-/// is a leaf or a full opaque cube. A cell without real data never is.
-#[inline]
-pub(super) fn backed(
-    pad: &Padded,
-    info: &[Info],
-    region: &[[Option<&Chunk>; 3]; 3],
-    base_y: i32,
-    [x, y, z]: [i32; 3],
-) -> bool {
-    info.get(pad.blocks[pi(x, y, z)] as usize)
-        .is_some_and(|state| state.leaves || state.opaque_cube)
-        && known(region, base_y, x, y, z)
-}
-
 /// Whether the padded cell `(x, y, z)` has real block data. A missing chunk
 /// does not count: `Padded::fill` copies the centre's edge column into it, which
 /// would make a canopy look enclosed. A Y outside the column counts as unknown
@@ -335,7 +318,6 @@ mod tests {
             block_entity: false,
             tints: [super::super::Tint::None; 2],
             tint_count: 0,
-            colormap: None,
             offset: None,
             legacy_solid: false,
             overlay: leaves,
@@ -344,7 +326,6 @@ mod tests {
             opaque_cube: opaque,
             blocks_flow: false,
             ice: false,
-            opaque_ice: false,
             sturdy: 0,
             face: [0; 6],
             cover: [0.0; 6],
