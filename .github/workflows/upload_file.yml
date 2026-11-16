@@ -22,7 +22,7 @@ jobs:
           mkdir -p imports
 
           gh release download latest \
-            --repo OWNER/SOURCE-REPO \
+            --repo CihuyAkz/random \
             --dir imports
 
       - name: Commit Files
