@@ -1397,9 +1397,6 @@ pub fn set_slider(opt: Opt, s: &mut Settings, v: f32) {
         apply_preset(s);
     }
 }
-/// A slider pressed or dragged to `v`: apply it live, and tell the game when
-/// a category volume changed (`Options.createSoundSliderOptionInstance`'s
-/// callback, which `OptionInstance.set` runs only for a new value).
 fn drag_slider(opt: Opt, s: &mut Settings, v: f32, events: &mut Vec<Event>) {
     let volume = |s: &Settings| match opt {
         Opt::Volume(0) => Some(s.master_volume),
@@ -1408,7 +1405,6 @@ fn drag_slider(opt: Opt, s: &mut Settings, v: f32, events: &mut Vec<Event>) {
     };
     let before = volume(s);
     set_slider(opt, s, v);
-    events.push(Event::SliderDrag);
     if let (Opt::Volume(source), Some(after)) = (opt, volume(s))
         && before != Some(after)
     {
@@ -2000,10 +1996,7 @@ pub enum Event {
     Close,
     /// Settings changed: apply and save them.
     Changed,
-    /// A slider is being dragged: apply settings live but defer saving.
     SliderDrag,
-    /// A category volume slider (`SoundSource` index) moved to a new value,
-    /// after its `SliderDrag` (the sound slider's `onValueUpdate`).
     Volume(usize, f32),
     /// The language changed (reload translations).
     Language(String),
@@ -3239,7 +3232,7 @@ impl OptionsUi {
         let before_vol = volume(s);
         opt.step_slider(s, forward, width);
         self.slider_value = None;
-        let mut events = vec![Event::Changed, Event::SliderDrag];
+        let mut events = vec![Event::Changed];
         if let (Opt::Volume(source), Some(after)) = (opt, volume(s))
             && before_vol != Some(after)
         {
@@ -3303,7 +3296,10 @@ impl OptionsUi {
             match action {
                 Action::ButtonClick => events.push(Event::ButtonClick),
                 Action::Changed => events.push(Event::Changed),
-                Action::SliderDrag => events.push(Event::SliderDrag),
+                Action::SliderDrag if !self.graphics.slider_held() => {
+                    events.push(Event::SliderDrag)
+                }
+                Action::SliderDrag => {}
                 Action::BindKey(name) => self.selected_key = Some(name),
                 Action::Calibrate => {
                     self.calibration = Some(crate::hdr_calibration::Calibration::new(s));
@@ -6231,7 +6227,6 @@ impl OptionsUi {
             {
                 let value = ui::slider_value(wd.x, wd.w, x);
                 self.native_dragging = Some((mod_index, slider_index, value));
-                events.push(Event::NativeSlider(mod_index, slider_index, value, false));
             }
             if let Some(opt) = self.dragging
                 && let Some(wd) = widgets
@@ -6659,7 +6654,6 @@ impl OptionsUi {
                     self.can_change_value = true;
                     let value = ui::slider_value(wd.x, wd.w, x);
                     self.native_dragging = Some((mod_index, slider_index, value));
-                    events.push(Event::NativeSlider(mod_index, slider_index, value, false));
                 }
                 WKind::LanguageRow { code, .. } => {
                     self.can_change_value = false;
@@ -8732,7 +8726,7 @@ mod tests {
             [480, 320],
             false,
             false,
-        ).contains(&Event::NativeSlider(0, 0, 0.35, false)));
+        ).is_empty());
         let moved = ui.click(
             &mut s,
             &atlas,
@@ -8743,7 +8737,7 @@ mod tests {
             true,
             false,
         );
-        assert!(moved.iter().any(|event| matches!(event, Event::NativeSlider(0, 0, value, false) if (*value - 0.8).abs() < 0.001)));
+        assert!(moved.is_empty());
         let released = ui.release();
         assert!(released.iter().any(|event| matches!(event, Event::NativeSlider(0, 0, value, true) if (*value - 0.8).abs() < 0.001)));
 
@@ -9649,6 +9643,42 @@ mod tests {
     }
 
     #[test]
+    fn chunk_distance_sliders_defer_world_updates_until_release() {
+        let atlas = atlas();
+        let size = (1280.0, 1200.0);
+
+        for opt in [
+            Opt::RenderDistance,
+            Opt::SimulationDistance,
+            Opt::BiomeBlend,
+        ] {
+            let mut s = Settings::default();
+            let mut ui = OptionsUi::default();
+            ui.show(Page::Video);
+            let (widgets, _, _, _) = ui.layout(&s, size.0, size.1);
+            let slider = widgets
+                .iter()
+                .find(|widget| {
+                    matches!(widget.kind, WKind::Slider { opt: found, .. } if found == opt)
+                })
+                .unwrap_or_else(|| panic!("{opt:?} slider is on the Video page"));
+            let y = slider.y + slider.h * 0.5;
+            let start = slider.x + slider.w * 0.9;
+            let end = slider.x + slider.w * 0.1;
+            let before = opt.slider_position(&s);
+
+            assert!(ui
+                .click(&mut s, &atlas, start, y, size, [1280, 1200], false, false)
+                .is_empty());
+            assert!(ui
+                .click(&mut s, &atlas, end, y, size, [1280, 1200], true, false)
+                .is_empty());
+            assert_ne!(opt.slider_position(&s), before);
+            assert_eq!(ui.release(), vec![Event::ButtonClick, Event::Changed]);
+        }
+    }
+
+    #[test]
     fn classic_sliders_sound_once_on_release_including_unchanged_values() {
         let atlas = atlas();
         let size = (480.0, 320.0);
@@ -9671,19 +9701,19 @@ mod tests {
         let (x, y) = (slider.x + slider.w - 1.0, slider.y + 1.0);
         assert_eq!(
             ui.click(&mut s, &atlas, x, y, size, [854, 480], false, false),
-            vec![Event::SliderDrag]
+            Vec::<Event>::new()
         );
         assert_eq!(s.master_volume, 1.0);
         assert_eq!(ui.release(), vec![Event::ButtonClick, Event::Changed]);
         assert!(ui.release().is_empty());
         assert_eq!(
             ui.click(&mut s, &atlas, x, y, size, [854, 480], false, false),
-            vec![Event::SliderDrag]
+            Vec::<Event>::new()
         );
         for cx in [-100.0, 250.0, 1000.0] {
             assert_eq!(
                 ui.click(&mut s, &atlas, cx, -100.0, size, [854, 480], true, false),
-                vec![Event::SliderDrag, Event::Volume(0, s.master_volume)]
+                vec![Event::Volume(0, s.master_volume)]
             );
         }
         assert_eq!(ui.release(), vec![Event::ButtonClick, Event::Changed]);
@@ -9713,12 +9743,12 @@ mod tests {
         assert!((volume - 0.5).abs() < 1e-3, "{volume}");
         assert_eq!(
             events,
-            vec![Event::SliderDrag, Event::Volume(hostile, volume)]
+            vec![Event::Volume(hostile, volume)]
         );
         // OptionInstance.set: an unchanged value runs no callback.
         assert_eq!(
             ui.click(&mut s, &atlas, x, -50.0, size, [854, 480], true, false),
-            vec![Event::SliderDrag]
+            Vec::<Event>::new()
         );
     }
 

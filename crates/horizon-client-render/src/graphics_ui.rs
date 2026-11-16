@@ -2010,6 +2010,9 @@ impl GraphicsUi {
             }
         }
     }
+    pub fn slider_held(&self) -> bool {
+        self.dragging.is_some()
+    }
     /// Lets go of a slider (true: it plays its click) or the scrollbar.
     pub fn release(&mut self) -> bool {
         self.scroll.release();
@@ -2582,6 +2585,7 @@ mod tests {
             press(&mut ui, &mut s, (tx + tw, r[1] + 4.0)),
             [Action::SliderDrag]
         );
+        assert!(ui.slider_held());
         assert_eq!(H::ChunkUpdates.slider(&s), Some(1.0));
         assert_eq!(
             ui.click(&mut s, (-100.0, -100.0), SIZE, FB, true, false),
@@ -2589,6 +2593,7 @@ mod tests {
         );
         assert_eq!(H::ChunkUpdates.slider(&s), Some(0.0));
         assert!(ui.release());
+        assert!(!ui.slider_held());
         assert!(!ui.release());
     }
 

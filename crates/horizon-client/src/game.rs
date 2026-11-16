@@ -18657,11 +18657,13 @@ impl Game<'_> {
                     self.pause = self.pauses_game();
                     if let Some(server) = &self.integrated {
                         server.set_paused(self.pause);
-                        server.set_distances(
-                            self.render_distance_in_use(),
-                            self.settings.simulation_distance,
-                            self.settings.entity_distance,
-                        );
+                        if !self.dragging || self.screen != Screen::Options {
+                            server.set_distances(
+                                self.render_distance_in_use(),
+                                self.settings.simulation_distance,
+                                self.settings.entity_distance,
+                            );
+                        }
                     }
                     self.clock.end_frame(self.pause);
                     let mut consumed = false;

@@ -361,6 +361,7 @@ pub enum Mode {
     Onboarding(Onboarding),
     /// `BanNoticeScreens`: a ConfirmLinkScreen `Gui.addInitialScreens` queued.
     BanNotice(crate::ban_notice::Notice),
+    DonationConfirm,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
@@ -425,6 +426,7 @@ pub struct Title {
     ban_queue: std::collections::VecDeque<crate::ban_notice::Notice>,
     /// A ban notice's three buttons as last drawn (`ConfirmLinkScreen`'s row).
     ban_buttons: Cell<[(f32, f32); 3]>,
+    donation_buttons: Cell<[(f32, f32); 2]>,
     backup: Option<mpsc::Receiver<Result<u64, String>>>,
     backup_shown: Cell<bool>,
     /// The backup a `BackupBeforeUpgrade` asked for opens its world when done; whether it
@@ -728,6 +730,7 @@ impl Mode {
             Self::MultiplayerWarning { .. } => "multiplayer_warning",
             Self::Onboarding(_) => "onboarding",
             Self::BanNotice(_) => "ban_notice",
+            Self::DonationConfirm => "donation_confirm",
             Self::Account(_) => "account",
         }
     }
@@ -777,6 +780,7 @@ impl Title {
             account_identity: None,
             ban_queue: Default::default(),
             ban_buttons: Cell::new([(0.0, 0.0); 3]),
+            donation_buttons: Cell::new([(0.0, 0.0); 2]),
             backup: None,
             backup_shown: Cell::new(false),
             backup_then_open: None,
@@ -1770,6 +1774,14 @@ impl Title {
                     button.icon = Some((icon, 15.0));
                     buttons.push(button);
                 }
+                buttons.push(b(
+                    4.0,
+                    h - 34.0,
+                    100.0,
+                    &lang::get_or("horizon.title.donate", "Donate"),
+                    true,
+                    9,
+                ));
                 // Starling's account, where the game signs in itself: in the top left corner,
                 // clear of the logo, so vanilla's buttons stay as they are.
                 if crate::accounts::in_game() {
@@ -2152,6 +2164,19 @@ impl Title {
                     })
                     .collect()
             }
+            Mode::DonationConfirm => {
+                let positions = self.donation_buttons.get();
+                [
+                    (130, lang::get_or("chat.link.open", "Open in Browser")),
+                    (131, lang::get_or("gui.cancel", "Cancel")),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (id, label))| {
+                    b(positions[i].0, positions[i].1, 150.0, &label, true, id)
+                })
+                .collect()
+            }
             Mode::Backup { .. } => Vec::new(),
             Mode::Account(screen) => screen
                 .buttons(w, h)
@@ -2276,6 +2301,16 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                     join(&[&notice.title().plain(), &notice.message(now).plain()]),
                 )
             }
+            Mode::DonationConfirm => ScreenInfo::new(
+                "donation_confirm",
+                join(&[
+                    &get("horizon.donate.confirm.title", "Open donation page?"),
+                    &get(
+                        "horizon.donate.confirm.message",
+                        "You are about to open an external website in your browser. Continue?",
+                    ),
+                ]),
+            ),
             Mode::Delete { world } => ScreenInfo::new(
                 "delete_world",
                 join(&[
@@ -3100,6 +3135,30 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 self.ban_buttons
                     .set([layout.buttons[0], layout.buttons[1], layout.buttons[2]]);
             }
+            Mode::DonationConfirm => {
+                crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
+                let title = Text::literal(lang::get_or(
+                    "horizon.donate.confirm.title",
+                    "Open donation page?",
+                ));
+                let message = Text::literal(lang::get_or(
+                    "horizon.donate.confirm.message",
+                    "You are about to open an external website in your browser. Continue?",
+                ));
+                let layout = crate::confirm_screen::Choice::new(
+                    &atlas.font,
+                    (w, h),
+                    &title,
+                    &message,
+                    2,
+                    150.0,
+                );
+                for (line, x, y) in &layout.lines {
+                    batch.text_styled(atlas, line, *x, *y, u32::MAX, true);
+                }
+                self.donation_buttons
+                    .set([layout.buttons[0], layout.buttons[1]]);
+            }
             Mode::Account(screen) => {
                 screen.draw(atlas, batch, &mut self.caret.borrow_mut(), self.started)
             }
@@ -3449,6 +3508,18 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             }
             (Mode::Main, Some(8)) => {
                 self.mode = Mode::Account(account::Screen::default());
+                Action::None
+            }
+            (Mode::Main, Some(9)) => {
+                self.mode = Mode::DonationConfirm;
+                Action::None
+            }
+            (Mode::DonationConfirm, Some(130)) => {
+                self.mode = Mode::Main;
+                Action::OpenUri(DONATION_URL.to_owned())
+            }
+            (Mode::DonationConfirm, Some(131)) => {
+                self.mode = Mode::Main;
                 Action::None
             }
             (Mode::Account(screen), Some(id)) => {
@@ -4686,6 +4757,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             Mode::Onboarding(_) => self.onboarding_close(),
             // ConfirmScreen.keyPressed: Escape answers no, which runs `next`.
             Mode::BanNotice(_) => self.next_ban_notice(),
+            Mode::DonationConfirm => self.mode = Mode::Main,
             _ => self.mode = Mode::Main,
         }
     }
@@ -4717,6 +4789,7 @@ fn wrapped(atlas: &HudAtlas, text: &str, width: f32) -> Vec<String> {
         .map(|t| t.plain())
         .collect()
 }
+const DONATION_URL: &str = "https://sociabuzz.com/cihuyakz/tribe";
 const SEARCH: crate::clipboard::FieldId = ("world.search", 0);
 const EDIT_NAME: crate::clipboard::FieldId = ("world.edit-name", 0);
 const WORLD_NAME: crate::clipboard::FieldId = ("world.name", 0);
@@ -4891,6 +4964,53 @@ mod classic_tests {
                 (Action::None, false)
             );
         }
+    }
+
+    #[test]
+    fn donate_requires_confirmation_before_opening_the_browser() {
+        let mut title = Title::new(
+            PathBuf::new(),
+            Path::new("/nonexistent/horizon-test-resources"),
+        );
+        let donate = title
+            .buttons(427.0, 240.0)
+            .into_iter()
+            .find(|button| button.id == 9)
+            .unwrap();
+        assert_eq!((donate.x, donate.y, donate.w), (4.0, 206.0, 100.0));
+        assert_eq!(
+            title.click(donate.x + 5.0, donate.y + 5.0, (427.0, 240.0)),
+            (Action::None, true)
+        );
+        assert!(matches!(title.mode, Mode::DonationConfirm));
+
+        title.donation_buttons.set([(60.0, 160.0), (214.0, 160.0)]);
+        let cancel = title
+            .buttons(427.0, 240.0)
+            .into_iter()
+            .find(|button| button.id == 131)
+            .unwrap();
+        assert_eq!(
+            title.click(cancel.x + 5.0, cancel.y + 5.0, (427.0, 240.0)),
+            (Action::None, true)
+        );
+        assert!(matches!(title.mode, Mode::Main));
+
+        assert_eq!(
+            title.click(donate.x + 5.0, donate.y + 5.0, (427.0, 240.0)),
+            (Action::None, true)
+        );
+        title.donation_buttons.set([(60.0, 160.0), (214.0, 160.0)]);
+        let open = title
+            .buttons(427.0, 240.0)
+            .into_iter()
+            .find(|button| button.id == 130)
+            .unwrap();
+        assert_eq!(
+            title.click(open.x + 5.0, open.y + 5.0, (427.0, 240.0)),
+            (Action::OpenUri(DONATION_URL.to_owned()), true)
+        );
+        assert!(matches!(title.mode, Mode::Main));
     }
 
     #[test]
