@@ -322,7 +322,22 @@ impl Game<'_> {
 
         self.android_custom_events();
         self.android_virtual_mouse_clicks(events);
-        self.android_inventory_mouse_long_press(events);
+        // GestureTouch records whether this finger began on a real inventory slot.
+        let inventory_right_click = self.focused;
+        if self.mobile.ui.right_click_hold_due(now, inventory_right_click)
+            && let Some(id) = self.window.as_ref().map(|w| w.id())
+        {
+            self.handle_window_event(
+                events,
+                id,
+                WindowEvent::MouseInput {
+                    device_id: winit::event::DeviceId::dummy(),
+                    button: MouseButton::Right,
+                    state: ElementState::Pressed,
+                },
+                InputOrigin::User,
+            );
+        }
         let ticking = self.title.is_none() && self.screen == Screen::Playing && !self.pause;
         for token in std::mem::take(&mut self.mobile.late_custom_releases) {
             if !ticking || self.mobile.custom_pressed_at.get(&token) != Some(&self.ticks) {
@@ -365,7 +380,7 @@ impl Game<'_> {
         }
         ui::draw_hud_editor(tc, b, &self.gui.atlas, &tc.settings.preset_id, None);
         self.mobile.ui.draw_keyboard(b, &self.gui.atlas);
-        if self.mobile.ui.virtual_mouse || self.bedrock_inventory_mouse_mode() {
+        if self.mobile.ui.virtual_mouse {
             ui::draw_pointer(
                 b,
                 &self.gui.atlas,
@@ -1199,8 +1214,8 @@ impl Game<'_> {
             return Ok(true);
         }
         if t.phase == TouchPhase::Cancelled {
-            self.mobile.ui.cancel();
             self.android_release_touch_keys(true);
+            self.mobile.ui.cancel();
             return Ok(true);
         }
         if t.phase == TouchPhase::Ended && self.mobile.ui.owns_key(t.id) {
@@ -1706,6 +1721,11 @@ impl Game<'_> {
     }
     pub(super) fn android_release_touch_keys(&mut self, cancelled: bool) {
         self.mobile.ui.clear_modifiers();
+        if cancelled && self.mobile.ui.cancel_gesture_right_click()
+            && let Err(error) = self.android_custom_mouse(MouseButton::Right, false)
+        {
+            log::warn!("Release held inventory mouse button: {error}");
+        }
         if cancelled && matches!(self.screen, Screen::Inventory | Screen::Creative) {
             self.inv_clicks = Default::default();
             self.inv_drag = None;
@@ -1744,45 +1764,6 @@ impl Game<'_> {
             }
         }
     }
-    /// Bedrock Inventory OFF restores Horizon's mouse-style pointer for the player's
-    /// inventory. A short tap is LMB; holding in place for 500 ms is RMB.
-    fn bedrock_inventory_mouse_mode(&self) -> bool {
-        self.title.is_none()
-            && !self.settings.bedrock_inventory
-            && self.has_touch()
-            && matches!(self.screen, Screen::Inventory | Screen::Creative)
-    }
-
-    /// Bedrock Inventory OFF uses a visible absolute pointer; a stationary 500 ms touch
-    /// emits one right-click at the last touched position, matching Horizon's mouse gesture.
-    fn android_inventory_mouse_long_press(
-        &mut self,
-        events: &dyn super::event_loop::EventLoopCtl,
-    ) {
-        if !self.focused
-            || !self.pad_in_menu()
-            || !self.bedrock_inventory_mouse_mode()
-            || !self.mobile.ui.gesture_right_click_due()
-        {
-            return;
-        }
-        let Some(id) = self.window.as_ref().map(|window| window.id()) else {
-            return;
-        };
-        for state in [ElementState::Pressed, ElementState::Released] {
-            self.handle_window_event(
-                events,
-                id,
-                WindowEvent::MouseInput {
-                    device_id: DeviceId::dummy(),
-                    button: MouseButton::Right,
-                    state,
-                },
-                InputOrigin::User,
-            );
-        }
-    }
-
     fn android_menu_touch_release(&mut self, phase: TouchPhase) {
         if matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled) {
             self.ui.options.release_touch_focus();
@@ -1806,10 +1787,6 @@ impl Game<'_> {
             return;
         };
         let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
-        // Keep the absolute mouse position synchronized with the most recent touch. In
-        // Bedrock Inventory OFF mode this is the Java-style mouse cursor; leaving a stale
-        // cursor (often at 0,0) makes the player preview/camera jump toward the top-left.
-        self.cursor = (p[0], p[1]);
         if t.phase == TouchPhase::Started && self.screen == Screen::Options {
             // Starling tracks list and slider presses through its window events.
         }
@@ -1845,20 +1822,24 @@ impl Game<'_> {
             self.android_menu_touch_release(t.phase);
             return;
         }
-        let gesture =
-            self.mobile
-                .ui
-                .gesture(t.id, [t.location.x as f32, t.location.y as f32], t.phase);
+        let right_click_on_inventory_slot = t.phase == TouchPhase::Started
+            && self.non_bedrock_inventory_slot_at((p[0], p[1]));
+        let gesture = self.mobile.ui.gesture_with_right_click(
+            t.id,
+            [t.location.x as f32, t.location.y as f32],
+            t.phase,
+            right_click_on_inventory_slot,
+        );
         // Gesture deltas are physical pixels / 30; lists scroll 18 GUI pixels
         // per wheel step. Convert once, independent of display GUI scale.
         let gesture = match gesture {
             Gesture::Scroll(y) => Gesture::Scroll(y * 30. / (b.scale * 18.)),
             other => other,
         };
+        let right_click = matches!(&gesture, Gesture::RightClick | Gesture::RightPress | Gesture::RightRelease);
         match gesture {
             Gesture::Tap | Gesture::RightClick => {
-                let right_click = matches!(gesture, Gesture::RightClick)
-                    && self.bedrock_inventory_mouse_mode();
+                let field = mobile_platform::field_at(p);
                 let button = if right_click {
                     MouseButton::Right
                 } else {
@@ -1877,12 +1858,27 @@ impl Game<'_> {
                     );
                 }
                 if !right_click {
-                    let field = mobile_platform::field_at(p);
                     self.keyboard_after_tap(t, [t.location.x as f32, t.location.y as f32]);
                     if field || self.sign_edit.is_some() {
                         self.android_show_keyboard();
                     }
                 }
+            }
+            Gesture::RightPress | Gesture::RightRelease => {
+                self.handle_window_event(
+                    events,
+                    id,
+                    WindowEvent::MouseInput {
+                        device_id: t.device_id,
+                        button: MouseButton::Right,
+                        state: if matches!(gesture, Gesture::RightPress) {
+                            ElementState::Pressed
+                        } else {
+                            ElementState::Released
+                        },
+                    },
+                    InputOrigin::User,
+                );
             }
             Gesture::Scroll(y) if self.screen == Screen::Options => {
                 self.ui
@@ -1915,7 +1911,9 @@ impl Game<'_> {
         let Some(b) = self.gui_scale() else {
             return;
         };
-        let position = self.mobile.ui.relative_touch(
+        let inventory_slot = t.phase == TouchPhase::Started
+            && self.non_bedrock_inventory_slot_at((self.cursor.0, self.cursor.1));
+        let position = self.mobile.ui.relative_touch_with_inventory_hold(
             t.id,
             [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale],
             t.phase,
@@ -1923,6 +1921,7 @@ impl Game<'_> {
             [b.width, b.height],
             self.mobile.controls.settings.virtual_mouse_sensitivity,
             !self.mobile.ui.mouse_held(),
+            inventory_slot,
         );
         self.cursor = (position[0], position[1]);
         self.handle_window_event(
@@ -1937,6 +1936,13 @@ impl Game<'_> {
             },
             InputOrigin::User,
         );
+        if matches!(t.phase, TouchPhase::Ended | TouchPhase::Cancelled)
+            && let Some((right, last)) = self.mobile.ui.release_mouse(t.id)
+            && last
+            && let Err(error) = self.android_menu_mouse(events, id, right, false)
+        {
+            log::warn!("Release held virtual mouse button: {error}");
+        }
         if t.phase == TouchPhase::Ended {
             self.android_virtual_mouse_clicks(events);
         }
@@ -1959,9 +1965,30 @@ impl Game<'_> {
         if !self.pad_in_menu() {
             return;
         }
+        let relative_id = self.mobile.ui.relative_id();
         let Some(right) = self.mobile.ui.relative_click(true) else {
             return;
         };
+        // In the regular inventory, a virtual-mouse long press is a held right
+        // button, not a quick click. Keep ownership by touch id so the matching
+        // release happens on finger-up (including a drag between slots).
+        if right
+            && !self.settings.bedrock_inventory
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && let Some(touch_id) = relative_id
+        {
+            if self.mobile.ui.press_mouse(touch_id, true)
+                && let Err(error) = self.android_menu_mouse(
+                    events,
+                    self.window.as_ref().map_or(WindowId::dummy(), |w| w.id()),
+                    true,
+                    true,
+                )
+            {
+                log::warn!("Virtual mouse hold: {error}");
+            }
+            return;
+        }
         let button = if right {
             MouseButton::Right
         } else {
