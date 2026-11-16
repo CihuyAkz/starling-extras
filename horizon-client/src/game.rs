@@ -16210,12 +16210,12 @@ impl Game<'_> {
                 .darken_amount(self.clock.fraction() as f32),
             menu_blur: self.menu_blur(),
             fast_background_enabled: self.settings.extras.fast_background,
-            in_world_menu: self.fast_background_menu_open(),
+            fast_background_menu: self.fast_background_menu_open(),
             post_effects: horizon_client::post_chain::Request {
                 effects: &requested_post_effects,
                 root: &self.options.resources,
                 menu_blur_radius: if self.settings.extras.menu_background_optimization
-                    || (self.settings.extras.fast_background && self.fast_background_menu_open())
+                    || (self.settings.extras.fast_background && self.in_world_menu_open())
                 {
                     0.0
                 } else {
@@ -16326,14 +16326,16 @@ impl Game<'_> {
                 || self.dialog_open()
                 || (self.screen == Screen::Win && self.win_screen_pauses()))
     }
-    /// Fast Background also covers inventory/creative and the actual pause menu, whose screens
-    /// draw over the last gameplay frame even though vanilla does not blur all of them.
+    /// Screens whose world background can be reused by Fast Background. Inventory screens do
+    /// not blur their background in vanilla, but they still cover the live world render.
     fn fast_background_menu_open(&self) -> bool {
         self.in_world_menu_open()
             || (self.title.is_none()
                 && self.player.is_some()
-                && (matches!(self.screen, Screen::Inventory | Screen::Creative)
-                    || (self.screen == Screen::Paused && self.pause_menu)))
+                && matches!(
+                    self.screen,
+                    Screen::Paused | Screen::Inventory | Screen::Creative
+                ))
     }
     fn menu_blur(&self) -> Option<f32> {
         if self.settings.extras.menu_background_optimization
@@ -18655,11 +18657,13 @@ impl Game<'_> {
                     self.pause = self.pauses_game();
                     if let Some(server) = &self.integrated {
                         server.set_paused(self.pause);
-                        server.set_distances(
-                            self.render_distance_in_use(),
-                            self.settings.simulation_distance,
-                            self.settings.entity_distance,
-                        );
+                        if !self.dragging || self.screen != Screen::Options {
+                            server.set_distances(
+                                self.render_distance_in_use(),
+                                self.settings.simulation_distance,
+                                self.settings.entity_distance,
+                            );
+                        }
                     }
                     self.clock.end_frame(self.pause);
                     let mut consumed = false;
@@ -20982,7 +20986,7 @@ fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         post_effects: horizon_client::post_chain::Request::none(),
         menu_blur: None,
         fast_background_enabled: false,
-        in_world_menu: false,
+        fast_background_menu: false,
     }
 }
 
