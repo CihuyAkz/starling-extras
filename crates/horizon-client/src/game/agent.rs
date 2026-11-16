@@ -673,6 +673,7 @@ impl Game<'_> {
             }
             Mode::Onboarding(_) => json!({ "mode": "accessibility-onboarding" }),
             Mode::BanNotice(_) => json!({ "mode": "ban-notice" }),
+            Mode::DonationConfirm => json!({ "mode": "donation-confirm" }),
         }
     }
 
