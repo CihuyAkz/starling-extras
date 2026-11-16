@@ -14,6 +14,7 @@
   "horizon.server_stick.analog": "Analog",
   "horizon.server_stick.free": "Free Direction",
   "horizon.server_stick.keys": "D-pad (8 Directions)",
+  "starling.menu.donate": "Donate",
   "starling.stick_prompt.title": "This Server Pulls You Back",
   "starling.stick_prompt.body": "Its anticheat (Grim or one like it) takes only the moves Java's keys make, and the stick's own speed and angle are not one of them. Pick how the stick moves here; Options > Controls > Controller Settings changes it any time.",
   "starling.stick_prompt.free": "Free Direction (any angle, full speed)",

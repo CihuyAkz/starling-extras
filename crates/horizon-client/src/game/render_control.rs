@@ -12,39 +12,17 @@ pub const HELP: &[&str] = &[
     "particle NAME X Y Z [DX DY DZ] [COUNT]  spawn particles (vanilla /particle spread)",
     "signedit X Y Z [front|back]    open the sign editor for the sign at X Y Z",
     "section-draws [flat|indirect]  how terrain sections are drawn (A/B checks); replies the mode",
-    "sky-order [early|late]         the vanilla sky before or after solid terrain, on Adreno's Vulkan (A/B checks); replies the mode",
+    "section-layout compact|wide    solid quads' layout in the arena, all meshed again (A/B checks); replies compact",
     "section-cull [on|off]          occlusion culling of solid sections (A/B checks); replies the mode",
-    "static-cutout [on|off]         cutouts without their fade while nothing fades, on Adreno's Vulkan (A/B checks); replies the mode",
     "section-sides [on|off]         leave out solid quads facing away from the eye (A/B checks); replies the mode",
-    "settled-terrain [on|off]       less work for whole sections without RGSS, on Adreno's Vulkan (A/B checks); replies the mode",
+    "gpu-culling [on|off|auto]     GPU Culling as its setting sets it, not saved (A/B checks); replies the mode",
+    "render-capture on|off|DIR      keep copies of the meshes drawn (on), or write the next frame's scene to DIR for scene_replay",
 ];
 
 impl Game<'_> {
-    pub(super) fn settled_terrain_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
-        let r = self.renderer.as_mut().ok_or("no renderer")?;
-        match words.get(1).copied() {
-            None => {}
-            Some("on") => r.set_settled_terrain(true)?,
-            Some("off") => r.set_settled_terrain(false)?,
-            Some(other) => return Err(format!("unknown settled terrain mode {other}").into()),
-        }
-        Ok(Some(
-            json!({ "ok": true, "settled_terrain": r.settled_terrain_on() }),
-        ))
-    }
     /// Parse `name[k=v,...]` into a registry state (defaults for missing properties).
     fn parse_state(&self, text: &str) -> Result<BlockStateId> {
         parse_state(self.pack.assets.registry, text)
-    }
-    pub(super) fn sky_order_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
-        let r = self.renderer.as_mut().ok_or("no renderer")?;
-        match words.get(1).copied() {
-            None => {}
-            Some("early") => r.set_late_sky(false)?,
-            Some("late") => r.set_late_sky(true)?,
-            Some(other) => return Err(format!("unknown sky order {other}").into()),
-        }
-        Ok(Some(json!({ "ok": true, "late": r.late_sky_on() })))
     }
     pub(super) fn render_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
         let int = |i: usize| -> Result<i32> {
@@ -119,14 +97,9 @@ impl Game<'_> {
             }
             "signedit" => {
                 let key = (int(1)?, int(2)?, int(3)?);
-                let name = self
-                    .res
-                    .facts()
-                    .get(self.world.block(key.0, key.1, key.2))
-                    .name
-                    .clone();
+                let state = self.world.block(key.0, key.1, key.2);
                 let entity = self
-                    .new_block_entity(&name)
+                    .new_block_entity_for_state(state)
                     .filter(|e| matches!(e, horizon_client::containers::BlockEntity::Sign(_)))
                     .ok_or("no sign there")?;
                 self.world.block_entities.get_or_insert_with(key, || entity);
@@ -135,18 +108,6 @@ impl Game<'_> {
             }
             other => Err(format!("unknown render command {other}").into()),
         }
-    }
-    pub(super) fn static_cutout_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
-        let r = self.renderer.as_mut().ok_or("no renderer")?;
-        match words.get(1).copied() {
-            None => {}
-            Some("on") => r.set_static_cutout(true)?,
-            Some("off") => r.set_static_cutout(false)?,
-            Some(other) => return Err(format!("unknown static cutout mode {other}").into()),
-        }
-        Ok(Some(
-            json!({ "ok": true, "static_cutout": r.static_cutout_on() }),
-        ))
     }
 }
 

@@ -1,0 +1,9 @@
+Starling Extra delta patch
+
+Basis: original uploaded archive starling-extras-starling (6).zip.
+Target: Starling-Extra-updated source tree.
+
+Extract this archive into a copy of the original source, preserving relative paths and allowing replacement.
+ADDED-FILES.txt and MODIFIED-FILES.txt list patch payload files.
+DELETED-FILES.txt lists files present in the original but absent from the updated source; remove them manually if an exact mirror is required.
+This patch includes the CihuyAkz branding asset and its code changes if these differ from the original source.

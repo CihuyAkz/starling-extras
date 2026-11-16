@@ -8,8 +8,7 @@ use crate::{
     entity_obstruction::EntityIdentity,
 };
 use horizon_core::geometry::{
-    Aabb, Axis, Collider, ShapeOp, Vec3, VoxelShape, entity_collision_bounds,
-    try_resolve_step_movement,
+    Aabb, Axis, ShapeOp, Vec3, VoxelShape, entity_collision_bounds, try_resolve_step_movement,
 };
 
 /// How far below the feet `Entity.getAvailableSpaceBelow` looks for ground.
@@ -78,18 +77,17 @@ where
         request.max_step,
         request.on_ground,
         |bounds| {
-            let mut shapes = Vec::with_capacity(entities.len() + 8);
-            shapes.extend(entities.iter().cloned().map(Collider::Shape));
+            let mut shapes = entities.clone();
             if let Some(border) = world
                 .movement_border(request.entity, bounds)
                 .map_err(CollisionScanError::World)?
             {
-                shapes.push(Collider::Shape(border));
+                shapes.push(border);
             }
-            let mut scan =
-                BlockCollisionScan::new(world, request.context, bounds, false, candidate_budget)?;
-            while let Some(hit) = scan.next_collider() {
-                shapes.push(hit?.1);
+            for hit in
+                BlockCollisionScan::new(world, request.context, bounds, false, candidate_budget)?
+            {
+                shapes.push(hit?.shape);
             }
             Ok(shapes)
         },
@@ -112,17 +110,14 @@ pub fn no_world_collision<W, E>(
 where
     W: BlockCollisionWorld<Error = E> + EntityMovementWorld<Error = E>,
 {
-    let mut scan = BlockCollisionScan::new(
+    if BlockCollisionScan::any_collision(
         world,
         request.context,
         request.bounds,
         false,
         request.candidate_budget,
-    )?;
-    while let Some(hit) = scan.next_collider() {
-        if !hit?.1.is_empty() {
-            return Ok(false);
-        }
+    )? {
+        return Ok(false);
     }
     if !world
         .entity_collisions(request.entity, request.bounds)

@@ -5,7 +5,7 @@
 //! does; render preparation must diagnose these before baking.
 use crate::json::*;
 use serde_json::value::RawValue;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Direction {
@@ -59,22 +59,92 @@ pub enum TextureSlot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CuboidModel {
     pub parent: Option<String>,
+    pub loader: Option<Loader>,
     pub ambient_occlusion: Option<bool>,
     pub gui_light: Option<GuiLight>,
     pub textures: BTreeMap<String, TextureSlot>,
     pub elements: Option<Vec<Option<Element>>>,
     pub display: Option<ItemTransforms>,
-    /// NeoForge's OBJ loader (mods' blocks): the mesh file it names; its faces, once read beside
-    /// the model (`mesh`), are drawn with the elements.
-    pub obj: Option<ObjSource>,
-    pub mesh: Option<std::sync::Arc<Vec<crate::obj::MeshFace>>>,
+    /// NeoForge's `render_type`, without a `minecraft:` prefix.
+    pub render_type: Option<String>,
+    /// A model's `visibility`: an obj object or composite child name to shown; absent is shown.
+    pub visibility: BTreeMap<String, bool>,
 }
-/// The OBJ file of a `neoforge:obj` model: `<ns>:<path to the .obj>` and whether its UVs' v is
-/// upside down.
+/// A custom model loader's payload; a model inherits its parent's loader unless it names its own.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ObjSource {
-    pub model: String,
-    pub flip_v: bool,
+pub enum Loader {
+    /// `neoforge:composite`: children in document order.
+    Composite {
+        children: Vec<(String, Arc<CuboidModel>)>,
+        /// Child name to shown; a child absent from the map is shown.
+        visibility: BTreeMap<String, bool>,
+    },
+    /// `neoforge:obj`: `model` and `mtl_override` are asset locations.
+    Obj {
+        model: String,
+        flip_v: bool,
+        shade_quads: Option<bool>,
+        mtl_override: Option<String>,
+    },
+    /// A loader this decoder does not know: it adds no geometry.
+    Unknown(String),
+}
+/// NeoForge's `neoforge_data` of an element or a face; a face's keys win.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NeoforgeData {
+    pub block_light: Option<u8>,
+    pub sky_light: Option<u8>,
+    /// ARGB.
+    pub color: Option<i32>,
+    pub ambient_occlusion: Option<bool>,
+}
+impl NeoforgeData {
+    /// `self` over `base`, key by key.
+    pub fn over(self, base: Self) -> Self {
+        Self {
+            block_light: self.block_light.or(base.block_light),
+            sky_light: self.sky_light.or(base.sky_light),
+            color: self.color.or(base.color),
+            ambient_occlusion: self.ambient_occlusion.or(base.ambient_occlusion),
+        }
+    }
+    fn decode(raw: &RawValue) -> Result<Self> {
+        let obj = object(raw)?;
+        let light = |key: &str| -> Result<Option<u8>> {
+            Ok(obj
+                .get(key)
+                .map(|r| integer(r))
+                .transpose()?
+                .map(|v| v.clamp(0, 15) as u8))
+        };
+        // Some mods spell both lights as one `light_emission`.
+        let emission = light("light_emission")?;
+        let color = match obj.get("color") {
+            Some(raw) if raw.get().starts_with('"') => {
+                let text = string(raw)?;
+                let text = text.trim();
+                let hex = text
+                    .strip_prefix('#')
+                    .or_else(|| text.strip_prefix("0x"))
+                    .or_else(|| text.strip_prefix("0X"));
+                match hex {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok().map(|v| v as i32),
+                    None => text.parse::<u32>().ok().map(|v| v as i32),
+                }
+            }
+            Some(raw) => Some(integer(raw)?),
+            None => None,
+        };
+        Ok(Self {
+            block_light: light("block_light")?.or(emission),
+            sky_light: light("sky_light")?.or(emission),
+            color,
+            ambient_occlusion: obj
+                .get("ambient_occlusion")
+                .map(|r| boolean(r))
+                .transpose()?,
+        })
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element {
@@ -84,6 +154,7 @@ pub struct Element {
     pub rotation: Option<ElementRotation>,
     pub shade_direction_override: Option<Direction>,
     pub light_emission: u8,
+    pub neoforge_data: Option<NeoforgeData>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Face {
@@ -93,6 +164,9 @@ pub struct Face {
     pub uv: Option<[f32; 4]>,
     /// Normalized counterclockwise quadrants, in the range 0..4.
     pub rotation: u8,
+    /// A face-level `light_emission`, which wins over its element's.
+    pub light_emission: Option<u8>,
+    pub neoforge_data: Option<NeoforgeData>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Axis {
@@ -146,14 +220,7 @@ impl CuboidModel {
     /// Like the native stream entry point, this reads one value and leaves
     /// trailing input unread. The pinned native entry point uses strict JSON.
     pub fn from_json(json: &str) -> Result<Self> {
-        let json = json.strip_prefix('\u{feff}').unwrap_or(json);
-        // NeoForge's composite models (mods' blocks): one model of their children's elements.
-        if json.contains("composite")
-            && let Some(flat) = flatten_composite(json)
-        {
-            return Self::from_json(&flat);
-        }
-        let raw = serde_json::Deserializer::from_str(json)
+        let raw = serde_json::Deserializer::from_str(json.strip_prefix('\u{feff}').unwrap_or(json))
             .into_iter::<&RawValue>()
             .next()
             .ok_or_else(|| error("empty model input"))??;
@@ -172,6 +239,11 @@ impl CuboidModel {
         } else {
             Some(identifier(&parent)?)
         };
+        let loader = obj
+            .get("loader")
+            .filter(|raw| raw.get() != "null")
+            .map(|raw| Loader::decode(raw, &obj))
+            .transpose()?;
         let ambient_occlusion = obj
             .get("ambientocclusion")
             .map(|r| boolean(r))
@@ -203,101 +275,84 @@ impl CuboidModel {
             .get("display")
             .map(|r| ItemTransforms::decode(r))
             .transpose()?;
-        // NeoForge's OBJ models: the mesh is read beside the model (`mesh`); the model itself is
-        // where the geometry is, with no elements of its own.
-        let loader = obj.get("loader").map(|r| primitive_string(r)).transpose()?;
-        let source = match (loader.as_deref(), obj.get("model")) {
-            (Some(l), Some(model)) if l.ends_with(":obj") => Some(ObjSource {
-                model: primitive_string(model)?,
-                flip_v: obj
-                    .get("flip_v")
-                    .map(|r| boolean(r))
-                    .transpose()?
-                    .unwrap_or(false),
-            }),
-            _ => None,
-        };
-        let elements = match (&source, elements) {
-            (Some(_), None) => Some(Vec::new()),
-            (_, elements) => elements,
-        };
+        let render_type = obj
+            .get("render_type")
+            .filter(|raw| raw.get().starts_with('"'))
+            .map(|raw| string(raw))
+            .transpose()?
+            .map(|name| name.strip_prefix("minecraft:").unwrap_or(&name).to_owned());
         Ok(Self {
             parent,
+            loader,
             ambient_occlusion,
             gui_light,
             textures,
             elements,
             display,
-            obj: source,
-            mesh: None,
+            render_type,
+            visibility: visibility(&obj)?,
         })
     }
-}
-/// A `neoforge:composite` (or `forge:composite`) model as one plain model: its own elements, then
-/// each child's, the children's texture slots renamed `<child>_<slot>` so two children's `#0`
-/// stay apart (a slot a child does not set is the composite's). Only children written out in
-/// place; a child naming a parent model leaves the model as it is (None).
-fn flatten_composite(json: &str) -> Option<String> {
-    use serde_json::Value;
-    let mut model: serde_json::Map<String, Value> = serde_json::from_str(json).ok()?;
-    let loader = model.get("loader")?.as_str()?;
-    if !loader.ends_with(":composite") {
-        return None;
+    /// The models this one needs besides itself: its parent and its composite children's parents.
+    pub fn referenced_models(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.parent.iter().cloned().collect();
+        if let Some(Loader::Composite { children, .. }) = &self.loader {
+            for (_, child) in children {
+                names.extend(child.referenced_models());
+            }
+        }
+        names
     }
-    let children = model.remove("children")?;
-    model.remove("loader");
-    let mut elements = match model.remove("elements") {
-        Some(Value::Array(own)) => own,
-        _ => Vec::new(),
-    };
-    let mut textures = match model.remove("textures") {
-        Some(Value::Object(own)) => own,
-        _ => serde_json::Map::new(),
-    };
-    for (name, child) in children.as_object()? {
-        let child = child.as_object()?;
-        if child.contains_key("parent") {
-            return None;
+}
+fn visibility(obj: &Object<'_>) -> Result<BTreeMap<String, bool>> {
+    let mut visibility = BTreeMap::new();
+    if let Some(raw) = obj.get("visibility") {
+        for (key, raw) in object(raw)? {
+            visibility.insert(key, boolean(raw)?);
         }
-        let own = child.get("textures").and_then(Value::as_object);
-        let renamed = |slot: &str| match own {
-            Some(own) if own.contains_key(slot) => format!("{name}_{slot}"),
-            _ => slot.to_owned(),
-        };
-        for (slot, value) in own.into_iter().flatten() {
-            let value = match value.as_str().and_then(|v| v.strip_prefix('#')) {
-                Some(target) => Value::String(format!("#{}", renamed(target))),
-                None => value.clone(),
-            };
-            textures.insert(renamed(slot), value);
-        }
-        for element in child
-            .get("elements")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let mut element = element.clone();
-            if let Some(faces) = element.get_mut("faces").and_then(Value::as_object_mut) {
-                for face in faces.values_mut() {
-                    let target = face
-                        .get("texture")
-                        .and_then(Value::as_str)
-                        .and_then(|t| t.strip_prefix('#'))
-                        .map(renamed);
-                    if let (Some(target), Some(face)) = (target, face.as_object_mut()) {
-                        face.insert("texture".into(), Value::String(format!("#{target}")));
+    }
+    Ok(visibility)
+}
+impl Loader {
+    fn decode(raw: &RawValue, obj: &Object<'_>) -> Result<Self> {
+        let name = primitive_string(raw)?;
+        match name.as_str() {
+            "neoforge:composite" => {
+                let mut children = Vec::new();
+                if let Some(raw) = obj.get("children") {
+                    for (name, raw) in ordered_object(raw)? {
+                        children.push((name, Arc::new(CuboidModel::decode(raw)?)));
                     }
                 }
+                Ok(Self::Composite {
+                    children,
+                    visibility: visibility(obj)?,
+                })
             }
-            elements.push(element);
+            "neoforge:obj" => {
+                let optional = |key: &str| {
+                    obj.get(key)
+                        .filter(|raw| raw.get() != "null")
+                        .map(|raw| primitive_string(raw))
+                        .transpose()
+                };
+                Ok(Self::Obj {
+                    model: identifier(&optional("model")?.ok_or_else(|| error("missing model"))?)?,
+                    flip_v: obj
+                        .get("flip_v")
+                        .map(|r| boolean(r))
+                        .transpose()?
+                        .unwrap_or(false),
+                    shade_quads: obj.get("shade_quads").map(|r| boolean(r)).transpose()?,
+                    mtl_override: optional("mtl_override")?
+                        .map(|name| identifier(&name))
+                        .transpose()?,
+                })
+            }
+            _ => Ok(Self::Unknown(name)),
         }
     }
-    model.insert("textures".into(), Value::Object(textures));
-    model.insert("elements".into(), Value::Array(elements));
-    serde_json::to_string(&model).ok()
 }
-
 fn nullable<T>(raw: &RawValue, decode: impl FnOnce(&RawValue) -> Result<T>) -> Result<Option<T>> {
     if raw.get() == "null" {
         Ok(None)
@@ -376,6 +431,10 @@ impl Element {
             rotation,
             shade_direction_override,
             light_emission: light_emission as u8,
+            neoforge_data: obj
+                .get("neoforge_data")
+                .map(|r| NeoforgeData::decode(r))
+                .transpose()?,
         })
     }
 }
@@ -409,6 +468,15 @@ impl Face {
             texture,
             uv,
             rotation: (rotation / 90) as u8,
+            light_emission: obj
+                .get("light_emission")
+                .map(|r| integer(r))
+                .transpose()?
+                .map(|v| v.clamp(0, 15) as u8),
+            neoforge_data: obj
+                .get("neoforge_data")
+                .map(|r| NeoforgeData::decode(r))
+                .transpose()?,
         })
     }
 }
@@ -493,36 +561,5 @@ impl ItemTransforms {
             }
         }
         Ok(Self { contexts })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_composite_model_is_its_childrens_elements_with_their_own_textures() {
-        let json = r##"{"loader":"neoforge:composite","parent":"block/block",
-            "textures":{"particle":"create:block/casing"},
-            "children":{
-                "base":{"textures":{"0":"create:block/base"},
-                    "elements":[{"from":[0,0,0],"to":[16,4,16],"faces":{"up":{"texture":"#0"}}}]},
-                "bulb":{"textures":{"0":"create:block/bulb","1":"#0"},
-                    "elements":[{"from":[6,4,6],"to":[10,8,10],
-                        "faces":{"up":{"texture":"#1"},"down":{"texture":"#particle"}}}]}}}"##;
-        let model = CuboidModel::from_json(json).unwrap();
-        assert_eq!(model.parent.as_deref(), Some("minecraft:block/block"));
-        let elements: Vec<Element> = model.elements.unwrap().into_iter().flatten().collect();
-        let face = |e: &Element, d: Direction| e.faces[&d].as_ref().unwrap().texture.clone();
-        // Each child's #0 its own; a slot a child does not set is the composite's.
-        assert_eq!(face(&elements[0], Direction::Up), "#base_0");
-        assert_eq!(face(&elements[1], Direction::Up), "#bulb_1");
-        assert_eq!(face(&elements[1], Direction::Down), "#particle");
-        assert!(matches!(&model.textures["bulb_1"], TextureSlot::Reference(t) if t == "bulb_0"));
-        assert!(model.textures.contains_key("base_0") && model.textures.contains_key("particle"));
-        // A child naming its parent model is left as it is.
-        let parented =
-            r#"{"loader":"neoforge:composite","children":{"a":{"parent":"block/stone"}}}"#;
-        assert!(flatten_composite(parented).is_none());
     }
 }

@@ -1,17 +1,51 @@
 //! Parsed resource models for one startup or resource-pack reload.
 use crate::Result;
-use horizon_assets::{model::CuboidModel, resolve::ModelLibrary};
-use std::{collections::BTreeMap, fs, path::Path, sync::Arc};
+use horizon_assets::{
+    model::CuboidModel,
+    resolve::{AssetReader, ModelLibrary},
+};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 #[derive(Default)]
 pub struct ParsedModels {
     models: BTreeMap<String, Arc<CuboidModel>>,
+    root: PathBuf,
+}
+/// Asset files under a content root, for models that name a file (obj).
+struct RootAssets(PathBuf);
+impl AssetReader for RootAssets {
+    fn read_text(&self, location: &str) -> Option<String> {
+        let (namespace, path) = location.split_once(':')?;
+        // Only a resource location's characters, and no `.`/`..` step: an
+        // .obj's `mtllib` names its .mtl as raw text, so it must not reach a
+        // file outside the content root (`../..:x` as a namespace would).
+        let valid = |c: u8| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c);
+        if !namespace.bytes().all(valid)
+            || matches!(namespace, "" | "." | "..")
+            || !path.bytes().all(|c| valid(c) || c == b'/')
+            || path.split('/').any(|part| matches!(part, "" | "." | ".."))
+        {
+            return None;
+        }
+        horizon_core::prepared_files::read_to_string(
+            &self.0.join(format!("assets/{namespace}/{path}")),
+        )
+        .ok()
+    }
 }
 impl ParsedModels {
     /// Every `models/**.json` of a namespace directory, by identifier.
     pub fn load(root: &Path) -> Self {
         let Ok(namespaces) = fs::read_dir(root.join("assets")) else {
-            return Self::default();
+            return Self {
+                root: root.to_owned(),
+                ..Self::default()
+            };
         };
         // Listed first, then read and parsed at once: a content pack has tens
         // of thousands of models.
@@ -43,17 +77,19 @@ impl ParsedModels {
                 }
             }
         }
-        let parsed = crate::par::par_map(&files, |(id, path)| {
+        let parsed = crate::par::par_map(&files, |(_, path)| {
             let text = horizon_core::prepared_files::read_to_string(path).ok()?;
-            let model = CuboidModel::from_json(&text).ok()?;
-            Some(Arc::new(with_mesh(root, id, model)))
+            CuboidModel::from_json(&text).ok().map(Arc::new)
         });
         let models = files
             .into_iter()
             .zip(parsed)
             .filter_map(|((id, _), model)| Some((id, model?)))
             .collect();
-        Self { models }
+        Self {
+            models,
+            root: root.to_owned(),
+        }
     }
 
     /// Blocks require every referenced resource, including parents. Items instead
@@ -93,7 +129,7 @@ impl ParsedModels {
                         let text = horizon_core::prepared_files::read_to_string(
                             &root.join(format!("assets/{namespace}/models/{path}.json")),
                         )?;
-                        Ok(with_mesh(root, &name, CuboidModel::from_json(&text)?))
+                        Ok(CuboidModel::from_json(&text)?)
                     };
                     match read() {
                         Ok(model) => Arc::new(model),
@@ -106,32 +142,17 @@ impl ParsedModels {
                     }
                 }
             };
-            if let Some(parent) = &model.parent {
-                pending.push(parent.clone());
-            }
+            pending.extend(model.referenced_models());
             models.insert(name, model);
         }
-        Ok(ModelLibrary::from_shared(models)?)
+        Ok(ModelLibrary::from_shared(models)?.with_assets(Arc::new(RootAssets(root.to_owned()))))
     }
     pub fn into_item_library(self) -> std::result::Result<Arc<ModelLibrary>, String> {
+        let root = self.root;
         ModelLibrary::with_shared_item_generator(self.models)
-            .map(Arc::new)
+            .map(|library| Arc::new(library.with_assets(Arc::new(RootAssets(root)))))
             .map_err(|e| format!("item models: {e:?}"))
     }
-}
-
-/// A `neoforge:obj` model with its mesh, its OBJ and MTL files read under `root`
-/// (`horizon_assets::obj::read_mesh`). A mesh that does not read leaves the model without faces,
-/// logged.
-fn with_mesh(root: &Path, name: &str, mut model: CuboidModel) -> CuboidModel {
-    let Some(source) = &model.obj else {
-        return model;
-    };
-    match horizon_assets::obj::read_mesh(source, |path| fs::read_to_string(root.join(path)).ok()) {
-        Ok(faces) => model.mesh = Some(Arc::new(faces)),
-        Err(e) => log::warn!("Horizon: model {name}'s OBJ mesh {}: {e}", source.model),
-    }
-    model
 }
 
 #[cfg(test)]
@@ -249,5 +270,32 @@ mod tests {
         );
         assert!(parsed.into_item_library().is_err());
         Ok(())
+    }
+
+    /// An .obj's `mtllib` is raw text: no namespace or path step reaches a
+    /// file outside the content root.
+    #[test]
+    fn root_assets_stay_inside_the_content_root() {
+        let root = std::env::temp_dir().join(format!("horizon-root-assets-{}", std::process::id()));
+        let inside = root.join("content");
+        fs::create_dir_all(inside.join("assets/m/models")).unwrap();
+        fs::write(inside.join("assets/m/models/a.mtl"), "newmtl a").unwrap();
+        fs::write(root.join("secret.mtl"), "newmtl secret").unwrap();
+        let assets = RootAssets(inside);
+        assert_eq!(
+            assets.read_text("m:models/a.mtl").as_deref(),
+            Some("newmtl a")
+        );
+        for escape in [
+            "../..:secret.mtl",
+            "..:../secret.mtl",
+            "m:../../../secret.mtl",
+            "m:models/./a.mtl",
+            "M:models/a.mtl",
+            ":models/a.mtl",
+        ] {
+            assert_eq!(assets.read_text(escape), None, "{escape}");
+        }
+        fs::remove_dir_all(&root).unwrap();
     }
 }

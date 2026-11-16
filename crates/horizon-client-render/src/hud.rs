@@ -623,6 +623,27 @@ fn atlas_sprites(root: &Path, packed: &[PackedImage]) -> (Vec<PackedImage>, Vec<
         animated,
     )
 }
+/// Starling's own title-screen branding, bundled with the app rather than taken from a pack.
+/// A resource pack may replace this sprite by providing the same namespaced key.
+const TITLE_BRANDING_SPRITES: &[(&str, &[u8])] = &[(
+    "starling:brand/cihuyakz",
+    include_bytes!("../assets/cihuyakz.png"),
+)];
+
+/// Add the bundled title branding unless a resource root already supplies it.
+fn builtin_title_branding_sprites(images: &[PackedImage]) -> Vec<PackedImage> {
+    TITLE_BRANDING_SPRITES
+        .iter()
+        .filter_map(|(name, png)| {
+            if images.iter().any(|(key, ..)| key.as_str() == *name) {
+                return None;
+            }
+            let (w, h, pixels) = decode_bytes(png).ok()?;
+            Some(((*name).to_owned(), w, h, pixels))
+        })
+        .collect()
+}
+
 /// Starling's own touch controls (packaging/touch/make.py draws them): a button's sprite and its
 /// `_pressed`, the D-pad's cells and the stick's, as `starling:touch/<name>`.
 const TOUCH_SPRITES: &[(&str, &[u8])] = &[
@@ -1834,6 +1855,8 @@ impl HudAtlas {
         // The menus' atlas too: the touch layout editor works before a world.
         let touch = builtin_touch_sprites(&images);
         images.extend(touch);
+        let branding = builtin_title_branding_sprites(&images);
+        images.extend(branding);
         images.extend(android_utility_sprites(&images));
         // The title screen's "JAVA EDITION" banner reads "RUST EDITION".
         if let Some(edition) = images

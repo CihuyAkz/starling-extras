@@ -101,6 +101,18 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn donate_button_opens_the_creator_sociabuzz_page() {
+    let mut f = Fixture::new();
+    assert_eq!(
+        f.click_with_sound("Donate"),
+        (
+            Action::OpenUri("https://sociabuzz.com/cihuyakz/tribe".into()),
+            true,
+        ),
+    );
+}
+
+#[test]
 fn direct_connection_remembers_the_address_on_cancel_escape_and_join() {
     let mut f = Fixture::new();
     f.title.last_server = "localhost:25566".into();

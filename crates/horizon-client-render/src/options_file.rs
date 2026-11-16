@@ -137,7 +137,6 @@ static TABLE: LazyLock<Vec<Def>> = LazyLock::new(|| {
         b("entityShadows", true),
         b("forceUnicodeFont", false),
         b("japaneseGlyphVariants", false),
-        b("javaCreativeInventory", false),
         def("fov", O(Fov), V::Int(70)),
         def("fovEffectScale", O(UnitSquare), V::Double(1.0)),
         def("darknessEffectScale", O(UnitSquareImplicit), V::Double(1.0)),

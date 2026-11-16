@@ -1770,6 +1770,17 @@ impl Title {
                     button.icon = Some((icon, 15.0));
                     buttons.push(button);
                 }
+                // Starling's Donate link sits to the left of the Options row, as on the
+                // project's title-screen reference. It uses the same platform browser path as
+                // other trusted game links.
+                buttons.push(b(
+                    4.0,
+                    y + 96.0,
+                    100.0,
+                    &lang::get_or("starling.menu.donate", "Donate"),
+                    true,
+                    9,
+                ));
                 // Starling's account, where the game signs in itself: in the top left corner,
                 // clear of the logo, so vanilla's buttons stay as they are.
                 if crate::accounts::in_game() {
@@ -2450,6 +2461,19 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         match &self.mode {
             Mode::Main => {
                 draw_logo(atlas, batch, w);
+                // Creator credit, using the pixel-art logo supplied with Starling. Keep it
+                // anchored to the Donate button so both stay in the lower-left corner at every
+                // window size and GUI scale.
+                let menu_y = (h / 4.0).floor() + 48.0;
+                batch.sprite_scaled(
+                    atlas,
+                    "starling:brand/cihuyakz",
+                    4.0,
+                    menu_y + 74.0,
+                    108.0,
+                    108.0 * 184.0 / 1303.0,
+                    u32::MAX,
+                );
                 if !hide_splash && let Some(splash) = self.splash.as_deref() {
                     let tw = HudBatch::text_width(atlas, splash);
                     let start = batch.vertices.len();
@@ -3471,6 +3495,9 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             (Mode::Main, Some(3)) => Action::Options,
             (Mode::Main, Some(7)) => Action::Accessibility,
             (Mode::Main, Some(6)) => Action::Language,
+            (Mode::Main, Some(9)) => {
+                Action::OpenUri("https://sociabuzz.com/cihuyakz/tribe".to_owned())
+            }
             (Mode::Select { worlds, selected }, Some(10)) => {
                 match selected.and_then(|i| worlds.get(i)).cloned() {
                     Some(world) => self.play(world),
