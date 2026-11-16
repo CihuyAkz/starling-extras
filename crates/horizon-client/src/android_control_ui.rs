@@ -8688,6 +8688,40 @@ mod tests {
     }
 
     #[test]
+    fn right_click_eligibility_is_latched_from_initial_touch_position() {
+        let mut direct = TouchUi::default();
+        direct.gesture_with_right_click(6, [20.0, 60.0], TouchPhase::Started, false);
+        direct.gesture.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
+
+        // Even if later events are over a slot, a touch that began outside stays ineligible.
+        assert!(matches!(
+            direct.gesture_with_right_click(6, [80.0, 60.0], TouchPhase::Moved, true),
+            Gesture::Scroll(_)
+        ));
+        assert!(!direct.right_click_hold_due(Instant::now(), true));
+        assert!(matches!(
+            direct.gesture_with_right_click(6, [90.0, 60.0], TouchPhase::Moved, true),
+            Gesture::Scroll(_)
+        ));
+        assert!(matches!(
+            direct.gesture_with_right_click(6, [90.0, 60.0], TouchPhase::Ended, true),
+            Gesture::None
+        ));
+
+        let mut virtual_mouse = TouchUi::default();
+        let p = [100.0, 80.0];
+        let size = [400.0, 240.0];
+        virtual_mouse.relative_touch_with_inventory_hold(
+            7, p, TouchPhase::Started, p, size, 1.0, true, false,
+        );
+        virtual_mouse.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
+        virtual_mouse.relative_touch_with_inventory_hold(
+            7, [110.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
+        );
+        assert_eq!(virtual_mouse.relative_click(true), None);
+    }
+
+    #[test]
     fn inventory_hold_keeps_right_mouse_pressed_until_release() {
         let mut ui = TouchUi::default();
         let start = Instant::now();

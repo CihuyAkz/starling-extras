@@ -121,7 +121,18 @@ impl Game<'_> {
             && self.title.is_none()
             && {
                 let batch = self.touch_gui_batch();
-                self.slot_at(&batch, gui.0, gui.1).is_some()
+                // Long-press eligibility must require the finger/pointer to start
+                // inside the actual 16x16 slot, not the 1px hover padding used by slot_at.
+                if self.book_covers_menu(batch.width) {
+                    false
+                } else {
+                    let (ox, oy) = self.inventory_origin(&batch);
+                    self.slots().into_iter().any(|slot| {
+                        let (sx, sy) = self.slot_position(slot);
+                        (ox + sx..ox + sx + 16.0).contains(&gui.0)
+                            && (oy + sy..oy + sy + 16.0).contains(&gui.1)
+                    })
+                }
             }
     }
 
