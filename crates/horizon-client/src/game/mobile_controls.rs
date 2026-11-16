@@ -1823,7 +1823,7 @@ impl Game<'_> {
             return;
         }
         let right_click_on_inventory_slot = t.phase == TouchPhase::Started
-            && self.non_bedrock_inventory_slot_at(p);
+            && self.non_bedrock_inventory_slot_at((p[0], p[1]));
         let gesture = self.mobile.ui.gesture_with_right_click(
             t.id,
             [t.location.x as f32, t.location.y as f32],
