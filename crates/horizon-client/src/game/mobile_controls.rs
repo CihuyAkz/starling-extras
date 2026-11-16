@@ -322,9 +322,8 @@ impl Game<'_> {
 
         self.android_custom_events();
         self.android_virtual_mouse_clicks(events);
-        let inventory_right_click = !self.settings.bedrock_inventory
-            && matches!(self.screen, Screen::Inventory | Screen::Creative)
-            && self.focused;
+        // GestureTouch records whether this finger began on a real inventory slot.
+        let inventory_right_click = self.focused;
         if self.mobile.ui.right_click_hold_due(now, inventory_right_click)
             && let Some(id) = self.window.as_ref().map(|w| w.id())
         {
@@ -1823,14 +1822,13 @@ impl Game<'_> {
             self.android_menu_touch_release(t.phase);
             return;
         }
-        let touch_inventory_without_bedrock =
-            !self.settings.bedrock_inventory
-                && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let right_click_on_inventory_slot = t.phase == TouchPhase::Started
+            && self.non_bedrock_inventory_slot_at(p);
         let gesture = self.mobile.ui.gesture_with_right_click(
             t.id,
             [t.location.x as f32, t.location.y as f32],
             t.phase,
-            touch_inventory_without_bedrock,
+            right_click_on_inventory_slot,
         );
         // Gesture deltas are physical pixels / 30; lists scroll 18 GUI pixels
         // per wheel step. Convert once, independent of display GUI scale.
@@ -1913,9 +1911,8 @@ impl Game<'_> {
         let Some(b) = self.gui_scale() else {
             return;
         };
-        let non_bedrock_inventory =
-            !self.settings.bedrock_inventory
-                && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let inventory_slot = t.phase == TouchPhase::Started
+            && self.non_bedrock_inventory_slot_at((self.cursor.0, self.cursor.1));
         let position = self.mobile.ui.relative_touch_with_inventory_hold(
             t.id,
             [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale],
@@ -1924,7 +1921,7 @@ impl Game<'_> {
             [b.width, b.height],
             self.mobile.controls.settings.virtual_mouse_sensitivity,
             !self.mobile.ui.mouse_held(),
-            non_bedrock_inventory,
+            inventory_slot,
         );
         self.cursor = (position[0], position[1]);
         self.handle_window_event(

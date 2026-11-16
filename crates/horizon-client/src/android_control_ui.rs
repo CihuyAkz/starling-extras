@@ -327,6 +327,7 @@ struct RelativeTouch {
     since: Instant,
     dragged: bool,
     right_sent: bool,
+    inventory_slot: bool,
 }
 struct GestureTouch {
     id: u64,
@@ -335,9 +336,10 @@ struct GestureTouch {
     dragged: bool,
     since: Instant,
     right_sent: bool,
+    inventory_slot: bool,
 }
 
-const TOUCH_RIGHT_CLICK_HOLD: Duration = Duration::from_millis(500);
+const TOUCH_RIGHT_CLICK_HOLD: Duration = Duration::from_millis(100);
 
 pub enum Gesture {
     None,
@@ -745,7 +747,7 @@ impl TouchUi {
         size: [f32; 2],
         sensitivity: f32,
         clicks: bool,
-        inventory_hold: bool,
+        inventory_slot: bool,
     ) -> [f32; 2] {
         if phase == TouchPhase::Cancelled {
             self.cancel();
@@ -765,6 +767,7 @@ impl TouchUi {
                 since: Instant::now(),
                 dragged: !clicks,
                 right_sent: false,
+                inventory_slot,
             });
         }
         let Some(touch) = self.relative.as_mut().filter(|t| t.id == id) else {
@@ -773,13 +776,10 @@ impl TouchUi {
         if (touch.cursor[0] - cursor[0]).abs() > 1.0 || (touch.cursor[1] - cursor[1]).abs() > 1.0 {
             touch.cursor = cursor;
         }
-        // Match the regular inventory gesture when the first move arrives at the hold boundary.
-        let was_dragged = touch.dragged;
         touch.dragged |= (point[0] - touch.origin[0]).hypot(point[1] - touch.origin[1]) > 3.0;
-        let hold_started = inventory_hold
+        let hold_started = touch.inventory_slot
             && phase == TouchPhase::Moved
             && clicks
-            && !was_dragged
             && !touch.right_sent
             && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
         if hold_started {
@@ -792,8 +792,12 @@ impl TouchUi {
         touch.cursor = position;
         touch.last = point;
         if phase == TouchPhase::Ended {
-            if clicks && !touch.dragged && !touch.right_sent {
-                self.relative_click = Some(touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD);
+            if clicks && !touch.right_sent {
+                if touch.inventory_slot && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
+                    self.relative_click = Some(true);
+                } else if !touch.dragged {
+                    self.relative_click = Some(false);
+                }
             }
             self.relative = None;
         }
@@ -818,7 +822,7 @@ impl TouchUi {
             return Some(right);
         }
         let touch = self.relative.as_mut()?;
-        if !touch.dragged
+        if touch.inventory_slot
             && !touch.right_sent
             && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD
         {
@@ -853,8 +857,8 @@ impl TouchUi {
         self.gesture_with_right_click(id, p, phase, false)
     }
 
-    /// With Bedrock Inventory disabled, a short tap is left-click. Holding for 500 ms
-    /// presses the right mouse button; moving the finger then drags with that button held.
+    /// A touch started on a non-Bedrock inventory slot becomes a held right-click after 100 ms.
+    /// Moving the finger then drags with that button held; other areas never long-press right-click.
     pub fn gesture_with_right_click(
         &mut self,
         id: u64,
@@ -883,6 +887,7 @@ impl TouchUi {
                     dragged: false,
                     since: Instant::now(),
                     right_sent: false,
+                    inventory_slot: right_click_on_hold,
                 });
             }
             return Gesture::None;
@@ -897,7 +902,7 @@ impl TouchUi {
         touch.previous = p;
         if phase == TouchPhase::Ended {
             let tap = !touch.dragged && !touch.right_sent;
-            let right = right_click_on_hold && !touch.right_sent
+            let right = touch.inventory_slot && !touch.right_sent
                 && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
             let held = touch.right_sent;
             self.cancel();
@@ -914,7 +919,7 @@ impl TouchUi {
         if touch.right_sent {
             return Gesture::None;
         }
-        if right_click_on_hold && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
+        if touch.inventory_slot && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
             touch.right_sent = true;
             return Gesture::RightPress;
         }
@@ -934,7 +939,9 @@ impl TouchUi {
         let Some(touch) = self.gesture.as_mut() else {
             return false;
         };
-        if !touch.right_sent && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
+        if !touch.right_sent
+            && touch.inventory_slot
+            && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
         {
             touch.right_sent = true;
             return true;
@@ -8498,9 +8505,9 @@ mod tests {
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(2, p, TouchPhase::Started, p, size, 1.0, true);
         ui.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
-        assert_eq!(ui.relative_click(true), Some(true));
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(2, p, TouchPhase::Ended, p, size, 1.0, true);
+        assert_eq!(ui.relative_click(true), Some(false));
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(3, p, TouchPhase::Started, p, size, 1.0, false);
         ui.relative_touch(3, p, TouchPhase::Ended, p, size, 1.0, false);
@@ -8511,11 +8518,17 @@ mod tests {
         assert_eq!(ui.relative_click(true), None);
     }
     #[test]
-    fn virtual_mouse_inventory_hold_starts_on_first_move_after_threshold() {
+    fn virtual_mouse_inventory_hold_starts_after_drag_begins() {
         let mut ui = TouchUi::default();
         let p = [100.0, 80.0];
         let size = [400.0, 240.0];
         ui.relative_touch_with_inventory_hold(41, p, TouchPhase::Started, p, size, 1.0, true, true);
+        ui.relative.as_mut().unwrap().since = Instant::now() + Duration::from_secs(1);
+
+        ui.relative_touch_with_inventory_hold(
+            41, [110.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
+        );
+        assert_eq!(ui.relative_click(true), None);
         ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
 
         let moved = ui.relative_touch_with_inventory_hold(
@@ -8547,7 +8560,7 @@ mod tests {
     }
 
     #[test]
-    fn virtual_mouse_long_hold_keeps_right_button_down_until_touch_release() {
+    fn virtual_mouse_long_hold_outside_inventory_slot_never_right_clicks() {
         let mut ui = TouchUi::default();
         let p = [100.0, 80.0];
         let size = [400.0, 240.0];
@@ -8556,15 +8569,14 @@ mod tests {
 
         let id = ui.relative_id().expect("the held finger owns the pointer");
         assert_eq!(id, 41);
-        assert_eq!(ui.relative_click(true), Some(true));
-        assert!(ui.press_mouse(id, true));
-        assert!(ui.mouse_held());
+        assert_eq!(ui.relative_click(true), None);
+        assert!(!ui.mouse_held());
 
         ui.relative_touch(41, [140.0, 90.0], TouchPhase::Moved, p, size, 1.0, false);
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(41, [140.0, 90.0], TouchPhase::Ended, p, size, 1.0, false);
         assert_eq!(ui.relative_click(true), None);
-        assert_eq!(ui.release_mouse(id), Some((true, true)));
+        assert_eq!(ui.release_mouse(id), None);
         assert!(!ui.mouse_held());
     }
 
@@ -8664,6 +8676,15 @@ mod tests {
             normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Ended),
             Gesture::Tap
         ));
+
+        let mut outside_slot = TouchUi::default();
+        outside_slot.gesture_with_right_click(5, [80.0, 60.0], TouchPhase::Started, false);
+        outside_slot.gesture.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
+        assert!(!outside_slot.right_click_hold_due(Instant::now(), true));
+        assert!(matches!(
+            outside_slot.gesture_with_right_click(5, [80.0, 60.0], TouchPhase::Ended, false),
+            Gesture::Tap
+        ));
     }
 
     #[test]
@@ -8678,7 +8699,7 @@ mod tests {
             ui.gesture_with_right_click(1, [100.0, 60.0], TouchPhase::Moved, true),
             Gesture::Scroll(_)
         ));
-        assert!(!ui.right_click_hold_due(start + Duration::from_millis(499), true));
+        assert!(!ui.right_click_hold_due(start + Duration::from_millis(99), true));
         assert!(ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
         assert!(!ui.right_click_hold_due(start + Duration::from_millis(1000), true));
 

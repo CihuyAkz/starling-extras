@@ -112,6 +112,19 @@ impl Game<'_> {
         (slot, outside)
     }
 
+    /// True only over an actual non-Bedrock slot on an inventory/container screen.
+    /// `slot_at` uses the active menu's slot layout, including player inventory, crafting,
+    /// stations, furnaces, chests, brewing, crafter, and native/mod container slots.
+    pub(in crate::game) fn non_bedrock_inventory_slot_at(&self, gui: (f32, f32)) -> bool {
+        !self.settings.bedrock_inventory
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && self.title.is_none()
+            && {
+                let batch = self.touch_gui_batch();
+                self.slot_at(&batch, gui.0, gui.1).is_some()
+            }
+    }
+
     /// Whether a window position is on the player shown in the inventory (its box in the survival
     /// inventory, in the creative screen's inventory tab).
     fn touch_on_player(&self, p: PhysicalPosition<f64>) -> bool {
