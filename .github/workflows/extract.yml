@@ -21,6 +21,7 @@ jobs:
           ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: true
+          token: ${{ secrets.REPO_TOKEN }}
 
       - name: Find ZIP
         shell: bash
@@ -145,6 +146,8 @@ jobs:
 
       - name: Commit and Push
         shell: bash
+        env:
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -166,4 +169,4 @@ jobs:
 
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
 
-          echo "Push berhasil!"```
+          echo "Push berhasil!"
