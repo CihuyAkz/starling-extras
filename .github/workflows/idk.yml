@@ -23,15 +23,34 @@ jobs:
         with:
           token: ${{ secrets.REPO_TOKEN }}
 
-      - name: Download Latest Release Assets
+      - name: Get Latest Release Tag
+        id: release
         env:
           GH_TOKEN: ${{ secrets.REPO_TOKEN }}
           SOURCE_REPO: ${{ inputs.source_repo }}
         run: |
-          gh release download \
+          TAG=$(gh release view \
             --repo "$SOURCE_REPO" \
-            --latest \
-            --dir .
+            --json tagName \
+            --jq '.tagName')
+
+          if [ -z "$TAG" ]; then
+            echo "No release found."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download Latest Release Assets
+        env:
+          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --repo "$SOURCE_REPO" \
+            --dir . \
+            --clobber
 
       - name: Commit and Push Changes
         run: |
