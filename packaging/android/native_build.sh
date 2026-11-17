@@ -56,6 +56,13 @@ git -C "$source" archive --format=tar HEAD | tar -x -C "$work/source"
 find "$work/source" -type l -delete
 echo "$commit" > "$work/source/.horizon-revision"
 
+legacy_hooks="$work/source/crates/horizon-client/src/game/native_hooks.rs"
+split_hooks="$work/source/crates/horizon-client/src/game/native_hooks/mod.rs"
+[ -s "$legacy_hooks" ] || fail "missing legacy native hook reference"
+[ -s "$split_hooks" ] || fail "missing split native hook module"
+mkdir -p "$work/legacy-reference"
+mv "$legacy_hooks" "$work/legacy-reference/native_hooks.rs"
+
 # The game module is compiled by two crates (horizon-client's binary, and horizon-android from
 # android_lib.rs), and horizon-mixins refuses a module destination it reaches under two names:
 # while it plans, horizon-android's library is an empty file. The lockfile stays as it is
