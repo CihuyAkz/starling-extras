@@ -1,4 +1,3 @@
-
 name: Extract ZIP and Flatten
 
 on:
@@ -64,11 +63,7 @@ jobs:
             echo "========== ZIP DIAGNOSTICS =========="
 
             echo "File: $ZIP_FILE"
-
-            echo "File size:"
             stat -c '%s bytes' "$ZIP_FILE"
-
-            echo "Detected format:"
             file "$ZIP_FILE"
 
             echo "First 16 bytes:"
@@ -98,8 +93,7 @@ jobs:
               while IFS= read -r -d '' item; do
                 entries+=("$item")
               done < <(
-                find "$CURRENT" -mindepth 1 -maxdepth 1 \
-                  ! -name ".github" -print0
+                find "$CURRENT" -mindepth 1 -maxdepth 1 -print0
               )
 
               if [ "${#entries[@]}" -ne 1 ]; then
@@ -123,7 +117,6 @@ jobs:
             echo "Merging contents from: $ZIP_FILE"
 
             rsync -av "$CURRENT/" /tmp/final/
-
           done
 
           echo "=================================="
@@ -135,8 +128,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf /tmp/final/.github
-          rsync -av --exclude='/.github/' /tmp/final/ ./
+          echo "Merging all extracted files, including .github..."
+
+          rsync -av /tmp/final/ ./
+
+          echo "Semua file berhasil di-merge dan di-update."
 
       - name: Remove source ZIP
         shell: bash
@@ -170,4 +166,4 @@ jobs:
 
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
 
-          echo "Push berhasil!"
+          echo "Push berhasil!"```
