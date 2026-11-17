@@ -1,69 +1,82 @@
 
-name: Download Latest Release
+name: Revert Repository
 
 on:
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: "Source repository (owner/repo)"
+      target_branch:
+        description: "Branch to restore"
+        required: true
+        type: string
+
+      target_sha:
+        description: "Commit SHA to restore branch to"
         required: true
         type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: repository-restore-${{ inputs.target_branch }}
+  cancel-in-progress: false
+
 jobs:
-  download:
-    name: Download and Update Repository
+  restore:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.REPO_TOKEN }}
-
-      - name: Get Latest Release Tag
-        id: release
+      - name: Validate Inputs
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
-          SOURCE_REPO: ${{ inputs.source_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          TAG=$(gh release view \
-            --repo "$SOURCE_REPO" \
-            --json tagName \
-            --jq '.tagName')
-
-          if [ -z "$TAG" ]; then
-            echo "No release found."
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            echo "Invalid commit SHA"
             exit 1
           fi
 
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ ! "$TARGET_BRANCH" =~ ^[a-zA-Z0-9._/-]+$ ]] || [[ "$TARGET_BRANCH" == -* ]] || [[ "$TARGET_BRANCH" == *..* ]] || [[ "$TARGET_BRANCH" == *//* ]]; then
+            echo "Invalid branch name"
+            exit 1
+          fi
 
-      - name: Download Latest Release Assets
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.REPO_TOKEN }}
+
+      - name: Validate Target Commit
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
-          SOURCE_REPO: ${{ inputs.source_repo }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          gh release download "$RELEASE_TAG" \
-            --repo "$SOURCE_REPO" \
-            --dir . \
-            --clobber
+          git cat-file -e "$TARGET_SHA^{commit}"
 
-      - name: Commit and Push Changes
+      - name: Restore Repository
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -A
+          git rm -r --ignore-unmatch .
+          git checkout "$TARGET_SHA" -- .
 
           if git diff --cached --quiet; then
-            echo "No changes detected."
+            echo "Repository already matches target commit."
             exit 0
           fi
 
-          git commit -m "chore: update latest release assets"
+          git commit -m "chore: restore repository to $TARGET_SHA"
 
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Push Restore Commit
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
