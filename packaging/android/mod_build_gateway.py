@@ -6,24 +6,18 @@ once it has had nothing to do for a while. Finished libraries and known failures
 them again doesn't wake it. Behind Caddy, which holds the HTTPS. The machine's own identity may only start,
 stop and read that one VM. Python's standard library only.
 
-All native-mod compilation uses GitHub Actions (`via=github`) through this gateway.
-The gateway keeps each request's mods for the runner to fetch, dispatches the configured build repository's
-workflow, and returns the resulting library to the game.
+A player may ask for GitHub's machines instead (`via=github`): slower, with no machine of ours awake. The
+gateway keeps the request's mods for the runner to fetch, runs the mod-builds repository's workflow, and
+brings the library here when it ends, so it is served as any other.
 
     BUILD_BACKEND          http://host:8787
-    BUILD_VM               the VM's Azure resource id; empty once there is none, and then only the
-                           versions GitHub builds are compiled
-    GITHUB_VERSIONS        versions routed to GitHub Actions without a separate UI choice
-                           (comma-separated; * means every version)
+    BUILD_VM               the VM's Azure resource id
     GATEWAY_PORT           default 8788
     STATE_DIRECTORY        where results stay (systemd's StateDirectory); without it nothing stays
     STORE_BYTES            how much of them, default 10 GiB
     GATEWAY_PUBLIC_URL     where GitHub's runners reach this; without it, or the token, no GitHub builds
-    GITHUB_AT_ONCE         GitHub runs at once, default 8; GITHUB_LINE, waiting here beyond them, 24
-    GITHUB_BUILDS_PER_DAY  GitHub builds in any 24 hours, everyone's together, default 300
     CREDENTIALS_DIRECTORY  systemd's LoadCredential: github-token, allowed to run mod-builds' workflows
 """
-import base64
 import calendar
 import hashlib
 import http.client
@@ -41,7 +35,7 @@ import urllib.request
 import zipfile
 
 BACKEND = urllib.parse.urlparse(os.environ["BUILD_BACKEND"])
-VM = os.environ.get("BUILD_VM", "")
+VM = os.environ["BUILD_VM"]
 PORT = int(os.environ.get("GATEWAY_PORT", "8788"))
 ARM = "https://management.azure.com"
 IDENTITY = (
@@ -75,34 +69,21 @@ JOB = re.compile(r"[0-9a-f]{24}")
 LIBRARY = "libhorizon_android.so"
 CHUNK = 256 * 1024
 GITHUB_API = os.environ.get("GITHUB_API", "https://api.github.com")
-GITHUB_REPO = os.environ.get("GITHUB_BUILDS_REPO", "CihuyAkz/mod-builds-extras")
-GITHUB_WORKFLOW = os.environ.get("GITHUB_BUILDS_WORKFLOW", "build.yml")
-GITHUB_BUILDS_REF = os.environ.get("GITHUB_BUILDS_REF", "main")
-GITHUB_SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "CihuyAkz/starling-extras")
-GITHUB_TOOLS_REF = os.environ.get("GITHUB_TOOLS_REF", "")
+GITHUB_REPO = os.environ.get("GITHUB_BUILDS_REPO", "starling-client/mod-builds")
+GITHUB_WORKFLOW = "build.yml"
 PUBLIC_URL = os.environ.get("GATEWAY_PUBLIC_URL", "")
-# Runs at once: the rest wait here, where their place in line can be told. A free organization runs
-# 20 jobs at once in all, its other repositories' CI included.
-GITHUB_AT_ONCE = int(os.environ.get("GITHUB_AT_ONCE", "8"))
-GITHUB_LINE = int(os.environ.get("GITHUB_LINE", "24"))
+# Runs at once: the rest wait here, where their place in line can be told.
+GITHUB_AT_ONCE = 8
+GITHUB_LINE = 24
 # GitHub's machines cost nothing, but a repository that keeps them busy all day may be asked to stop.
 GITHUB_PER_ADDRESS = 32
 GITHUB_PER_DAY = int(os.environ.get("GITHUB_BUILDS_PER_DAY", "300"))
-# Versions whose builds go to GitHub's machines however they are asked for: the build machine is
-# never woken for them.
-GITHUB_VERSIONS = {v.strip() for v in os.environ.get("GITHUB_VERSIONS", "").split(",") if v.strip()}
-# Asked for a version GitHub doesn't build, with no build machine left.
-NO_MACHINE = (
-    "This version of Starling can't compile native mods anymore: update Starling, then compile again."
-)
 GITHUB_LOOK_SECONDS = 20
 # Asked for and no run after this, or a run this old: it isn't coming.
 GITHUB_NO_RUN_SECONDS = 15 * 60
 GITHUB_SECONDS = 75 * 60
 # A failure that wasn't the mods' fault is told for this long; asking again builds again.
 GITHUB_FAILURE_SECONDS = 60 * 60
-# How often the build repository's versions.json is read again: the commit each version's builds are made from.
-RELEASES_SECONDS = 5 * 60
 ASK = re.compile(r"[0-9a-f]{32}")
 
 lock = threading.Lock()
@@ -121,8 +102,6 @@ proxying = 0
 # Jobs on GitHub, job to what it needs, and when and by whom each was asked for today.
 github_jobs = {}
 github_asked = []
-# versions.json as last read: when, and each version's commit (`release_commits`).
-releases = {"at": 0.0, "commits": {}}
 
 
 def power(action):
@@ -182,23 +161,10 @@ def wake():
     return False
 
 
-def kept_awake(now):
-    """Whether someone asked for the machine to stay on until a later time: `keep-awake` in the store
-    holds that time (Unix seconds). Work of ours the service doesn't see (a worker compiling there)
-    keeps it on this way, and the asking runs out by itself."""
-    if not STORE:
-        return False
-    try:
-        with open(os.path.join(STORE, "keep-awake")) as f:
-            return now < float(f.read().strip())
-    except (OSError, ValueError):
-        return False
-
-
 def sleeper():
     """Puts back to sleep what this started, when it has been idle. A machine someone else started
     is left alone, and so is one whose service answered and then stopped: someone is working on it,
-    or it is already off. One asked to stay on (`kept_awake`) stays on until the time asked."""
+    or it is already off."""
     global started_at
     answered = False
     while True:
@@ -225,7 +191,7 @@ def sleeper():
                 and now - active > IDLE_SECONDS
                 and now - started > IDLE_SECONDS
             )
-        if give_up and not kept_awake(now) and power("deallocate"):
+        if give_up and power("deallocate"):
             with lock:
                 started_at = None
 
@@ -357,19 +323,14 @@ def failure_of(job):
 
 
 def answered_here(request):
-    """The job of a request that needs no machine: built and kept, or failed for the mods' own fault.
-    A kept build of a commit its version no longer names is forgotten, and the request builds again."""
+    """The job of a request that needs no machine: built and kept, or failed for the mods' own fault."""
     now = time.time()
     with lock:
         failure = known_failures.get(request)
         if failure and now - failure["at"] < DAY:
             return failure["job"]
         job = kept.get(request)
-    status = kept_status(job) if job else None
-    if status and stale(status):
-        forget_stale(job)
-        return None
-    return job if status else None
+    return job if job and kept_status(job) else None
 
 
 def remember_failure(job, status):
@@ -523,53 +484,6 @@ def github_download(url, path):
         shutil.copyfileobj(answer, f, CHUNK)
 
 
-def release_commits():
-    """Each version's commit in the configured build repository's versions.json, which its builds are made from, read at
-    most every RELEASES_SECONDS; the last one read while GitHub doesn't answer, and none without it.
-    """
-    if not github_open():
-        return {}
-    now = time.time()
-    with lock:
-        if now - releases["at"] < RELEASES_SECONDS:
-            return releases["commits"]
-        releases["at"] = now
-    try:
-        ref = urllib.parse.quote(GITHUB_BUILDS_REF, safe="")
-        answer = github_api("GET", f"/contents/versions.json?ref={ref}")
-        commits = json.loads(base64.b64decode(answer["content"]))
-        if not isinstance(commits, dict):
-            raise ValueError("versions.json is not a table")
-    except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as e:
-        print(f"could not read versions.json: {e!r}", flush=True)
-        with lock:
-            return releases["commits"]
-    with lock:
-        releases["commits"] = {str(v): str(c) for v, c in commits.items()}
-        return releases["commits"]
-
-
-def stale(status):
-    """Whether a kept build was made from another commit than the one its version names now: one
-    built while a release candidate had the release's number is not the release (0.8.0's first
-    builds were release-candidate-5's, without its controls and skins)."""
-    build = (status or {}).get("build") or {}
-    versions = release_commits()
-    want = versions.get(build.get("version")) or versions.get("*")
-    return bool(want and build.get("commit") and build["commit"] != want)
-
-
-def forget_stale(job):
-    """A kept build of an older commit goes: asking for its mods builds them again."""
-    shutil.rmtree(result_folder(job), ignore_errors=True)
-    with lock:
-        for request in [r for r, j in kept.items() if j == job]:
-            del kept[request]
-        github_jobs.pop(job, None)
-    print(f"{job}: built from an older commit of its version, forgotten", flush=True)
-    save_index()
-
-
 def github_folder():
     return os.path.join(STORE, "github")
 
@@ -578,21 +492,8 @@ def github_ask(address, request, version, body):
     """This request's job on GitHub, asked for before or now: (job, None), or (None, why not)."""
     if not github_open():
         return None, "Building on GitHub isn't available right now."
-    if not re.fullmatch(
-        r"\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
-        version,
-    ):
+    if not re.fullmatch(r"\d+(\.\d+){1,3}", version):
         return None, "That is not a version of the game."
-    if "-" in version:
-        versions = release_commits()
-    else:
-        versions = {}
-    if "-" in version and version not in versions and "*" not in versions:
-        return None, (
-            f"No source commit is registered for Starling {version[:32]}. "
-            f"Add this version or a universal '*' entry with the fork's commit to "
-            f"{GITHUB_REPO}/versions.json."
-        )
     job = request[:24]
     now = time.time()
     with lock:
@@ -748,13 +649,11 @@ def github_round():
                 "POST",
                 f"/actions/workflows/{GITHUB_WORKFLOW}/dispatches",
                 {
-                    "ref": GITHUB_BUILDS_REF,
+                    "ref": "main",
                     "inputs": {
                         "ask": entry["ask"],
                         "version": entry["version"],
                         "gateway": PUBLIC_URL,
-                        "source": GITHUB_SOURCE_REPO,
-                        "tools": GITHUB_TOOLS_REF,
                     },
                 },
             )
@@ -854,7 +753,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(size)
         query = urllib.parse.parse_qs(url.query)
         version = query.get("version", [""])[0]
-        github = query.get("via", [""])[0] == "github" or version in GITHUB_VERSIONS or "*" in GITHUB_VERSIONS
+        github = query.get("via", [""])[0] == "github"
         # The same mods on the same game, whichever machine is asked: what one built, the other has.
         asked = f"{url.path}?version={version}" if github else self.path
         request = hashlib.sha256(asked.encode() + body).hexdigest()
@@ -867,9 +766,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 print(f"refused: {refused}", flush=True)
                 return self.answer(429, {"error": refused})
             return self.answer(200, {"job": job})
-        if not VM:
-            print(f"refused: {NO_MACHINE}", flush=True)
-            return self.answer(429, {"error": NO_MACHINE})
         refused = refusal(self.address(), request)
         if refused:
             print(f"refused: {refused}", flush=True)
@@ -929,8 +825,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
-        if path == "/healthz":
-            return self.answer(200, {"ok": True})
         parts = path.strip("/").split("/")
         if parts[:2] == ["v1", "github"] and len(parts) == 3:
             return self.serve_mods(parts[2])
@@ -948,10 +842,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if library and arriving:
             arriving.wait(60)
         status = kept_status(job)
-        if status and stale(status):
-            # Not the game its version is any more: asking for its mods again builds it.
-            forget_stale(job)
-            return self.answer(404, {"error": "No such job."})
         if status:
             try:
                 os.utime(os.path.join(result_folder(job), "status.json"))

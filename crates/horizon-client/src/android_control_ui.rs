@@ -76,7 +76,7 @@ pub struct TouchUi {
     relative: Option<RelativeTouch>,
     relative_click: Option<bool>,
     pub keyboard: Option<Keyboard>,
-    gesture: Option<GestureTouch>,
+    gesture: Option<(u64, [f32; 2], [f32; 2], bool)>,
     pointer_drag: Option<u64>,
     held_keys: BTreeMap<u64, KeyCode>,
     pub f3_latched: bool,
@@ -327,26 +327,10 @@ struct RelativeTouch {
     since: Instant,
     dragged: bool,
     right_sent: bool,
-    inventory_slot: bool,
 }
-struct GestureTouch {
-    id: u64,
-    start: [f32; 2],
-    previous: [f32; 2],
-    dragged: bool,
-    since: Instant,
-    right_sent: bool,
-    inventory_slot: bool,
-}
-
-const TOUCH_RIGHT_CLICK_HOLD: Duration = Duration::from_millis(100);
-
 pub enum Gesture {
     None,
     Tap,
-    RightClick,
-    RightPress,
-    RightRelease,
     Scroll(f32),
 }
 pub enum Action {
@@ -717,7 +701,9 @@ impl TouchUi {
         self.relative.as_ref().is_some_and(|t| t.id == id)
     }
     pub fn owns_gesture(&self, id: u64) -> bool {
-        self.gesture.as_ref().is_some_and(|touch| touch.id == id)
+        self.gesture
+            .as_ref()
+            .is_some_and(|(owner, _, _, _)| *owner == id)
             || self.pointer_drag == Some(id)
     }
     /// Relative motion: touching down does not teleport the cursor, and movement
@@ -731,23 +717,6 @@ impl TouchUi {
         size: [f32; 2],
         sensitivity: f32,
         clicks: bool,
-    ) -> [f32; 2] {
-        self.relative_touch_with_inventory_hold(
-            id, point, phase, cursor, size, sensitivity, clicks, false,
-        )
-    }
-
-    /// Relative virtual-mouse motion with the optional non-Bedrock inventory hold gesture.
-    pub fn relative_touch_with_inventory_hold(
-        &mut self,
-        id: u64,
-        point: [f32; 2],
-        phase: TouchPhase,
-        cursor: [f32; 2],
-        size: [f32; 2],
-        sensitivity: f32,
-        clicks: bool,
-        inventory_slot: bool,
     ) -> [f32; 2] {
         if phase == TouchPhase::Cancelled {
             self.cancel();
@@ -767,7 +736,6 @@ impl TouchUi {
                 since: Instant::now(),
                 dragged: !clicks,
                 right_sent: false,
-                inventory_slot,
             });
         }
         let Some(touch) = self.relative.as_mut().filter(|t| t.id == id) else {
@@ -777,14 +745,6 @@ impl TouchUi {
             touch.cursor = cursor;
         }
         touch.dragged |= (point[0] - touch.origin[0]).hypot(point[1] - touch.origin[1]) > 3.0;
-        let hold_started = touch.inventory_slot
-            && phase == TouchPhase::Moved
-            && clicks
-            && !touch.right_sent
-            && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
-        if hold_started {
-            touch.right_sent = true;
-        }
         let position = [0, 1].map(|i| {
             let max_bound = (size[i] - 1.0).max(0.0);
             (touch.cursor[i] + (point[i] - touch.last[i]) * sens).clamp(0.0, max_bound)
@@ -792,26 +752,13 @@ impl TouchUi {
         touch.cursor = position;
         touch.last = point;
         if phase == TouchPhase::Ended {
-            if clicks && !touch.right_sent {
-                if touch.inventory_slot && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
-                    self.relative_click = Some(true);
-                } else if !touch.dragged {
-                    self.relative_click = Some(false);
-                }
+            if clicks && !touch.dragged && !touch.right_sent {
+                self.relative_click = Some(touch.since.elapsed() >= Duration::from_millis(500));
             }
             self.relative = None;
         }
-        if hold_started {
-            // The per-frame virtual-mouse handler sends RMB down while this finger still owns it.
-            self.relative_click = Some(true);
-        }
         position
     }
-    /// The finger that owns the current relative pointer gesture, if any.
-    pub fn relative_id(&self) -> Option<u64> {
-        self.relative.as_ref().map(|touch| touch.id)
-    }
-
     /// false = LMB, true = RMB. A stationary hold clicks once, even before release.
     pub fn relative_click(&mut self, clicks: bool) -> Option<bool> {
         if !clicks {
@@ -822,9 +769,9 @@ impl TouchUi {
             return Some(right);
         }
         let touch = self.relative.as_mut()?;
-        if touch.inventory_slot
+        if !touch.dragged
             && !touch.right_sent
-            && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD
+            && touch.since.elapsed() >= Duration::from_millis(500)
         {
             touch.right_sent = true;
             return Some(true);
@@ -854,108 +801,36 @@ impl TouchUi {
     }
     /// A drag scrolls; a tap clicks only on release. Never activate a row while scrolling it.
     pub fn gesture(&mut self, id: u64, p: [f32; 2], phase: TouchPhase) -> Gesture {
-        self.gesture_with_right_click(id, p, phase, false)
-    }
-
-    /// A touch started on a non-Bedrock inventory slot becomes a held right-click after 100 ms.
-    /// Moving the finger then drags with that button held; other areas never long-press right-click.
-    pub fn gesture_with_right_click(
-        &mut self,
-        id: u64,
-        p: [f32; 2],
-        phase: TouchPhase,
-        right_click_on_hold: bool,
-    ) -> Gesture {
         if phase == TouchPhase::Cancelled {
-            let held = self
-                .gesture
-                .as_ref()
-                .is_some_and(|touch| touch.id == id && touch.right_sent);
             self.cancel();
-            return if held {
-                Gesture::RightRelease
-            } else {
-                Gesture::None
-            };
+            return Gesture::None;
         }
         if phase == TouchPhase::Started {
             if self.gesture.is_none() {
-                self.gesture = Some(GestureTouch {
-                    id,
-                    start: p,
-                    previous: p,
-                    dragged: false,
-                    since: Instant::now(),
-                    right_sent: false,
-                    inventory_slot: right_click_on_hold,
-                });
+                self.gesture = Some((id, p, p, false));
             }
             return Gesture::None;
         }
-        let Some(touch) = self.gesture.as_mut().filter(|touch| touch.id == id) else {
+        let Some((owner, start, previous, dragged)) = &mut self.gesture else {
             return Gesture::None;
         };
-        // Keep long-press eligible after movement: dragging with the right button held is
-        // how a regular (non-Bedrock) inventory distributes items between slots.
-        touch.dragged |= (p[0] - touch.start[0]).hypot(p[1] - touch.start[1]) > 12.0;
-        let dy = p[1] - touch.previous[1];
-        touch.previous = p;
-        if phase == TouchPhase::Ended {
-            let tap = !touch.dragged && !touch.right_sent;
-            let right = touch.inventory_slot && !touch.right_sent
-                && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD;
-            let held = touch.right_sent;
-            self.cancel();
-            return if held {
-                Gesture::RightRelease
-            } else if right {
-                Gesture::RightClick
-            } else if tap {
-                Gesture::Tap
-            } else {
-                Gesture::None
-            };
-        }
-        if touch.right_sent {
+        if *owner != id {
             return Gesture::None;
         }
-        if touch.inventory_slot && touch.since.elapsed() >= TOUCH_RIGHT_CLICK_HOLD {
-            touch.right_sent = true;
-            return Gesture::RightPress;
+        *dragged |= (p[0] - start[0]).hypot(p[1] - start[1]) > 12.0;
+        let dy = p[1] - previous[1];
+        *previous = p;
+        if phase == TouchPhase::Ended {
+            let tap = !*dragged;
+            self.cancel();
+            return if tap { Gesture::Tap } else { Gesture::None };
         }
-        if touch.dragged {
+        if *dragged {
             Gesture::Scroll(dy / 30.0)
         } else {
             Gesture::None
         }
     }
-
-    /// Starts holding the right mouse button once the inventory long-press threshold is reached.
-    /// The matching release is emitted by `gesture_with_right_click` when the finger lifts.
-    pub fn right_click_hold_due(&mut self, now: Instant, enabled: bool) -> bool {
-        if !enabled || self.virtual_mouse {
-            return false;
-        }
-        let Some(touch) = self.gesture.as_mut() else {
-            return false;
-        };
-        if !touch.right_sent
-            && touch.inventory_slot
-            && now.duration_since(touch.since) >= TOUCH_RIGHT_CLICK_HOLD
-        {
-            touch.right_sent = true;
-            return true;
-        }
-        false
-    }
-
-    /// Cancels a gesture and reports whether it had a right mouse button held down.
-    pub fn cancel_gesture_right_click(&mut self) -> bool {
-        self.gesture
-            .take()
-            .is_some_and(|touch| touch.right_sent)
-    }
-
     pub fn action(&self, w: f32, h: f32, p: [f32; 2], menu: bool) -> Option<Action> {
         let right = w - if self.virtual_mouse_available {
             115.
@@ -1648,7 +1523,8 @@ pub fn draw_goy_hud(
         }
         let [nx, ny, nw, nh] = p_draw.rect(tc.aspect());
         let [rx, ry, rw, rh] = [nx * w, ny * h, nw * w, nh * h];
-        let alpha = (p.opacity.clamp(0.15, 1.0) * hud_scale).clamp(0.0, 1.0);
+        // Down to 0%, as before 0.8.0 (#258): an invisible control still works.
+        let alpha = (p.opacity.clamp(0.0, 1.0) * hud_scale).clamp(0.0, 1.0);
         let js = &tc.settings.joystick_style;
         let side = rw.min(rh);
         let jx = rx + (rw - side) * 0.5;
@@ -1683,7 +1559,7 @@ pub fn draw_goy_hud(
         }
         let [nx, ny, nw, nh] = p.rect(tc.aspect());
         let [rx, ry, rw, rh] = [nx * w, ny * h, nw * w, nh * h];
-        let alpha = (p.opacity.clamp(0.15, 1.0) * hud_scale).clamp(0.0, 1.0);
+        let alpha = (p.opacity.clamp(0.0, 1.0) * hud_scale).clamp(0.0, 1.0);
         if alpha <= 0.001 {
             continue;
         }
@@ -5228,7 +5104,7 @@ pub fn draw_hud_editor(
                         ),
                         (
                             format!("Stick Alpha|{:.0}%", js.stick_opacity * 100.0),
-                            (js.stick_opacity - 0.15) / 0.85,
+                            js.stick_opacity,
                         ),
                         (
                             format!("Stick Stroke|{:.1}dp", js.stick_stroke),
@@ -5391,7 +5267,7 @@ pub fn draw_hud_editor(
                     for (i, (txt, frac)) in [
                         (
                             format!("Base Alpha|{:.0}%", js.base_opacity * 100.0),
-                            (js.base_opacity - 0.15) / 0.85,
+                            js.base_opacity,
                         ),
                         (
                             format!("Base Stroke|{:.1}dp", js.base_stroke),
@@ -5681,7 +5557,7 @@ pub fn draw_hud_editor(
                         &mut ui,
                         [wx + 12.0, cards_y, cw3, card_h],
                         &format!("Opacity|{:.0}%", p.opacity * 100.0),
-                        (p.opacity - 0.15) / 0.85,
+                        p.opacity,
                         st_cyan,
                         st_cyan_soft,
                         st_card,
@@ -6715,11 +6591,12 @@ fn apply_props_slider(
         let slot = tc.settings.slot(Control::Move);
         match (tab, index) {
             (0, 0) => tc.settings.joystick_style.stick_size = (0.20 + t * 0.65).clamp(0.20, 0.85),
-            (0, 1) => tc.settings.joystick_style.stick_opacity = (0.15 + t * 0.85).clamp(0.15, 1.0),
+            // Opacities from 0%, as before 0.8.0 (#258).
+            (0, 1) => tc.settings.joystick_style.stick_opacity = t,
             (0, _) => {
                 tc.settings.joystick_style.stick_stroke = ((t * 16.0).round() * 0.5).clamp(0.0, 8.0)
             }
-            (1, 0) => tc.settings.joystick_style.base_opacity = (0.15 + t * 0.85).clamp(0.15, 1.0),
+            (1, 0) => tc.settings.joystick_style.base_opacity = t,
             (1, 1) => {
                 tc.settings.joystick_style.base_stroke = ((t * 16.0).round() * 0.5).clamp(0.0, 8.0)
             }
@@ -6733,7 +6610,7 @@ fn apply_props_slider(
         return;
     }
     let apply_pl = |pl: &mut crate::android_controls::Placement| match (tab, index) {
-        (0, 0) => pl.opacity = (0.15 + t * 0.85).clamp(0.15, 1.0),
+        (0, 0) => pl.opacity = t,
         (1, 0) => pl.stroke_size = ((t * 16.0).round() * 0.5).clamp(0.0, 8.0),
         (1, 1) => {
             pl.roundness = (t * 50.0).round().clamp(0.0, 50.0);
@@ -8202,7 +8079,13 @@ mod tests {
     #[test]
     fn slider_vertical_swipe_scrolls_without_changing_its_value() {
         let atlas = HudAtlas::boot();
-        let mut batch = HudBatch::new([1280, 720]);
+        let mut batch = HudBatch::new(
+            [1280, 720],
+            crate::hud::GuiScale {
+                requested: 0,
+                unicode: false,
+            },
+        );
         let (w, h, density, scale) = {
             let ui = crate::android_control_theme::Ui::mobile(&atlas, &mut batch, (0., 0.));
             (ui.w, ui.h, ui.density, ui.batch.scale)
@@ -8505,9 +8388,9 @@ mod tests {
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(2, p, TouchPhase::Started, p, size, 1.0, true);
         ui.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
+        assert_eq!(ui.relative_click(true), Some(true));
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(2, p, TouchPhase::Ended, p, size, 1.0, true);
-        assert_eq!(ui.relative_click(true), Some(false));
         assert_eq!(ui.relative_click(true), None);
         ui.relative_touch(3, p, TouchPhase::Started, p, size, 1.0, false);
         ui.relative_touch(3, p, TouchPhase::Ended, p, size, 1.0, false);
@@ -8517,69 +8400,6 @@ mod tests {
         ui.relative_touch(4, p, TouchPhase::Ended, p, size, 1.0, true);
         assert_eq!(ui.relative_click(true), None);
     }
-    #[test]
-    fn virtual_mouse_inventory_hold_starts_after_drag_begins() {
-        let mut ui = TouchUi::default();
-        let p = [100.0, 80.0];
-        let size = [400.0, 240.0];
-        ui.relative_touch_with_inventory_hold(41, p, TouchPhase::Started, p, size, 1.0, true, true);
-        ui.relative.as_mut().unwrap().since = Instant::now() + Duration::from_secs(1);
-
-        ui.relative_touch_with_inventory_hold(
-            41, [110.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
-        );
-        assert_eq!(ui.relative_click(true), None);
-        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-
-        let moved = ui.relative_touch_with_inventory_hold(
-            41, [140.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
-        );
-        assert_eq!(ui.relative_click(true), Some(true));
-        let id = ui.relative_id().expect("the held finger still owns the pointer");
-        assert!(ui.press_mouse(id, true));
-
-        ui.relative_touch_with_inventory_hold(
-            41, [140.0, 80.0], TouchPhase::Ended, moved, size, 1.0, false, true,
-        );
-        assert_eq!(ui.release_mouse(id), Some((true, true)));
-        assert!(!ui.mouse_held());
-    }
-
-    #[test]
-    fn virtual_mouse_move_after_hold_does_not_enable_inventory_hold_when_disabled() {
-        let mut ui = TouchUi::default();
-        let p = [100.0, 80.0];
-        let size = [400.0, 240.0];
-        ui.relative_touch_with_inventory_hold(42, p, TouchPhase::Started, p, size, 1.0, true, false);
-        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-
-        ui.relative_touch_with_inventory_hold(
-            42, [140.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, false,
-        );
-        assert_eq!(ui.relative_click(true), None);
-    }
-
-    #[test]
-    fn virtual_mouse_long_hold_outside_inventory_slot_never_right_clicks() {
-        let mut ui = TouchUi::default();
-        let p = [100.0, 80.0];
-        let size = [400.0, 240.0];
-        ui.relative_touch(41, p, TouchPhase::Started, p, size, 1.0, true);
-        ui.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
-
-        let id = ui.relative_id().expect("the held finger owns the pointer");
-        assert_eq!(id, 41);
-        assert_eq!(ui.relative_click(true), None);
-        assert!(!ui.mouse_held());
-
-        ui.relative_touch(41, [140.0, 90.0], TouchPhase::Moved, p, size, 1.0, false);
-        assert_eq!(ui.relative_click(true), None);
-        ui.relative_touch(41, [140.0, 90.0], TouchPhase::Ended, p, size, 1.0, false);
-        assert_eq!(ui.relative_click(true), None);
-        assert_eq!(ui.release_mouse(id), None);
-        assert!(!ui.mouse_held());
-    }
-
     #[test]
     fn simultaneous_f3_f4_and_f6_release_independently() {
         let mut ui = TouchUi::default();
@@ -8618,178 +8438,6 @@ mod tests {
             Gesture::None
         ));
     }
-    #[test]
-    fn inventory_touch_long_hold_starts_right_press_even_after_drag_begins() {
-        let mut ui = TouchUi::default();
-        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
-        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        assert!(matches!(
-            ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Ended, true),
-            Gesture::RightClick
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 60.0], TouchPhase::Started, true),
-            Gesture::None
-        ));
-        // A drag that began before the hold threshold becomes a held right-click once
-        // the finger has stayed down for the long-press interval.
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 90.0], TouchPhase::Moved, true),
-            Gesture::Scroll(_)
-        ));
-        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 100.0], TouchPhase::Moved, true),
-            Gesture::RightPress
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 110.0], TouchPhase::Moved, true),
-            Gesture::None
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(2, [80.0, 110.0], TouchPhase::Ended, true),
-            Gesture::RightRelease
-        ));
-
-        // The first movement after the hold threshold starts a real held
-        // right-button press. The release is emitted only when the finger lifts.
-        ui.gesture_with_right_click(3, [80.0, 60.0], TouchPhase::Started, true);
-        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        assert!(matches!(
-            ui.gesture_with_right_click(3, [110.0, 60.0], TouchPhase::Moved, true),
-            Gesture::RightPress
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(3, [140.0, 60.0], TouchPhase::Moved, true),
-            Gesture::None
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(3, [140.0, 60.0], TouchPhase::Ended, true),
-            Gesture::RightRelease
-        ));
-
-        // Other menus keep their ordinary tap behavior even after a long hold.
-        let mut normal_menu = TouchUi::default();
-        normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Started);
-        normal_menu.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        assert!(matches!(
-            normal_menu.gesture(4, [80.0, 60.0], TouchPhase::Ended),
-            Gesture::Tap
-        ));
-
-        let mut outside_slot = TouchUi::default();
-        outside_slot.gesture_with_right_click(5, [80.0, 60.0], TouchPhase::Started, false);
-        outside_slot.gesture.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
-        assert!(!outside_slot.right_click_hold_due(Instant::now(), true));
-        assert!(matches!(
-            outside_slot.gesture_with_right_click(5, [80.0, 60.0], TouchPhase::Ended, false),
-            Gesture::Tap
-        ));
-    }
-
-    #[test]
-    fn right_click_eligibility_is_latched_from_initial_touch_position() {
-        let mut direct = TouchUi::default();
-        direct.gesture_with_right_click(6, [20.0, 60.0], TouchPhase::Started, false);
-        direct.gesture.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
-
-        // Even if later events are over a slot, a touch that began outside stays ineligible.
-        assert!(matches!(
-            direct.gesture_with_right_click(6, [80.0, 60.0], TouchPhase::Moved, true),
-            Gesture::Scroll(_)
-        ));
-        assert!(!direct.right_click_hold_due(Instant::now(), true));
-        assert!(matches!(
-            direct.gesture_with_right_click(6, [90.0, 60.0], TouchPhase::Moved, true),
-            Gesture::Scroll(_)
-        ));
-        assert!(matches!(
-            direct.gesture_with_right_click(6, [90.0, 60.0], TouchPhase::Ended, true),
-            Gesture::None
-        ));
-
-        let mut virtual_mouse = TouchUi::default();
-        let p = [100.0, 80.0];
-        let size = [400.0, 240.0];
-        virtual_mouse.relative_touch_with_inventory_hold(
-            7, p, TouchPhase::Started, p, size, 1.0, true, false,
-        );
-        virtual_mouse.relative.as_mut().unwrap().since = Instant::now() - Duration::from_secs(1);
-        virtual_mouse.relative_touch_with_inventory_hold(
-            7, [110.0, 80.0], TouchPhase::Moved, p, size, 1.0, true, true,
-        );
-        assert_eq!(virtual_mouse.relative_click(true), None);
-    }
-
-    #[test]
-    fn inventory_hold_keeps_right_mouse_pressed_until_release() {
-        let mut ui = TouchUi::default();
-        let start = Instant::now();
-        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
-        ui.gesture.as_mut().unwrap().since = start;
-
-        // Movement before the threshold must not prevent the hold from activating.
-        assert!(matches!(
-            ui.gesture_with_right_click(1, [100.0, 60.0], TouchPhase::Moved, true),
-            Gesture::Scroll(_)
-        ));
-        assert!(!ui.right_click_hold_due(start + Duration::from_millis(99), true));
-        assert!(ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
-        assert!(!ui.right_click_hold_due(start + Duration::from_millis(1000), true));
-
-        // Once pressed, moving the finger keeps the button down and moves the cursor.
-        assert!(matches!(
-            ui.gesture_with_right_click(1, [120.0, 60.0], TouchPhase::Moved, true),
-            Gesture::None
-        ));
-        assert!(matches!(
-            ui.gesture_with_right_click(1, [120.0, 60.0], TouchPhase::Ended, true),
-            Gesture::RightRelease
-        ));
-        assert!(!ui.right_click_hold_due(start + Duration::from_millis(1500), true));
-    }
-
-    #[test]
-    fn gesture_inventory_hold_is_disabled_while_virtual_mouse_is_active() {
-        let mut ui = TouchUi::default();
-        ui.virtual_mouse = true;
-        let start = Instant::now();
-        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
-        ui.gesture.as_mut().unwrap().since = start;
-        assert!(!ui.right_click_hold_due(start + TOUCH_RIGHT_CLICK_HOLD, true));
-    }
-
-    #[test]
-    fn virtual_mouse_relative_touch_does_not_start_inventory_right_hold() {
-        let mut ui = TouchUi::default();
-        let point = [100.0, 80.0];
-        let size = [400.0, 240.0];
-        ui.relative_touch(1, point, TouchPhase::Started, point, size, 1.0, true);
-        ui.relative.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        ui.relative_touch(
-            1,
-            [110.0, 80.0],
-            TouchPhase::Moved,
-            point,
-            size,
-            1.0,
-            true,
-        );
-        assert_eq!(ui.relative_click(true), None);
-    }
-
-    #[test]
-    fn inventory_hold_releases_right_mouse_when_cancelled() {
-        let mut ui = TouchUi::default();
-        ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Started, true);
-        ui.gesture.as_mut().unwrap().since = Instant::now() - TOUCH_RIGHT_CLICK_HOLD;
-        assert!(ui.right_click_hold_due(Instant::now(), true));
-        assert!(matches!(
-            ui.gesture_with_right_click(1, [80.0, 60.0], TouchPhase::Cancelled, true),
-            Gesture::RightRelease
-        ));
-    }
-
     #[test]
     fn tap_release_cancel_and_second_finger() {
         let mut u = TouchUi::default();

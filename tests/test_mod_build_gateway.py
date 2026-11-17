@@ -1,5 +1,4 @@
 """The build gateway's day limits (packaging/android/mod_build_gateway.py)."""
-import base64
 import hashlib
 import http.client
 import http.server
@@ -177,16 +176,12 @@ JOB = "0123456789abcdef01234567"
 
 
 class FakeGitHub(http.server.BaseHTTPRequestHandler):
-    """The configured build repository as the gateway sees it. The runs are set by the test."""
+    """The mod-builds repository as the gateway sees it. The runs are set by the test."""
 
     dispatched = []
-    dispatched_refs = []
-    requested_paths = []
     runs = []
     artifact = b""
     token_at_the_blob = None
-    # versions.json: each version's commit.
-    versions = {}
 
     def log_message(self, *args):
         pass
@@ -200,21 +195,14 @@ class FakeGitHub(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         size = int(self.headers.get("Content-Length") or 0)
-        payload = json.loads(self.rfile.read(size))
-        type(self).dispatched.append(payload["inputs"])
-        type(self).dispatched_refs.append(payload["ref"])
+        type(self).dispatched.append(json.loads(self.rfile.read(size))["inputs"])
         self.send(None, 204)
 
     def do_GET(self):
         cls = type(self)
         port = self.server.server_address[1]
-        cls.requested_paths.append(self.path)
-        route = self.path.split("?", 1)[0]
         if "/runs?" in self.path:
             self.send({"workflow_runs": cls.runs})
-        elif route.endswith("/contents/versions.json"):
-            content = base64.b64encode(json.dumps(cls.versions).encode()).decode()
-            self.send({"encoding": "base64", "content": content})
         elif self.path.endswith("/artifacts"):
             url = f"http://127.0.0.1:{port}/artifact"
             self.send({"artifacts": [{"name": "result", "archive_download_url": url}]})
@@ -385,20 +373,6 @@ class Stored(unittest.TestCase):
         self.assertEqual(gateway.copying, {})
 
 
-class KeptAwake(unittest.TestCase):
-    def test_the_machine_stays_on_until_the_time_asked(self):
-        with tempfile.TemporaryDirectory() as store:
-            gateway = load(STATE_DIRECTORY=store)
-            self.assertFalse(gateway.kept_awake(1000.0))
-            path = Path(store) / "keep-awake"
-            path.write_text("2000\n")
-            self.assertTrue(gateway.kept_awake(1000.0))
-            self.assertFalse(gateway.kept_awake(2000.0))
-            path.write_text("soon")
-            self.assertFalse(gateway.kept_awake(1000.0))
-        self.assertFalse(load().kept_awake(1000.0))
-
-
 class OnGitHub(unittest.TestCase):
     """Through real sockets: the gateway between a fake service, which must stay out of it, and a
     fake GitHub."""
@@ -418,11 +392,7 @@ class OnGitHub(unittest.TestCase):
         threading.Thread(target=self.service.serve_forever, daemon=True).start()
         self.addCleanup(self.service.server_close)
         self.addCleanup(self.service.shutdown)
-        self.github = type(
-            "GitHub",
-            (FakeGitHub,),
-            {"dispatched": [], "dispatched_refs": [], "requested_paths": [], "runs": [], "artifact": b""},
-        )
+        self.github = type("GitHub", (FakeGitHub,), {"dispatched": [], "runs": [], "artifact": b""})
         self.github_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), self.github)
         threading.Thread(target=self.github_server.serve_forever, daemon=True).start()
         self.addCleanup(self.github_server.server_close)
@@ -473,16 +443,15 @@ class OnGitHub(unittest.TestCase):
             }
         ]
 
-    def finished_run(self, job, commit=None):
-        """Asked for, run and done: the library is here, built from `commit` when it is given."""
+    def finished_run(self, job):
+        """Asked for, run and done: the library is here."""
         library = self.LIBRARY
-        build = {"version": "0.8.0", **({"commit": commit} if commit else {})}
         self.github.artifact = result_zip(
             {
                 "state": "done",
                 "sha256": hashlib.sha256(library).hexdigest(),
                 "size": len(library),
-                "build": build,
+                "build": {"version": "0.8.0"},
             },
             library,
         )
@@ -491,12 +460,6 @@ class OnGitHub(unittest.TestCase):
         self.gateway.github_round()
         return self.poll(job)
 
-    def test_health_check_does_not_contact_the_build_backend(self):
-        status, body = self.call("GET", "/healthz")
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body), {"ok": True})
-        self.assertEqual(self.fake.asked, 0)
-
     def test_without_the_token_the_door_is_shut_and_the_machine_stays_out_of_it(self):
         (Path(self.env["CREDENTIALS_DIRECTORY"]) / "github-token").unlink()
         status, data = self.ask()
@@ -504,77 +467,6 @@ class OnGitHub(unittest.TestCase):
         self.assertIn("GitHub", data["error"])
         self.assertEqual(self.fake.asked, 0)
         self.gateway.power.assert_not_called()
-
-    def test_an_unregistered_dev_version_is_refused_with_the_mapping_needed(self):
-        self.env["GITHUB_BUILDS_REPO"] = "CihuyAkz/mod-builds-extras"
-        self.start_gateway()
-        status, body = self.call(
-            "POST", "/v1/build?version=0.8.0-dev.81&via=github", b"mods"
-        )
-        self.assertEqual(status, 429)
-        error = json.loads(body)["error"]
-        self.assertIn("0.8.0-dev.81", error)
-        self.assertIn("CihuyAkz/mod-builds-extras/versions.json", error)
-        self.assertEqual(self.github.dispatched, [])
-
-    def test_a_registered_dev_version_is_dispatched_to_github(self):
-        self.env["GITHUB_BUILDS_REPO"] = "CihuyAkz/mod-builds-extras"
-        self.start_gateway()
-        self.github.versions = {"0.8.0-dev.81": "c" * 40}
-        self.gateway.releases["at"] = 0.0
-        status, body = self.call(
-            "POST", "/v1/build?version=0.8.0-dev.81&via=github", b"mods"
-        )
-        self.assertEqual(status, 200)
-        job = json.loads(body)["job"]
-        self.gateway.github_round()
-        self.assertEqual(self.github.dispatched[-1]["version"], "0.8.0-dev.81")
-        self.assertEqual(self.poll(job)["state"], "queued")
-
-    def test_the_fork_build_repository_is_the_default(self):
-        self.assertEqual(self.gateway.GITHUB_REPO, "CihuyAkz/mod-builds-extras")
-        self.assertEqual(self.gateway.GITHUB_BUILDS_REF, "main")
-        self.assertEqual(self.gateway.GITHUB_WORKFLOW, "build.yml")
-
-    def test_versions_json_and_workflow_use_the_configured_build_ref(self):
-        self.env["GITHUB_BUILDS_REF"] = "actions"
-        self.start_gateway()
-        self.github.versions = {"*": "c" * 40}
-        self.gateway.releases["at"] = 0.0
-        status, body = self.call(
-            "POST", "/v1/build?version=0.8.0-dev.81&via=github", b"mods"
-        )
-        self.assertEqual(status, 200)
-        self.gateway.github_round()
-        self.assertEqual(self.github.dispatched_refs[-1], "actions")
-        self.assertTrue(
-            any("/contents/versions.json?ref=actions" in path for path in self.github.requested_paths)
-        )
-
-    def test_universal_version_entry_accepts_unlisted_prereleases(self):
-        self.github.versions = {"*": "c" * 40}
-        self.gateway.releases["at"] = 0.0
-        status, body = self.call(
-            "POST", "/v1/build?version=0.8.0-dev.81&via=github", b"mods"
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(self.poll(json.loads(body)["job"])["state"], "queued")
-
-    def test_universal_version_commit_is_used_to_check_cached_builds(self):
-        self.github.versions = {"*": "c" * 40}
-        self.gateway.releases["at"] = 0.0
-        build = {"build": {"version": "0.8.0-dev.81", "commit": "c" * 40}}
-        self.assertFalse(self.gateway.stale(build))
-        build["build"]["commit"] = "d" * 40
-        self.assertTrue(self.gateway.stale(build))
-
-    def test_exact_version_commit_overrides_universal_fallback(self):
-        self.github.versions = {"*": "c" * 40, "0.8.0-dev.81": "d" * 40}
-        self.gateway.releases["at"] = 0.0
-        build = {"build": {"version": "0.8.0-dev.81", "commit": "d" * 40}}
-        self.assertFalse(self.gateway.stale(build))
-        build["build"]["commit"] = "c" * 40
-        self.assertTrue(self.gateway.stale(build))
 
     def test_a_build_from_the_asking_to_the_library(self):
         status, data = self.ask()
@@ -585,8 +477,6 @@ class OnGitHub(unittest.TestCase):
         inputs = self.github.dispatched[0]
         self.assertEqual(inputs["version"], "0.8.0")
         self.assertEqual(inputs["gateway"], "https://gateway.example")
-        self.assertEqual(inputs["source"], "CihuyAkz/starling-extras")
-        self.assertEqual(inputs["tools"], "")
         # The runner fetches the mods by a name it was given.
         self.assertEqual(self.call("GET", f"/v1/github/{inputs['ask']}")[1], b"mods")
         self.assertEqual(self.call("GET", "/v1/github/" + "0" * 32)[0], 404)
@@ -603,51 +493,6 @@ class OnGitHub(unittest.TestCase):
         self.assertEqual(self.fake.asked, 0)
         self.gateway.power.assert_not_called()
 
-    def test_a_build_of_a_commit_its_version_no_longer_names_is_built_again(self):
-        # 0.8.0's first builds were release-candidate-5's, and they were still served once
-        # versions.json named the release's commit: a game without the release's controls.
-        self.github.versions = {"0.8.0": "c" * 40}
-        job = self.ask()[1]["job"]
-        self.assertEqual(self.finished_run(job, commit="c" * 40)["state"], "done")
-        self.assertEqual(self.ask()[1]["job"], job)
-        self.assertEqual(len(self.github.dispatched), 1)
-        self.github.versions = {"0.8.0": "d" * 40}
-        self.gateway.releases["at"] = 0.0
-        self.assertEqual(self.ask()[1]["job"], job)
-        self.assertIsNone(self.gateway.kept_status(job))
-        self.assertEqual(self.poll(job)["state"], "queued")
-        self.gateway.github_round()
-        self.assertEqual(len(self.github.dispatched), 2)
-        done = self.finished_run(job, commit="d" * 40)
-        self.assertEqual(done["build"]["commit"], "d" * 40)
-        # The release's own build is kept and answered as before.
-        self.assertEqual(self.ask()[1]["job"], job)
-        self.assertEqual(len(self.github.dispatched), 2)
-
-    def test_a_stale_build_asked_for_by_its_job_is_gone(self):
-        self.github.versions = {"0.8.0": "c" * 40}
-        job = self.ask()[1]["job"]
-        self.finished_run(job, commit="c" * 40)
-        self.github.versions = {"0.8.0": "d" * 40}
-        self.gateway.releases["at"] = 0.0
-        self.assertEqual(self.call("GET", f"/v1/job/{job}/lib")[0], 404)
-        self.assertIsNone(self.gateway.kept_status(job))
-        self.assertEqual(self.gateway.kept, {})
-        self.assertEqual(self.fake.asked, 0)
-
-    def test_versions_json_unread_keeps_what_is_kept(self):
-        # A build with no commit, a version versions.json doesn't name, and GitHub not answering:
-        # nothing is forgotten.
-        job = self.ask()[1]["job"]
-        self.finished_run(job)
-        self.github.versions = {"0.2.3": "e" * 40}
-        self.gateway.releases["at"] = 0.0
-        self.assertEqual(self.ask()[1]["job"], job)
-        with mock.patch.object(self.gateway, "github_api", side_effect=OSError("down")):
-            self.gateway.releases["at"] = 0.0
-            self.assertEqual(self.gateway.release_commits(), {"0.2.3": "e" * 40})
-        self.assertEqual(len(self.github.dispatched), 1)
-
     def test_what_github_built_answers_both_ways_of_asking_with_no_build(self):
         job = self.ask()[1]["job"]
         self.finished_run(job)
@@ -655,42 +500,6 @@ class OnGitHub(unittest.TestCase):
         self.assertEqual(self.ask(via="")[1]["job"], job)
         self.assertEqual(len(self.github.dispatched), 1)
         self.assertEqual(self.fake.asked, 0)
-
-    def test_the_universal_github_setting_routes_plain_compile_to_github(self):
-        self.env["GITHUB_VERSIONS"] = "*"
-        self.start_gateway()
-        self.github.versions = {"*": "c" * 40}
-        self.gateway.releases["at"] = 0.0
-        status, body = self.call("POST", "/v1/build?version=0.8.0-dev.81", b"mods")
-        self.assertEqual(status, 200)
-        self.gateway.github_round()
-        self.assertEqual(self.github.dispatched[-1]["version"], "0.8.0-dev.81")
-        self.assertEqual(self.fake.asked, 0)
-
-    def test_a_version_github_builds_goes_there_from_the_plain_compile(self):
-        self.env["GITHUB_VERSIONS"] = "0.8.0, 0.8.1"
-        self.start_gateway()
-        status, data = self.ask(via="")
-        self.assertEqual(status, 200)
-        self.gateway.github_round()
-        self.assertEqual(len(self.github.dispatched), 1)
-        self.assertEqual(self.finished_run(data["job"])["state"], "done")
-        # The GitHub request reuses the same build, and the build VM never wakes.
-        self.assertEqual(self.ask()[1]["job"], data["job"])
-        self.assertEqual(len(self.github.dispatched), 1)
-        self.assertEqual(self.fake.asked, 0)
-        self.gateway.power.assert_not_called()
-
-    def test_with_no_build_machine_another_version_is_told_to_update(self):
-        self.env.update(GITHUB_VERSIONS="0.8.0", BUILD_VM="")
-        self.start_gateway()
-        status, data = self.call("POST", "/v1/build?version=0.2.3", b"mods")
-        self.assertEqual(status, 429)
-        self.assertIn("update Starling", json.loads(data)["error"])
-        self.assertEqual(self.fake.asked, 0)
-        self.gateway.power.assert_not_called()
-        # The version GitHub builds still compiles.
-        self.assertEqual(self.ask(via="")[0], 200)
 
     def test_asking_twice_while_it_builds_is_one_build(self):
         job = self.ask()[1]["job"]

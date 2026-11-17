@@ -89,7 +89,7 @@ fn data_packs_are_their_own_kind() {
     assert!(pick(Kind::DataPack, &versions[..1], true).is_none());
 
     let now = support(Kind::DataPack, &v(&[GAME]), &v(&["datapack"]));
-    assert_eq!(now.reason(), Some(DATAPACK_SUPPORT));
+    assert_eq!(now.reason(), Some(datapack_support()));
     let old = support(Kind::DataPack, &v(&["1.21.4"]), &v(&["datapack"]));
     assert!(
         old.reason().unwrap().starts_with("Made for 1.21.4"),
@@ -388,15 +388,15 @@ fn downloads_refused_before_any_byte() {
     assert!(download::refuse(&file).unwrap().contains("file servers"));
     // A mod's own repository's release asset, which the registry's index lists with its SHA-256.
     let mut file = file_for(body, true);
-    file.url = "https://github.com/acme/zoom/releases/download/v1.0.0/zoom-1.0.0.hnmod".into();
+    file.url = "https://github.com/acme/zoom/releases/download/v1.0.0/zoom-1.0.0.hmod".into();
     assert_eq!(download::refuse(&file), None);
     for bad in [
-        "http://github.com/acme/zoom/releases/download/v1/z.hnmod",
+        "http://github.com/acme/zoom/releases/download/v1/z.hmod",
         "https://github.com/acme/zoom/archive/main.zip",
-        "https://github.com/acme/zoom/releases/download/v1/../z.hnmod",
-        "https://github.com/acme/zoom/releases/download/v1/z.hnmod?x=1",
-        "https://github.com.evil.example/a/b/releases/download/v1/z.hnmod",
-        "https://github.com/acme/zoom/releases/download/v1/a/z.hnmod",
+        "https://github.com/acme/zoom/releases/download/v1/../z.hmod",
+        "https://github.com/acme/zoom/releases/download/v1/z.hmod?x=1",
+        "https://github.com.evil.example/a/b/releases/download/v1/z.hmod",
+        "https://github.com/acme/zoom/releases/download/v1/a/z.hmod",
     ] {
         let mut file = file_for(body, true);
         file.url = bad.into();
@@ -448,54 +448,4 @@ fn curseforge_is_coming_soon_and_never_searched() {
     let ids: Vec<SourceId> = sources().iter().map(|s| s.id()).collect();
     assert_eq!(ids, [SourceId::Modrinth, SourceId::Horizon]);
     assert!(source(SourceId::CurseForge).is_none());
-}
-
-struct ResourcePackWithMissingMod;
-
-impl Source for ResourcePackWithMissingMod {
-    fn id(&self) -> SourceId {
-        SourceId::Modrinth
-    }
-
-    fn search(&self, _: &Query) -> Result<Vec<Project>, String> {
-        Ok(Vec::new())
-    }
-
-    fn project(&self, id: &str) -> Result<Project, String> {
-        Err(format!("Required mod {id} is unavailable."))
-    }
-
-    fn versions(&self, _: &Project) -> Result<Vec<Version>, String> {
-        let mut v = version("resource-pack-with-dependency", &[GAME], &["minecraft"]);
-        v.required.push("missing-required-mod".into());
-        Ok(vec![v])
-    }
-}
-
-#[test]
-fn resource_packs_install_without_installing_required_mods() {
-    let project = modrinth::parse_hit(&json!({
-        "project_id": "resource-pack",
-        "project_type": "resourcepack",
-        "slug": "resource-pack",
-        "title": "Resource Pack",
-        "versions": [GAME],
-        "categories": ["minecraft"]
-    }))
-    .unwrap();
-    let source = ResourcePackWithMissingMod;
-
-    let horizon_steps = installed::plan(&source, &project, false).unwrap();
-    assert_eq!(horizon_steps.len(), 1);
-    assert_eq!(horizon_steps[0].project.id, "resource-pack");
-    assert!(!horizon_steps[0].dependency);
-
-    let target = java_instance::Target {
-        minecraft: GAME.into(),
-        loader: None,
-    };
-    let instance_steps = java_instance::plan(&source, &target, &project).unwrap();
-    assert_eq!(instance_steps.len(), 1);
-    assert_eq!(instance_steps[0].project.id, "resource-pack");
-    assert!(!instance_steps[0].dependency);
 }

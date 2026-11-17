@@ -1,3 +1,4 @@
+
 name: Extract ZIP and Flatten
 
 on:
@@ -21,7 +22,6 @@ jobs:
           ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: true
-          token: ${{ secrets.REPO_TOKEN }}
 
       - name: Find ZIP
         shell: bash
@@ -64,7 +64,11 @@ jobs:
             echo "========== ZIP DIAGNOSTICS =========="
 
             echo "File: $ZIP_FILE"
+
+            echo "File size:"
             stat -c '%s bytes' "$ZIP_FILE"
+
+            echo "Detected format:"
             file "$ZIP_FILE"
 
             echo "First 16 bytes:"
@@ -94,7 +98,8 @@ jobs:
               while IFS= read -r -d '' item; do
                 entries+=("$item")
               done < <(
-                find "$CURRENT" -mindepth 1 -maxdepth 1 -print0
+                find "$CURRENT" -mindepth 1 -maxdepth 1 \
+                  ! -name ".github" -print0
               )
 
               if [ "${#entries[@]}" -ne 1 ]; then
@@ -118,6 +123,7 @@ jobs:
             echo "Merging contents from: $ZIP_FILE"
 
             rsync -av "$CURRENT/" /tmp/final/
+
           done
 
           echo "=================================="
@@ -129,11 +135,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Merging all extracted files, including .github..."
-
-          rsync -av /tmp/final/ ./
-
-          echo "Semua file berhasil di-merge dan di-update."
+          rm -rf /tmp/final/.github
+          rsync -av --exclude='/.github/' /tmp/final/ ./
 
       - name: Remove source ZIP
         shell: bash
@@ -146,8 +149,6 @@ jobs:
 
       - name: Commit and Push
         shell: bash
-        env:
-          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
         run: |
           set -euo pipefail
 

@@ -82,13 +82,17 @@ jobs:
         if: steps.rust.outputs.required != 'false'
         run: |
           cargo +stable fmt --all -- --check
+          find crates/horizon-mod-api/src crates/horizon-mod-vocab/src -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --check --config skip_children=true
+          find crates/horizon-client/src/game -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --config skip_children=true --check
+          rustup run stable rustfmt --edition 2024 --check crates/horizon-mod-api-gen/dispatch-tests/src/fixtures/*.rs
           cargo +stable clippy --workspace --all-targets -- -D warnings
-          # The server build: the game without sound or controllers.
-          cargo +stable clippy -p horizon-client --all-targets --no-default-features -- -D warnings
-      # Libraries, binaries and integration tests, then doc tests: not the ~275 examples, which clippy above already
-      # type-checks and Horizon's parity jobs build and run (they were most of this step's build and link time).
-      # cargo test, not nextest: nextest's process per test reloads each binary's shared tables for every test, and on
-      # these 4-core runners it was no faster (#4978).
+          cargo +stable clippy -p horizon-client -p horizon-game -p horizon-mod-host --all-targets --no-default-features -- -D warnings
+      - name: Check generated mod API signatures
+        if: steps.rust.outputs.required != 'false'
+        run: python3 tools/ci/check_api_boundary.py
+      - name: Build the runtime holder test actor
+        if: steps.rust.outputs.required != 'false'
+        run: cargo +stable build -p horizon-mod-package --features runtime-process --example holder_actor
       - name: Test Rust core and voxel kernel correctness
         if: steps.rust.outputs.required != 'false'
         run: |
