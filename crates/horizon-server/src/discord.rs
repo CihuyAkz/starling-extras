@@ -5,7 +5,7 @@
 
 use crate::api::Shared;
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
-use horizon_server_launch::config::Discord;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -20,11 +20,59 @@ const BATCH: Duration = Duration::from_secs(2);
 const GAP: Duration = Duration::from_secs(2);
 /// Lines in one picture; more in a burst are counted and skipped.
 const MAX_LINES: usize = 20;
+const EVENTS: [&str; 6] = ["chat", "join", "leave", "death", "kick", "announce"];
 /// Zero-width joiner: after an `@` or a `<`, Discord no longer reads a mention.
 const ZWJ: char = '\u{200D}';
 
+/// The `[discord]` table of server.toml.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Settings {
+    pub enabled: bool,
+    pub webhook: String,
+    pub events: Vec<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            webhook: String::new(),
+            events: ["chat", "join", "leave", "death"].map(String::from).into(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn check(&self) -> Result<(), String> {
+        let hook = self.webhook.trim();
+        let discord = [
+            "discord.com",
+            "discordapp.com",
+            "ptb.discord.com",
+            "canary.discord.com",
+        ];
+        if !hook.is_empty()
+            && !discord.iter().any(|host| {
+                hook.strip_prefix("https://")
+                    .and_then(|h| h.strip_prefix(host))
+                    .is_some_and(|path| path.starts_with("/api/webhooks/"))
+            })
+        {
+            return Err("discord.webhook must be a Discord webhook URL (https://discord.com/api/webhooks/...)".into());
+        }
+        match self.events.iter().find(|e| !EVENTS.contains(&e.as_str())) {
+            Some(e) => Err(format!(
+                "discord.events has \"{e}\": use {}",
+                EVENTS.join(", ")
+            )),
+            None => Ok(()),
+        }
+    }
+}
+
 /// Starts the forwarder when `[discord]` has a webhook and is enabled.
-pub fn start(shared: Arc<Shared>, settings: Discord) {
+pub fn start(shared: Arc<Shared>, settings: Settings) {
     if !settings.enabled || settings.webhook.trim().is_empty() {
         return;
     }
@@ -33,7 +81,7 @@ pub fn start(shared: Arc<Shared>, settings: Discord) {
         .spawn(move || forward(&shared, &settings));
 }
 
-fn forward(shared: &Shared, settings: &Discord) {
+fn forward(shared: &Shared, settings: &Settings) {
     let wanted = |kind: &str| settings.events.iter().any(|e| e == kind);
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(20))
@@ -504,9 +552,9 @@ mod tests {
         assert!(line.runs.iter().all(|r| r.color == GOLD));
         assert!(!defuse(&line.plain(), false).contains("@everyone"));
         assert!(
-            Discord {
+            Settings {
                 events: vec!["announce".into()],
-                ..Discord::default()
+                ..Settings::default()
             }
             .check()
             .is_ok()
@@ -558,9 +606,9 @@ mod tests {
         // A message the server's chat filter held back never reaches Discord, whatever the settings say.
         let filtered = json!({"type": "chat_filtered", "name": "Kim0", "message": "x"});
         assert!(Line::from_event(&filtered).is_none());
-        let asked = Discord {
+        let asked = Settings {
             events: vec!["chat_filtered".into()],
-            ..Discord::default()
+            ..Settings::default()
         };
         assert!(asked.check().is_err());
     }
@@ -608,9 +656,9 @@ mod tests {
     #[test]
     fn only_discord_webhooks() {
         let with = |hook: &str| {
-            Discord {
+            Settings {
                 webhook: hook.into(),
-                ..Discord::default()
+                ..Settings::default()
             }
             .check()
         };
@@ -619,9 +667,9 @@ mod tests {
         assert!(with("http://discord.com/api/webhooks/1/abc").is_err());
         assert!(with("https://discord.com.evil.example/api/webhooks/1").is_err());
         assert!(with("https://example.com/api/webhooks/1").is_err());
-        let bad = Discord {
+        let bad = Settings {
             events: vec!["log".into()],
-            ..Discord::default()
+            ..Settings::default()
         };
         assert!(bad.check().is_err());
     }

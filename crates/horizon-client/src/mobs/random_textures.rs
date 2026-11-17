@@ -14,7 +14,7 @@
 //! `sheep_wool3` (ETF), or an even choice when the body has no variants; villagers' layers each
 //! choose their own, as ETF does.
 
-use super::render::DYE_NAMES;
+use super::render::{DYE_NAMES, PROFESSIONS};
 use super::{Mob, MobData, Species};
 use horizon_optifine::random::{self, Block, Facts, Weather};
 use horizon_optifine::random_textures::RandomTextures;
@@ -150,8 +150,8 @@ pub fn choose(
         .collect();
     let profession =
         matches!(m.species(), Species::Villager | Species::ZombieVillager).then(|| {
-            let name = super::villager::profession(m.extra.profession.index().unwrap_or(0)).id;
-            (format!("minecraft:{name}"), m.extra.villager_level.max(1))
+            let name = PROFESSIONS[m.extra.variant2 as usize % PROFESSIONS.len()];
+            (format!("minecraft:{name}"), i32::from(m.extra.variant3))
         });
     let facts = Facts {
         biome: seen.biome.as_deref(),
@@ -270,8 +270,6 @@ mod tests {
             species_placements: Default::default(),
             armor_atlases: Default::default(),
             equipment: Default::default(),
-            mod_spawns: Default::default(),
-            pathfindable_overrides: Default::default(),
         }
     }
 
@@ -305,9 +303,7 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, text).unwrap();
         }
-        let textures = RandomTextures::scan(
-            &horizon_assets::resource_source::ResourceSource::directory(root.to_owned()),
-        );
+        let textures = RandomTextures::scan(&root);
         let _ = std::fs::remove_dir_all(&root);
         textures
     }
@@ -574,15 +570,15 @@ mod tests {
             ],
         );
         let mut m = mob(Species::Villager);
-        m.extra.profession = crate::mobs::villager::ProfessionState::from_id("minecraft:librarian");
-        m.extra.villager_level = 3;
+        m.extra.variant2 = PROFESSIONS.iter().position(|&p| p == "librarian").unwrap() as u8;
+        m.extra.variant3 = 3;
         choose(&mut m, &t, &data(), Some(seen("minecraft:plains")), 0);
         let villager2 = variant("entity/villager/villager2");
         assert_eq!(
             texture(&m, &t, "entity/villager/villager"),
             Some(villager2.as_str())
         );
-        m.extra.villager_level = 2;
+        m.extra.variant3 = 2;
         choose(&mut m, &t, &data(), None, 0);
         assert_eq!(texture(&m, &t, "entity/villager/villager"), None);
     }

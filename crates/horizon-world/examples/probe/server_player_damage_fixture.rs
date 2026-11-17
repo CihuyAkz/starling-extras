@@ -7,7 +7,7 @@ use horizon_world::{
     combat_rules::ArmorWorld,
     damage_reduction::Bypass,
     food::FoodData,
-    living_damage::{DamageContainer, DamageStat},
+    living_damage::DamageStat,
     player_health::PlayerFloatIds,
     server_player_damage::{ServerDamageEnvironment, ServerPlayerDamage},
     synced_floats::{FloatValue, Observer, SyncedFloats},
@@ -237,10 +237,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 calls: 0,
                 recorded,
             };
-            let damage = single(&op["damage"]);
             let result =
                 ServerPlayerDamage::new(&mut attributes, &mut data, &mut food, ids, &mut env)?
-                    .apply(&mut DamageContainer::new(damage), damage);
+                    .apply(single(&op["damage"]));
             writeln!(
                 env.out,
                 "result {}",

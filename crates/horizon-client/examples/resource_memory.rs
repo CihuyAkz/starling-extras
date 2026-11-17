@@ -10,15 +10,12 @@
 //! with `footprint`'s physical footprint, the number the OS charges: RSS also
 //! counts freed pages the allocator marked reusable.
 extern crate horizon_client_lib as horizon_client;
-#[path = "../src/test_resources.rs"]
-mod test_resources;
 use horizon_client::{
     assets::Assets, biome::Biomes, blocks::BlockFacts, collisions, crafting::Recipes, items::Items,
     light::LightTables, mesher::MeshTables, models, motion::MotionResources,
     vanillagen::VanillaTerrain,
 };
 use horizon_world::loot::PackOverlay;
-use horizon_world::native_load_context::DataLoadOrigin;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     sync::atomic::{AtomicUsize, Ordering::Relaxed},
@@ -99,9 +96,7 @@ fn main() -> Result<()> {
     drop(registry);
     step("registry dropped");
     let assets = Assets::load(&root)?;
-    let render = assets.reload(&horizon_assets::resource_source::ResourceRoot::directory(
-        root.to_path_buf(),
-    ))?;
+    let render = assets.reload(&root)?;
     step("assets");
     println!(
         "  sprites: {} layers of {}px, {:.0} MB of pixels",
@@ -112,25 +107,11 @@ fn main() -> Result<()> {
     // The game decodes gameplay facts once for both tables (BlockFacts::load_pair).
     let (facts, behaviours) = BlockFacts::load_pair(&root, assets.registry)?;
     step("block facts+behaviours");
-    let item_data = test_resources::item_data(&root, DataLoadOrigin::ClientPreload)?;
-    let items = Items::load(
-        &root,
-        assets.registry,
-        &facts,
-        &PackOverlay::NONE,
-        item_data.defaults(),
-    )?;
+    let items = Items::load(&root, assets.registry, &facts, &PackOverlay::NONE)?;
     step("items");
-    let recipes = Recipes::load(
-        &root,
-        &items,
-        &PackOverlay::NONE,
-        &crate::test_resources::server_load(),
-    )?;
+    let recipes = Recipes::load(&root, &items, &PackOverlay::NONE)?;
     step("recipes");
-    let biomes = Biomes::load(&horizon_assets::resource_source::ResourceRoot::directory(
-        root.to_path_buf(),
-    ))?;
+    let biomes = Biomes::load(&root)?;
     step("biomes");
     let light = LightTables::load(&root, assets.registry, &facts)?;
     step("light tables");
@@ -139,23 +120,13 @@ fn main() -> Result<()> {
         &render,
         &facts,
         models::load_visibility(&root, assets.registry)?,
-        None,
     )?;
     step("mesh tables");
     let collision = collisions::load(&root, assets.registry)?;
     step("collision");
     let motion = MotionResources::load_with_facts(&root, &assets, &facts)?;
     step("motion");
-    let terrain = VanillaTerrain::new(
-        horizon_client::vanillagen::TerrainResources {
-            data: None,
-            dir: &root.join("worldgen"),
-            registry: assets.registry,
-            biomes: &biomes,
-            item_data: &item_data,
-        },
-        1234,
-    )?;
+    let terrain = VanillaTerrain::new(&root.join("worldgen"), assets.registry, &biomes, 1234)?;
     step("worldgen");
     println!(
         "{} block states; live {:.0} MB, RSS {:.0} MB",
@@ -178,7 +149,7 @@ fn main() -> Result<()> {
     // Keep everything alive until the end.
     drop((
         terrain, behaviours, motion, collision, tables, light, biomes, recipes, items, facts,
-        assets, item_data,
+        assets,
     ));
     Ok(())
 }

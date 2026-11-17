@@ -4,8 +4,7 @@ use crate::theme::Theme;
 use gpui::{Div, TitlebarOptions, Window};
 use horizon_launcher::backend::Appearance;
 
-/// Whether the launcher draws its own title bar and needs the native chrome to be transparent.
-#[cfg(not(target_os = "linux"))]
+/// Whether Windows uses a transparent native title bar for the launcher's custom chrome.
 pub const DRAWN: bool = cfg!(target_os = "windows");
 
 pub fn draws_brand(window: &Window) -> bool {
@@ -23,40 +22,13 @@ pub fn draws_brand(window: &Window) -> bool {
 
 pub fn options() -> TitlebarOptions {
     TitlebarOptions {
-        title: Some(horizon_launcher::identity::WINDOW_TITLE.into()),
-        // macOS and Windows place the GPUI content under the native title bar. Linux uses
-        // client-side decorations below, so its title bar is transparent by construction.
-        appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
+        title: Some("Horizon".into()),
+        appears_transparent: DRAWN,
         ..Default::default()
     }
 }
 
-/// Draw the macOS title bar under the native traffic lights: glass, or the side colour without
-/// it. The native title bar is transparent either way, so the bar is always drawn: without it the
-/// page would start under the traffic lights. AppKit keeps its controls and window interactions.
-#[cfg(target_os = "macos")]
-pub fn render(theme: &Theme, _window: &Window) -> Option<Div> {
-    use crate::glass::{self, Kind};
-    use gpui::{div, prelude::*, px};
-
-    Some(
-        div()
-            .relative()
-            .flex_none()
-            .h(px(32.))
-            .when(theme.glass, |bar| {
-                bar.child(glass::backdrop(Kind::Glass, 0.))
-            })
-            .when(!theme.glass, |bar| bar.bg(theme.side))
-            .text_color(theme.muted),
-    )
-}
-
-#[cfg(all(
-    not(target_os = "windows"),
-    not(target_os = "linux"),
-    not(target_os = "macos")
-))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
 pub fn render(_theme: &Theme, _window: &Window) -> Option<Div> {
     None
 }
@@ -64,7 +36,6 @@ pub fn render(_theme: &Theme, _window: &Window) -> Option<Div> {
 /// Draw the launcher's Linux title bar when the platform uses client-side decorations.
 #[cfg(target_os = "linux")]
 pub fn render(theme: &Theme, window: &Window) -> Option<Div> {
-    use crate::glass::{self, Kind};
     use crate::{blocks, mark};
     use gpui::{div, prelude::*, px, Decorations, FontWeight, MouseButton};
 
@@ -83,22 +54,14 @@ pub fn render(theme: &Theme, window: &Window) -> Option<Div> {
         .px(px(12.))
         .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
         .child(mark(16., theme))
-        .child(
-            blocks::pixel(13., FontWeight::MEDIUM).child(horizon_launcher::i18n::tr(
-                horizon_launcher::identity::WINDOW_TITLE,
-            )),
-        );
+        .child(blocks::pixel(13., FontWeight::MEDIUM).child("Horizon"));
 
     let mut bar = div()
-        .relative()
         .flex()
         .flex_none()
         .items_center()
         .h(px(32.))
-        .when(theme.glass, |bar| {
-            bar.child(glass::backdrop(Kind::Glass, 0.))
-        })
-        .when(!theme.glass, |bar| bar.bg(theme.side))
+        .bg(theme.side)
         .text_color(theme.muted)
         .border_b_1()
         .border_color(theme.outline)
@@ -324,7 +287,6 @@ pub fn apply_appearance(_: &Window, _: Appearance) {}
 #[cfg(target_os = "windows")]
 mod windows {
     use super::*;
-    use crate::glass::{self, Kind};
     use crate::{blocks, mark};
     use gpui::{div, prelude::*, px, FontWeight, Stateful, WindowControlArea};
 
@@ -432,14 +394,9 @@ mod windows {
             .px(px(12.))
             .window_control_area(WindowControlArea::Drag)
             .child(mark(16., theme))
-            .child(
-                blocks::pixel(13., FontWeight::MEDIUM).child(horizon_launcher::i18n::tr(
-                    horizon_launcher::identity::WINDOW_TITLE,
-                )),
-            );
+            .child(blocks::pixel(13., FontWeight::MEDIUM).child("Horizon"));
         Some(
             div()
-                .relative()
                 .flex()
                 .flex_none()
                 .items_center()
@@ -448,10 +405,7 @@ mod windows {
                 .when(!window.is_maximized(), |bar| {
                     bar.pt(px(RESIZE_INSET)).px(px(RESIZE_INSET))
                 })
-                .when(theme.glass, |bar| {
-                    bar.child(glass::backdrop(Kind::Glass, 0.))
-                })
-                .when(!theme.glass, |bar| bar.bg(theme.side))
+                .bg(theme.side)
                 .text_color(theme.muted)
                 .border_b_1()
                 .border_color(theme.outline)

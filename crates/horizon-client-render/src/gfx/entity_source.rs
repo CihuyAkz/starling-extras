@@ -27,8 +27,7 @@ mod tests {
     use super::*;
     #[test]
     fn every_entity_entrypoint_retains_the_exact_white_overlay_table() {
-        // The renderer's entity source: the overlay constants and the HDR prelude in front.
-        let original = super::super::entity_shader();
+        let original = crate::overlay::wgsl_constants() + include_str!("../entity.wgsl");
         let lowered = super::super::terrain_source::gles_uniforms(&legacy_overlay(&original));
         assert!(!lowered.contains("WHITE_OVERLAY_ALPHA[overlay - 16u]"));
         assert!(lowered.contains("legacy_white_overlay(overlay - 16u)"));

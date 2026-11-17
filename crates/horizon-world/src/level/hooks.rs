@@ -1,16 +1,13 @@
 //! `neighborChanged`, `onPlace`, `affectNeighborsAfterRemoval` and
 //! `updateIndirectNeighbourShapes` for the overriding vanilla classes.
+use super::{
+    LevelAccess, LevelEvent, Sim,
+    classes::Class,
+    states::BlockId,
+    update::{below, rel},
+};
 use crate::registry::BlockStateId;
 use horizon_core::{geometry::Direction, position::BlockPos, random::RandomSource};
-use {
-    super::{
-        LevelAccess, LevelEvent, Sim,
-        classes::Class,
-        states::BlockId,
-        update::{below, rel},
-    },
-    horizon_core::neighbour_update::NeighbourUpdate,
-};
 
 impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     /// `BlockState.handleNeighborChanged`.
@@ -32,7 +29,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         moved: bool,
     ) {
         self.level
-            .observe_neighbor_changed(self.ticks, pos, state, changed, moved);
+            .observe_neighbor_changed(pos, state, changed, moved);
         let b = self.b;
         let block = b.block(state);
         let chain = &b.data(state).chain;
@@ -255,7 +252,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     }
                 }
                 Class::WetSponge => {
-                    if self.level.dimension_type().water_evaporates {
+                    if self.level.dimension() == super::Dimension::Nether {
                         self.set_block_and_update(pos, b.default_of(b.named.sponge));
                         self.level_event(2009, pos, 0);
                         let pitch = (1.0 + self.random().next_float() * 0.2) * 0.7;
@@ -296,37 +293,8 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
 
-    /// `BlockState.affectNeighborsAfterRemoval`: the block's own class first, as an override's
-    /// `super` call, then the updates a mod's part asked for, in the order it asked.
+    /// `BlockState.affectNeighborsAfterRemoval`.
     pub fn affect_neighbors_after_removal(
-        &mut self,
-        state: BlockStateId,
-        pos: BlockPos,
-        moved: bool,
-    ) {
-        self.class_affect_neighbors_after_removal(state, pos, moved);
-        let mut updates = Vec::new();
-        self.level
-            .affect_neighbors_after_removal(pos, state, moved, &mut updates);
-        let block = self.b.block(state);
-        for update in updates {
-            self.neighbour_update(pos, block, update);
-        }
-    }
-
-    /// One `NeighbourUpdate` from `pos`, `block` being the block vanilla passes as the one that
-    /// changed there.
-    pub fn neighbour_update(&mut self, pos: BlockPos, block: BlockId, update: NeighbourUpdate) {
-        match update {
-            NeighbourUpdate::OutputSignal => self.update_neighbour_for_output_signal(pos, block),
-            NeighbourUpdate::Neighbours => self.update_neighbors_at(pos, block),
-            NeighbourUpdate::NeighboursExcept(skip) => {
-                self.update_neighbors_at_except(pos, block, skip)
-            }
-        }
-    }
-
-    fn class_affect_neighbors_after_removal(
         &mut self,
         state: BlockStateId,
         pos: BlockPos,
@@ -461,7 +429,6 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         pos: BlockPos,
         creative: bool,
         correct_tool: bool,
-        source: Option<super::LevelEventPlayer>,
     ) -> bool {
         let b = self.b;
         let p = b.props;
@@ -486,7 +453,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     b.air()
                 };
                 self.set_block(bottom, replacement, 35);
-                self.level_event_from(source, 2001, bottom, bottom_state.0 as i32);
+                self.level_event(2001, bottom, bottom_state.0 as i32);
             }
         }
         if creative && data.is(Class::AbstractBed) && b.table.text(state, p.part) == "foot" {
@@ -494,7 +461,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             let head = self.state(head_pos);
             if b.is_block(head, b.block(state)) && b.table.text(head, p.part) == "head" {
                 self.set_block(head_pos, b.air(), 35);
-                self.level_event_from(source, 2001, head_pos, head.0 as i32);
+                self.level_event(2001, head_pos, head.0 as i32);
             }
         }
         // PistonHeadBlock.playerWillDestroy: in creative, destroy the base piston
@@ -514,16 +481,10 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if data.is(Class::BaseFire) {
             self.level_event(1009, pos, 0);
         } else {
-            self.level_event_from(source, 2001, pos, state.0 as i32);
+            self.level_event(2001, pos, state.0 as i32);
         }
         self.game_event(pos, "minecraft:block_destroy");
-        let removed = self.remove_block(pos, false);
-        // MovingPistonBlock.destroy: a moving piston the player broke takes
-        // the extended base behind it with it. setBlock callers keep it.
-        if removed && b.is_block(state, b.named.moving_piston) {
-            self.destroy_moving_piston_base(pos, state);
-        }
-        removed
+        self.remove_block(pos, false)
     }
     /// `TurtleEggBlock.playerDestroy` (after the drops): `decreaseEggs` plays the
     /// break and puts back all but one egg of the mined stack. `destroyed` is the
@@ -540,7 +501,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let pitch = 0.9 + self.random().next_float() * 0.2;
         self.sound(
             pos,
-            &std::sync::Arc::from("minecraft:entity.turtle.egg_break"),
+            &std::sync::Arc::from("minecraft:block.turtle_egg.break"),
             0.7,
             pitch,
         );
@@ -564,7 +525,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let b = self.b;
         if !b.data(destroyed).is(Class::Ice)
             || prevents_melting
-            || self.level.dimension_type().water_evaporates
+            || self.level.dimension() == super::Dimension::Nether
         {
             return;
         }
@@ -623,10 +584,9 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             return;
         }
         if matches!(
-            self.level.level_key(),
-            super::LevelKey::OVERWORLD | super::LevelKey::NETHER
+            self.level.dimension(),
+            super::Dimension::Overworld | super::Dimension::Nether
         ) && let Some(shape) = self.find_empty_portal_shape(pos, true)
-            && self.level.allow_portal_spawn(pos, state, &shape)
         {
             self.create_portal_blocks(&shape);
             return;
@@ -724,7 +684,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     /// `IceBlock.melt`.
     pub(crate) fn ice_melt(&mut self, pos: BlockPos, state: BlockStateId) {
         let b = self.b;
-        let target = if self.level.dimension_type().water_evaporates {
+        let target = if self.level.dimension() == super::Dimension::Nether {
             b.air()
         } else {
             b.default_of(b.named.water)
@@ -732,7 +692,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if !self.level.allow_block_fade(pos, state, target) {
             return;
         }
-        if self.level.dimension_type().water_evaporates {
+        if self.level.dimension() == super::Dimension::Nether {
             self.remove_block(pos, false);
         } else {
             self.set_block_and_update(pos, target);
@@ -762,29 +722,6 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
         self.set_block(pos, b.table.set_text(state, b.props.tilt, "unstable"), 2);
         self.schedule_tick(pos, b.block(state), 10);
-    }
-    /// `BigDripleafBlock.onProjectileHit`: FULL immediately, even while
-    /// powered; setTiltAndScheduleTick plays the down sound and resets in 100.
-    pub(crate) fn big_dripleaf_projectile_hit(&mut self, pos: BlockPos) -> bool {
-        let b = self.b;
-        let state = self.state(pos);
-        if !b.data(state).is(Class::BigDripleaf) {
-            return false;
-        }
-        let next = b.table.set_text(state, b.props.tilt, "full");
-        self.set_block(pos, next, 2);
-        if state != next {
-            self.game_event(pos, "minecraft:block_change");
-        }
-        let pitch = self.random().next_float() * 0.4 + 0.8;
-        self.emit(LevelEvent::Sound {
-            pos,
-            sound: "minecraft:block.big_dripleaf.tilt_down".into(),
-            volume: 1.0,
-            pitch,
-        });
-        self.schedule_tick(pos, b.block(state), 100);
-        true
     }
     /// `BigDripleafBlock.resetTilt`.
     pub(crate) fn big_dripleaf_reset_tilt(&mut self, pos: BlockPos, state: BlockStateId) {

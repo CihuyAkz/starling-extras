@@ -9,15 +9,15 @@
 pub use horizon_optifine::cit::{Global, Method};
 
 use crate::cit::read_properties;
-use crate::resource_source::ResourceSource;
 use horizon_optifine::cit::Rule;
+use std::path::Path;
 
 /// The pack's global `cit.properties` under the overlay resource root: the first of
 /// `Global::PATHS` that exists, else the defaults.
-pub fn load_global(root: &ResourceSource) -> Global {
+pub fn load_global(root: &Path) -> Global {
     Global::PATHS
         .iter()
-        .find_map(|path| read_properties(root, path))
+        .find_map(|path| read_properties(&root.join(path)))
         .map(|props| Global::parse(&props))
         .unwrap_or_default()
 }
@@ -359,10 +359,7 @@ mod tests {
     fn the_first_global_file_wins() {
         let root = std::env::temp_dir().join(format!("horizon-cit-glint-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(
-            load_global(&ResourceSource::directory(root.clone())),
-            Global::default()
-        );
+        assert_eq!(load_global(&root), Global::default());
         let write = |path: &str, text: &[u8]| {
             let file = root.join(path);
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -373,25 +370,16 @@ mod tests {
             "assets/minecraft/optifine/cit/cit.properties",
             b"# caf\xE9\nmethod=cycle",
         );
-        assert_eq!(
-            load_global(&ResourceSource::directory(root.clone())).method,
-            Method::Cycle
-        );
+        assert_eq!(load_global(&root).method, Method::Cycle);
         write("assets/minecraft/mcpatcher/cit.properties", b"method=none");
-        assert_eq!(
-            load_global(&ResourceSource::directory(root.clone())).method,
-            Method::Cycle
-        );
+        assert_eq!(load_global(&root).method, Method::Cycle);
         write(
             "assets/minecraft/optifine/cit.properties",
             b"method=layered",
         );
-        assert_eq!(
-            load_global(&ResourceSource::directory(root.clone())).method,
-            Method::Layered
-        );
+        assert_eq!(load_global(&root).method, Method::Layered);
         write("assets/minecraft/citresewn/cit.properties", b"cap=1");
-        let g = load_global(&ResourceSource::directory(root.clone()));
+        let g = load_global(&root);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!((g.method, g.cap), (Method::Average, Some(1)));
     }

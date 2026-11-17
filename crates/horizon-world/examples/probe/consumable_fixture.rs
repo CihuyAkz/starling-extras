@@ -3,6 +3,7 @@ use horizon_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource, XoroshiroRandom},
 };
+use horizon_world::consumable::{Consumable, EmissionWorld, UseAnimation};
 use horizon_world::{
     component_patch::Prototype,
     item_particles::{self, ItemParticleWorld, ParticleError},
@@ -19,10 +20,6 @@ use std::{
     fs,
     io::{self, Write},
     path::Path,
-};
-use {
-    horizon_core::use_animation::UseAnimation,
-    horizon_world::consumable::{Consumable, EmissionWorld},
 };
 #[derive(Clone, Debug, PartialEq)]
 enum Component {

@@ -168,15 +168,11 @@ impl ExperimentsScreen {
             }
         }
         let [(dx, dy), (cx, cy)] = footer(w, h);
-        for (action, fx, fy, key) in [
-            (crate::widgets::Action::Done, dx, dy, "gui.done"),
-            (crate::widgets::Action::Cancel, cx, cy, "gui.cancel"),
-        ] {
+        for (fx, fy, key) in [(dx, dy, "gui.done"), (cx, cy, "gui.cancel")] {
             let hover = ui::hovered(cursor, fx, fy, 150.0, 20.0);
-            ui::action_button(
+            ui::button(
                 batch,
                 atlas,
-                action,
                 fx,
                 fy,
                 150.0,
@@ -199,30 +195,21 @@ fn footer(w: f32, h: f32) -> [(f32, f32); 2] {
 
 /// `ExperimentsScreen.init`: every feature pack the jar ships under
 /// `data/minecraft/datapacks`, switched on when `enabled` holds its id.
-pub fn repository_flags(
-    resources: &std::path::Path,
-    enabled: &[String],
-    additional: &[std::sync::Arc<crate::datapack::DataPack>],
-) -> Vec<Flag> {
-    crate::datapack::feature_repository(resources, additional)
+pub fn repository_flags(resources: &std::path::Path, enabled: &[String]) -> Vec<Flag> {
+    crate::datapack::feature_packs(resources)
         .into_iter()
         .map(|pack| {
             let id = pack.id.clone();
             // `ExperimentsScreen.getHumanReadableTitle`.
             let name = format!("dataPack.{id}.name");
-            let title = if let Some(info) = &pack.selection {
-                info.title.clone()
-            } else if crate::lang::has(&name) {
+            let title = if crate::lang::has(&name) {
                 Text::translate(&name, &[])
             } else {
                 Text::literal(id.clone())
             };
             Flag {
                 enabled: enabled.contains(&id),
-                description: pack.selection.as_ref().map_or_else(
-                    || Text::translate(&format!("dataPack.{id}.description"), &[]),
-                    |info| info.description.clone(),
-                ),
+                description: Text::translate(&format!("dataPack.{id}.description"), &[]),
                 id,
                 title,
             }

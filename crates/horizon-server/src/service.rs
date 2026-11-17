@@ -3,7 +3,6 @@
 //! logon on Windows. The service runs `horizon-server run`, which restarts the game if it crashes; the
 //! service manager restarts the supervisor itself.
 
-use horizon_server_launch::config;
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -291,7 +290,7 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
     let dir = dir
         .canonicalize()
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-    config::Config::load(&dir)?;
+    crate::config::Config::load(&dir)?;
     let system = args.iter().any(|a| a == "--system");
     let service = name(&dir);
     match args.first().map(String::as_str) {

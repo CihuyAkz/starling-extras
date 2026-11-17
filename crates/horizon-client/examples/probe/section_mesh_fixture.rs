@@ -130,7 +130,6 @@ fn scene(
         nether_shading: row["nether"].as_bool().unwrap_or(false),
         shader_pack_lighting: false,
         separate_ao: false,
-        shader_pack: false,
         assets,
         render,
         tables,
@@ -140,10 +139,8 @@ fn scene(
         blend_radius,
         smooth_lighting,
         cutout_leaves,
-        opaque_ice: false,
         translucent_layers: &[],
         leaf_culling: LeafCullingMode::Off,
-        hidden_states: &[],
     };
     let section_y = int(&row["section_y"])?;
     let started = Instant::now();
@@ -194,15 +191,11 @@ pub fn main() -> Result<()> {
     }
     let root = PathBuf::from(&args[0]);
     let assets = Assets::load(&root)?;
-    let render = assets.reload(&horizon_assets::resource_source::ResourceRoot::directory(
-        root.to_path_buf(),
-    ))?;
+    let render = assets.reload(&root)?;
     let facts = BlockFacts::load(&root, assets.registry)?;
-    let mut biomes = Biomes::load(&horizon_assets::resource_source::ResourceRoot::directory(
-        root.to_path_buf(),
-    ))?;
+    let mut biomes = Biomes::load(&root)?;
     let visibility = models::load_visibility(&root, assets.registry)?;
-    let tables = MeshTables::new(&assets, &render, &facts, visibility, None)?;
+    let tables = MeshTables::new(&assets, &render, &facts, visibility)?;
     let names: BTreeMap<u32, &str> = render
         .sprite_layers
         .iter()

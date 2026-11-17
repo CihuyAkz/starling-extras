@@ -5,8 +5,6 @@
 //! and the caller applies the answer. Servers only: the callers keep it off a
 //! client's prediction.
 
-use horizon_world::native_load_context::LoopContext;
-
 /// One tick of breathing: whether the entity can breathe, how much air it
 /// loses when it cannot and how much it gains when it can.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,24 +27,22 @@ pub struct Breath {
 /// maximum (300); without, it falls by `consume`, and at -20 it is set to 0
 /// and the entity takes 2 drowning damage. Negative amounts count as 0.
 /// Asked on servers for players and for mobs, except those with a
-/// `WaterAnimal`'s or an axolotl's own air logic.
+/// `WaterAnimal`'s or an axolotl's own air logic. API 144.
 #[inline(never)]
 pub fn native_living_breathe(
-    context: &LoopContext,
     entity: u32,
     kind: &str,
     can_breathe: &mut bool,
     consume: &mut i32,
     refill: &mut i32,
 ) {
-    crate::native_client_hooks::living_breathe(context, entity, kind, can_breathe, consume, refill);
+    crate::native_client_hooks::living_breathe(entity, kind, can_breathe, consume, refill);
 }
 
 /// `vanilla`'s breathing after the mods have had their say.
-pub fn breathe(context: &LoopContext, entity: u32, kind: &str, vanilla: Breath) -> Breath {
+pub fn breathe(entity: u32, kind: &str, vanilla: Breath) -> Breath {
     let mut now = vanilla;
     native_living_breathe(
-        context,
         entity,
         kind,
         &mut now.can_breathe,
@@ -64,10 +60,9 @@ pub fn breathe(context: &LoopContext, entity: u32, kind: &str, vanilla: Breath) 
 /// from `LivingEntity.baseTick`), with vanilla's answers as the defaults: it
 /// drowns at -20 air, for 2 damage and 8 bubbles. Bubble count is read-only;
 /// changes to the event field do not affect the vanilla entity event. Asked on
-/// servers, for the entities `native_living_breathe` is.
+/// servers, for the entities `native_living_breathe` is. API 356.
 #[inline(never)]
 pub fn native_living_drown(
-    context: &LoopContext,
     entity: u32,
     kind: &str,
     is_drowning: &mut bool,
@@ -76,7 +71,6 @@ pub fn native_living_drown(
     cancel: &mut bool,
 ) {
     crate::native_client_hooks::living_drown(
-        context,
         entity,
         kind,
         is_drowning,
@@ -95,7 +89,6 @@ pub struct Drowning {
 /// drowning, which the mods may change when `server` (`native_living_drown`).
 /// An entity that drowns is set to 0 air.
 pub fn drown(
-    context: &LoopContext,
     entity: u32,
     kind: &str,
     air: &mut i32,
@@ -106,15 +99,7 @@ pub fn drown(
     *air = if drowned { *air - breath.consume } else { next };
     let (mut drowning, mut damage, mut cancel) = (drowned, 2.0, false);
     if server && !breath.can_breathe && *air <= 0 {
-        native_living_drown(
-            context,
-            entity,
-            kind,
-            &mut drowning,
-            &mut damage,
-            8,
-            &mut cancel,
-        );
+        native_living_drown(entity, kind, &mut drowning, &mut damage, 8, &mut cancel);
     }
     if cancel || !drowning {
         return None;
@@ -186,15 +171,14 @@ mod tests {
 
     #[test]
     fn nothing_changes_without_a_mod() {
-        let context = crate::test_resources::server_loop_context();
-        assert_eq!(breathe(context, 1, "minecraft:zombie", VANILLA), VANILLA);
+        assert_eq!(breathe(1, "minecraft:zombie", VANILLA), VANILLA);
         let negative = Breath {
             can_breathe: false,
             consume: -3,
             refill: -2,
         };
         // Mods only ever answer with their own values, so what comes back is clamped.
-        assert_eq!(breathe(context, 1, "minecraft:player", negative).consume, 0);
-        assert_eq!(breathe(context, 1, "minecraft:player", negative).refill, 0);
+        assert_eq!(breathe(1, "minecraft:player", negative).consume, 0);
+        assert_eq!(breathe(1, "minecraft:player", negative).refill, 0);
     }
 }

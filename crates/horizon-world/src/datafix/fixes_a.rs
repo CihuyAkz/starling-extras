@@ -6,7 +6,7 @@ use super::dynamic::{
 use super::json;
 use super::schema::{Key, Ty, key};
 use super::{Cx, FixFn, id_is, items, renamer, reread};
-use horizon_core::nbt::Tag;
+use crate::nbt::Tag;
 
 pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
     out.push((key(3564, 0), |cx| {
@@ -112,9 +112,7 @@ fn fix_sign_text(t: &mut Tag) {
     }
     let filtered = stream(t.get("filtered_messages"));
     let lines = stream(t.get("messages"));
-    let empty = Tag::String(horizon_core::nbt::JavaString(
-        json::text_component_json(&[]),
-    ));
+    let empty = Tag::String(crate::nbt::JavaString(json::text_component_json(&[])));
     let new: Vec<Tag> = filtered
         .into_iter()
         .enumerate()

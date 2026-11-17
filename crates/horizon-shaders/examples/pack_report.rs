@@ -115,7 +115,6 @@ fn game_inputs() -> GameInputs {
                 .into(),
             index: "uint(@)".into(),
         }),
-        ..Default::default()
     }
 }
 

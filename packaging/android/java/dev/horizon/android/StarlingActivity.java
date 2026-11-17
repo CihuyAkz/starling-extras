@@ -34,7 +34,6 @@ import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
-import android.view.DisplayCutout;
 import android.view.InputDevice;
 import android.view.View;
 import android.view.WindowInsets;
@@ -51,12 +50,12 @@ import android.security.keystore.KeyProperties;
 import android.system.ErrnoException;
 import android.system.Os;
 import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.io.InputStream;
 import java.io.IOException;
 import java.io.FileOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,9 +70,8 @@ import javax.crypto.spec.GCMParameterSpec;
  * The game runs in libhorizon_android (NativeActivity); this only does what the NDK cannot:
  * tells the game where its folder is (Starling in shared storage once the player allows it), hides the
  * system bars, keeps the screen on while the game is in front, tells the game how tall the
- * on-screen keyboard is (it no longer shrinks the window since edge-to-edge) and where the
- * camera cutout reaches into the window, and ends the process with the activity, since the
- * game's event loop cannot start twice in one process.
+ * on-screen keyboard is (it no longer shrinks the window since edge-to-edge), and ends the
+ * process with the activity, since the game's event loop cannot start twice in one process.
  * The game calls the public methods from its own thread (android_lib.rs): the file manager, the
  * file picker, the clipboard, the keyboard's editor (TextMirror), the browser, the keystore, the
  * mouse's capture and the controllers' makers and motors.
@@ -93,6 +91,7 @@ public class StarlingActivity extends NativeActivity {
     /** This install of the APK (NativeMods.stamp), for game/native_builds.rs. */
     private static final String APK_STAMP = "STARLING_APK";
 
+    /** The native mods compiled into this Dev APK, if this is a bundled-native build. */
     private void exposeBundledNativeMods() {
         final String mods;
         try (InputStream input = getAssets().open("native-mods/compiled.txt");
@@ -124,17 +123,6 @@ public class StarlingActivity extends NativeActivity {
      */
     private void loadGame() {
         exposeBundledNativeMods();
-        // The game's thread (android_main, which android-activity starts with std's default 2 MiB
-        // stack) builds the game and the world renderer in frames of about a megabyte each since
-        // Horizon of 2026-11, past that stack's end. Rust's threads take this size unless they ask
-        // for one, and std reads it once, at the first thread: before the library is loaded. As
-        // Linux gives a desktop game's main thread; the player's own setting is kept.
-        try {
-            Os.setenv("RUST_MIN_STACK",
-                    android.os.Process.is64Bit() ? "16777216" : "8388608", false);
-        } catch (ErrnoException e) {
-            // std's default then.
-        }
         String stamp = NativeMods.stamp(this);
         if (stamp != null) {
             try {
@@ -166,10 +154,6 @@ public class StarlingActivity extends NativeActivity {
     /** The keyboard's height in window pixels, 0 when it is hidden (android_lib.rs). */
     private static native void onImeHeight(int pixels);
 
-    /** How far the camera cutout reaches into the window from each edge, in window pixels;
-     *  all 0 without one, and before Android 9 (android_lib.rs). */
-    private static native void onSafeInsets(int left, int top, int right, int bottom);
-
     /** The game folder in shared storage, or null to keep it in the app's own files. */
     private static native void onStorage(String folder);
 
@@ -185,7 +169,7 @@ public class StarlingActivity extends NativeActivity {
     private volatile boolean drawn;
 
     /** Shared storage's Starling folder when the player allowed the app to use it, else null:
-     *  StarlingDev for Starling Dev (build_apk.py --dev) and StarlingPreview for Starling Preview
+     *  StarlingExtras for Starling Dev (build_apk.py --dev) and StarlingPreview for Starling Preview
      *  (--preview), which keep out of the release's. */
     static String sharedFolder(Context context) {
         boolean allowed = Build.VERSION.SDK_INT >= 30
@@ -321,52 +305,28 @@ public class StarlingActivity extends NativeActivity {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             getWindow().setAttributes(attributes);
         }
-        if (Build.VERSION.SDK_INT >= 28) {
+        if (Build.VERSION.SDK_INT >= 30) {
             getWindow().getDecorView().setOnApplyWindowInsetsListener(
                     new View.OnApplyWindowInsetsListener() {
                         @Override
                         public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
-                            sendSafeInsets(insets);
-                            if (Build.VERSION.SDK_INT >= 30) {
-                                onImeHeight(insets.getInsets(WindowInsets.Type.ime()).bottom);
-                                // The keyboard brings the navigation bar back, and it stayed
-                                // after the keyboard went: home sat beside the chat's keys.
-                                if (insets.isVisible(WindowInsets.Type.navigationBars())
-                                        || insets.isVisible(WindowInsets.Type.statusBars())) {
-                                    view.post(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            hideSystemBars();
-                                        }
-                                    });
-                                }
+                            onImeHeight(insets.getInsets(WindowInsets.Type.ime()).bottom);
+                            // The keyboard brings the navigation bar back, and it stayed after
+                            // the keyboard went: home sat beside the chat's keys.
+                            if (insets.isVisible(WindowInsets.Type.navigationBars())
+                                    || insets.isVisible(WindowInsets.Type.statusBars())) {
+                                view.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        hideSystemBars();
+                                    }
+                                });
                             }
                             return view.onApplyWindowInsets(insets);
                         }
                     });
         }
         hideSystemBars();
-    }
-
-    /**
-     * Tells the game where the camera cutout reaches into the window (in landscape, along the
-     * short edge it sits on), so the touch controls and the chat keep clear of it (#166).
-     */
-    private static void sendSafeInsets(WindowInsets insets) {
-        if (Build.VERSION.SDK_INT < 28) {
-            return;
-        }
-        DisplayCutout cutout = insets.getDisplayCutout();
-        try {
-            if (cutout == null) {
-                onSafeInsets(0, 0, 0, 0);
-            } else {
-                onSafeInsets(cutout.getSafeInsetLeft(), cutout.getSafeInsetTop(),
-                        cutout.getSafeInsetRight(), cutout.getSafeInsetBottom());
-            }
-        } catch (UnsatisfiedLinkError e) {
-            // A build of the game from before the insets: it draws as it always did.
-        }
     }
 
     @Override
@@ -522,11 +482,13 @@ public class StarlingActivity extends NativeActivity {
 
     /**
      * Buzz the phone itself for `millis` ms at its default strength: the touch controls'
-     * feedback (a block broken, a stack split), as Bedrock's. A phone without a motor stays still;
-     * 0 stops a buzz under way (vibration just turned off).
+     * feedback (a block broken, a stack split), as Bedrock's. A phone without a motor stays still.
      */
     @SuppressWarnings("deprecation")
     public void vibrate(int millis) {
+        if (millis <= 0) {
+            return;
+        }
         Vibrator motor;
         if (Build.VERSION.SDK_INT >= 31) {
             VibratorManager motors =
@@ -535,12 +497,7 @@ public class StarlingActivity extends NativeActivity {
         } else {
             motor = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         }
-        if (motor == null || !motor.hasVibrator()) {
-            return;
-        }
-        if (millis <= 0) {
-            motor.cancel();
-        } else {
+        if (motor != null && motor.hasVibrator()) {
             motor.vibrate(VibrationEffect.createOneShot(millis, VibrationEffect.DEFAULT_AMPLITUDE));
         }
     }
@@ -779,7 +736,6 @@ public class StarlingActivity extends NativeActivity {
                 .show();
     }
 
-    /** Mod ids as the player reads them: "voicechat" is Voicechat, two are "A and B". */
     private static String modNames(List<String> ids) {
         StringBuilder names = new StringBuilder();
         for (int i = 0; i < ids.size(); i++) {

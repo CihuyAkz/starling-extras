@@ -33,7 +33,7 @@ impl InteractionWorld for World {
         }
         false
     }
-    fn start_use(&mut self, _held: bool) {
+    fn start_use(&mut self) {
         if self.destroying {
             return;
         }

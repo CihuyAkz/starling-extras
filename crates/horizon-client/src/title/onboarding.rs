@@ -161,7 +161,7 @@ fn title_lines(atlas: &HudAtlas) -> Vec<String> {
 impl Title {
     /// The first screen of a first launch (`addInitialScreens`).
     pub fn start_onboarding(&mut self) {
-        self.set_mode(Mode::Onboarding(Onboarding::new()));
+        self.mode = Mode::Onboarding(Onboarding::new());
     }
 
     /// `onClose`: Escape and Continue fade the screen out.
@@ -177,7 +177,7 @@ impl Title {
         if let Mode::Onboarding(screen) = &self.mode
             && screen.closed(now)
         {
-            self.set_mode(Mode::Main);
+            self.mode = Mode::Main;
             self.onboarding_finished = true;
         }
     }
@@ -194,7 +194,6 @@ impl Title {
                 id,
                 icon: None,
                 trailing: icon,
-                action: None,
             };
         // The Narrator button is inactive without a narrator, and shows
         // `options.narrator.notavailable`.

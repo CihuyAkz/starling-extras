@@ -90,13 +90,7 @@ impl<W: Write> RestitutionWorld for World<'_, W> {
         self.query("support-position")?;
         Ok(BlockPos::new(17, -64, -33))
     }
-    fn bounce_on(
-        &mut self,
-        _: BlockStateId,
-        p: BlockPos,
-        fall: f64,
-        movement: Vec3,
-    ) -> io::Result<Vec3> {
+    fn bounce_on(&mut self, _: BlockStateId, p: BlockPos, fall: f64) -> io::Result<()> {
         self.query(&format!(
             "bounce-on {} {} {} {:016x}",
             p.x,
@@ -107,7 +101,7 @@ impl<W: Write> RestitutionWorld for World<'_, W> {
         if self.f["mutate"].as_bool().unwrap() {
             self.velocity = Vec3::new(17.0, 18.0, 19.0);
         }
-        Ok(movement)
+        Ok(())
     }
     fn bounce_event(&mut self) -> io::Result<()> {
         self.query("bounce-event")

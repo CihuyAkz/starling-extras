@@ -1,4 +1,8 @@
 //! The `template` and `fossil` configured features.
+use super::{
+    BoundingBox, Mirror, Rotation, StructureResources, StructureTemplate,
+    processor::{PlaceSettings, ProcessorList, place_in_world},
+};
 use crate::{
     heightmap::HeightmapType,
     worldgen::{
@@ -12,13 +16,6 @@ use crate::{
 use horizon_core::random::RandomSource;
 use serde_json::{Value, value::RawValue};
 use std::sync::Arc;
-use {
-    super::{
-        Mirror, Rotation, StructureResources, StructureTemplate,
-        processor::{PlaceSettings, ProcessorList, place_in_world},
-    },
-    horizon_core::bounding_box::BoundingBox,
-};
 
 fn resources(bindings: &FeatureBlockBindings<'_>) -> Result<Arc<StructureResources>, DecodeError> {
     bindings

@@ -40,9 +40,7 @@ pub fn main() -> Result<()> {
         return Err("radius must be 1..16".into());
     }
     let assets = assets::Assets::load(&resources)?;
-    let render = assets.reload(&horizon_assets::resource_source::ResourceRoot::directory(
-        resources.to_path_buf(),
-    ))?;
+    let render = assets.reload(&resources)?;
     let world = world::World::test_scene(&assets, &render, radius)?;
     let binding = collisions::load(&resources, assets.registry)?;
     let mut scene = collisions::SceneCollisions {

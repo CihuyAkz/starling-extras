@@ -132,7 +132,7 @@ struct Env {
     grass: Vec<i32>,
     local_time: String,
     bundle_weight: bool,
-    prototypes: std::sync::Arc<BTreeMap<String, Components>>,
+    prototypes: BTreeMap<String, Components>,
 }
 impl ItemEnv for Env {
     fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {
@@ -178,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let raw: BTreeMap<String, Components> = serde_json::from_slice(&fs::read(prototypes_path)?)?;
     let mut models = ItemModels {
-        prototypes: std::sync::Arc::new(raw),
+        prototypes: raw,
         ..Default::default()
     };
     writeln!(

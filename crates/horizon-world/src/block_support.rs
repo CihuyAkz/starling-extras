@@ -60,15 +60,13 @@ impl SupportType {
     }
 }
 
-use std::{collections::HashMap, io};
-use {
-    crate::{
-        collision::CachedCollisionRegistry,
-        compression::invalid,
-        registry::{BlockRegistry, BlockStateId, BlockTable},
-    },
-    horizon_core::nbt::Tag,
+use crate::{
+    collision::CachedCollisionRegistry,
+    compression::invalid,
+    nbt::Tag,
+    registry::{BlockRegistry, BlockStateId, BlockTable},
 };
+use std::{collections::HashMap, io};
 /// Cached branch of BlockState.isFaceSturdy. Dynamic support-shape selection
 /// stays explicit as None, even when a context-free approximation looks obvious.
 pub struct CachedBlockSupportRegistry<'r> {
@@ -184,10 +182,10 @@ impl<'r> BlockSupportRegistry<'r> {
         let mut dynamic = HashMap::new();
         for id in 0..registry.len() {
             let id = BlockStateId(id as u32);
-            if cached.cached_shape(id)?.is_none()
-                && let Some(behavior) = DynamicSupport::from_state(registry.state(id).unwrap())?
-            {
-                dynamic.insert(id, behavior);
+            if cached.cached_shape(id)?.is_none() {
+                if let Some(behavior) = DynamicSupport::from_state(registry.state(id).unwrap())? {
+                    dynamic.insert(id, behavior);
+                }
             }
         }
         Ok(Self { cached, dynamic })

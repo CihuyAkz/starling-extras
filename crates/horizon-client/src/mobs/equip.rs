@@ -1,7 +1,7 @@
 //! `Mob.equipItemIfPossible` and the comparisons behind it: `compareArmor`,
 //! `compareWeapons`, `canReplaceEqualItem` and the per-species gates that
 //! decide whether a mob takes an item off the ground at all (`wantsToPickUp`,
-//! `canHoldItem`). `game/mobs/mob_looting.rs` reads the item data and calls these.
+//! `canHoldItem`). `game/mob_looting.rs` reads the item data and calls these.
 use super::Species;
 
 /// An `EquipmentSlot`, in the order `finalize::item` and `drops::SLOTS` keep
@@ -65,20 +65,13 @@ fn group_matches(group: &str, slot: Slot) -> bool {
 /// own attribute value) plus the item's modifiers for `attribute` that apply
 /// in `slot`, in the order the item lists them.
 pub fn attribute_with(
-    modifiers: &[horizon_items::item_data::ModifierRow],
+    modifiers: &[(String, String, f64, String, String)],
     attribute: &str,
     base: f64,
     slot: Slot,
 ) -> f64 {
     let mut value = base;
-    for horizon_items::item_data::ModifierRow {
-        attribute: kind,
-        amount,
-        operation,
-        slot: group,
-        ..
-    } in modifiers
-    {
+    for (kind, _, amount, operation, group) in modifiers {
         if kind != attribute || !group_matches(group, slot) {
             continue;
         }
@@ -387,12 +380,12 @@ mod tests {
     #[test]
     fn attribute_modifiers_apply_by_slot_group_and_operation() {
         let entry = |attribute: &str, amount: f64, operation: &str, group: &str| {
-            horizon_items::item_data::ModifierRow::new(
-                attribute,
-                "minecraft:test",
+            (
+                attribute.to_owned(),
+                "minecraft:test".to_owned(),
                 amount,
-                operation,
-                group,
+                operation.to_owned(),
+                group.to_owned(),
             )
         };
         let modifiers = [

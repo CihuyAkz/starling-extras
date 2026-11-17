@@ -6,12 +6,11 @@
 //! arrow when it is above or below the screen.
 use crate::hud_layout::{Blend, GuiDraw};
 use horizon_assets::animation::{AnimationClip, AnimationMetadata};
-use horizon_assets::resource_source::ResourceSource;
 use horizon_core::geometry::trig;
 use horizon_protocol::packets::play::{
     TrackedWaypoint, WaypointId, WaypointTarget, waypoint_operation,
 };
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, fs, path::Path};
 
 /// `WaypointStyle`: the sprites (under `hud/locator_bar_dot/`) from near to far.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,16 +89,14 @@ pub struct SpriteFrames {
 }
 impl SpriteFrames {
     /// None for a still sprite or invalid metadata.
-    fn load(root: &ResourceSource, png: &str) -> Option<Self> {
-        let text = root.read_to_string(&format!("{png}.mcmeta")).ok()?;
+    fn load(png: &Path) -> Option<Self> {
+        let text = fs::read_to_string(png.with_extension("png.mcmeta")).ok()?;
         let meta: HashMap<String, Box<serde_json::value::RawValue>> =
             serde_json::from_str(&text).ok()?;
         let animation = AnimationMetadata::from_json(meta.get("animation")?.get()).ok()?;
         // The PNG header: width and height at bytes 16..24 of IHDR.
-        let header = root.read_head(png, 24).ok()?;
-        if header.len() != 24 {
-            return None;
-        }
+        let mut header = [0u8; 24];
+        std::io::Read::read_exact(&mut fs::File::open(png).ok()?, &mut header).ok()?;
         let dim = |at: usize| i32::from_be_bytes(header[at..at + 4].try_into().unwrap_or_default());
         let image = [dim(16), dim(20)];
         let frame = animation.frame_size(image[0], image[1]);
@@ -131,42 +128,53 @@ pub struct WaypointStyles(
     HashMap<String, SpriteFrames>,
 );
 impl WaypointStyles {
-    pub fn load(root: &ResourceSource) -> Self {
+    pub fn load(root: &Path) -> Self {
         let mut frames = HashMap::new();
-        let base = "assets/minecraft/textures/gui/sprites/";
-        let hud = format!("{base}hud/");
-        let dots = root.list(&format!("{hud}locator_bar_dot/"));
+        let hud = root.join("assets/minecraft/textures/gui/sprites/hud");
+        let dots = fs::read_dir(hud.join("locator_bar_dot"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path());
         let arrows = ["locator_bar_arrow_up", "locator_bar_arrow_down"]
-            .map(|name| format!("{hud}{name}.png"));
+            .map(|a| hud.join(format!("{a}.png")));
         for png in arrows.into_iter().chain(dots) {
-            let Some(name) = png
-                .strip_prefix(base)
-                .and_then(|name| name.strip_suffix(".png"))
-            else {
+            if png.extension().is_none_or(|e| e != "png") {
+                continue;
+            }
+            let Some(f) = SpriteFrames::load(&png) else {
                 continue;
             };
-            if let Some(frame) = SpriteFrames::load(root, &png) {
-                frames.insert(name.to_owned(), frame);
-            }
+            let name = png
+                .strip_prefix(hud.parent().unwrap_or(&hud))
+                .map(|r| r.with_extension("").to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            frames.insert(name, f);
         }
         let mut out = HashMap::new();
-        for namespace in root.namespaces("assets") {
-            let prefix = format!("assets/{namespace}/waypoint_style/");
-            for path in root.list(&prefix) {
-                let Some(name) = path
-                    .strip_prefix(&prefix)
-                    .and_then(|name| name.strip_suffix(".json"))
-                else {
+        for ns in fs::read_dir(root.join("assets"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let namespace = ns.file_name().to_string_lossy().into_owned();
+            for f in fs::read_dir(ns.path().join("waypoint_style"))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                let path = f.path();
+                if path.extension().is_none_or(|e| e != "json") {
                     continue;
-                };
-                if let Some(style) = root
-                    .read_to_string(&path)
+                }
+                let name = path.file_stem().unwrap_or_default().to_string_lossy();
+                if let Some(style) = fs::read_to_string(&path)
                     .ok()
-                    .and_then(|text| WaypointStyle::parse(&text))
+                    .and_then(|t| WaypointStyle::parse(&t))
                 {
                     out.insert(format!("{namespace}:{name}"), style);
                 } else {
-                    log::warn!("Horizon: invalid waypoint style {path}");
+                    log::warn!("Horizon: invalid waypoint style {}", path.display());
                 }
             }
         }
@@ -560,42 +568,6 @@ mod tests {
             color: None,
             target,
         }
-    }
-
-    #[test]
-    fn resolved_styles_and_sprite_animation_load_without_files() {
-        use horizon_assets::resource_source::Resource;
-        let mut png = Vec::new();
-        {
-            let mut encoder = png::Encoder::new(&mut png, 1, 2);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder
-                .write_header()
-                .unwrap()
-                .write_image_data(&[255; 8])
-                .unwrap();
-        }
-        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
-            (
-                "assets/example/waypoint_style/nested/custom.json".into(),
-                Resource::bytes(br#"{"sprites":["a"]}"#.to_vec()),
-            ),
-            (
-                "assets/minecraft/textures/gui/sprites/hud/locator_bar_dot/a.png".into(),
-                Resource::bytes(png),
-            ),
-            (
-                "assets/minecraft/textures/gui/sprites/hud/locator_bar_dot/a.png.mcmeta".into(),
-                Resource::bytes(br#"{"animation":{"width":1,"height":1,"frames":[0,1]}}"#.to_vec()),
-            ),
-        ]));
-        let styles = WaypointStyles::load(&source);
-        assert_eq!(
-            styles.get("example:nested/custom").sprite(0.0),
-            "hud/locator_bar_dot/a"
-        );
-        assert_eq!(styles.1["hud/locator_bar_dot/a"].region(1), [1, 2, 0, 1]);
     }
 
     #[test]

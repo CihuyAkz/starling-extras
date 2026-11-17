@@ -2,9 +2,11 @@ use horizon_core::{
     position::BlockPos,
     ticks::{SavedTick, TickPriority, TickTypeId},
 };
-use {
-    horizon_core::nbt::{NamedTag, Tag},
-    horizon_world::{DATA_VERSION, chunk::ChunkData, tick_data, tick_data::TickKind},
+use horizon_world::{
+    DATA_VERSION,
+    chunk::ChunkData,
+    nbt::{NamedTag, Tag},
+    tick_data::{self, TickKind},
 };
 
 fn saved(pos: BlockPos) -> SavedTick {

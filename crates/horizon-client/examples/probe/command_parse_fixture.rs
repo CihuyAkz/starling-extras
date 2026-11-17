@@ -6,9 +6,7 @@
 //!
 //! usage: command_parse_fixture RESOURCES REGISTRIES.json CORPUS PERMISSION OUTPUT
 use horizon_client::{
-    command::{
-        ArgType, CustomArgumentKind, Dispatcher, NodeKind, Registries, args::RegistryIds, vanilla,
-    },
+    command::{ArgType, Dispatcher, NodeKind, Registries, args::RegistryIds, vanilla},
     lang,
 };
 use serde_json::{Value, json};
@@ -39,11 +37,6 @@ fn parser_id(ty: &ArgType) -> String {
         ArgType::Float { .. } => "brigadier:float".into(),
         ArgType::Double { .. } => "brigadier:double".into(),
         ArgType::Word | ArgType::Str | ArgType::Greedy => "brigadier:string".into(),
-        // A mod's registered type never appears in vanilla's tree; it goes over the wire as the
-        // Brigadier string it degrades to.
-        ArgType::Custom(custom) => match custom.kind() {
-            CustomArgumentKind::Word | CustomArgumentKind::Greedy => "brigadier:string".into(),
-        },
         ArgType::Entity { .. } => "minecraft:entity".into(),
         ArgType::BlockPos => "minecraft:block_pos".into(),
         ArgType::Vec3 { .. } => "minecraft:vec3".into(),

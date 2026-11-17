@@ -24,11 +24,6 @@ pub enum ValidationError<E> {
     Contents(E),
     TooManyItems { count: i32, maximum: i32 },
 }
-/// `ItemStack.validateComponents`: durability and stackability are exclusive.
-pub fn durability_allows_stack_size(has_max_damage: bool, max_stack_size: i64) -> bool {
-    !has_max_damage || max_stack_size <= 1
-}
-
 pub fn validate_strict<
     I: Copy + Eq,
     K: Clone + Eq,
@@ -38,10 +33,7 @@ pub fn validate_strict<
     stack: &ItemStackData<I, K, V>,
     rules: &R,
 ) -> Result<(), ValidationError<R::ContentsError>> {
-    if !durability_allows_stack_size(
-        rules.has_max_damage(stack),
-        i64::from(rules.max_stack_size(stack)),
-    ) {
+    if rules.has_max_damage(stack) && rules.max_stack_size(stack) > 1 {
         return Err(ValidationError::StackableDamageable);
     }
     rules

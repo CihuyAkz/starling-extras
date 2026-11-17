@@ -22,15 +22,12 @@ pub trait RestitutionWorld {
     fn block_bounce_restitution(&mut self, block: BlockStateId) -> Result<f32, Self::Error>;
     fn air_drag(&mut self) -> Result<f32, Self::Error>;
     fn movement_support_position(&mut self) -> Result<BlockPos, Self::Error>;
-    /// `Block.bounceOn`: the entity bounced off `block`; `movement` is what the bounce leaves
-    /// it, and the answer is what it keeps (a block part may change it).
     fn bounce_on(
         &mut self,
         block: BlockStateId,
         position: BlockPos,
         fall_distance: f64,
-        movement: Vec3,
-    ) -> Result<Vec3, Self::Error>;
+    ) -> Result<(), Self::Error>;
     fn bounce_event(&mut self) -> Result<(), Self::Error>;
     /// Native field write after bounce callbacks and before setting velocity.
     fn mark_position_for_sync(&mut self);
@@ -95,7 +92,7 @@ pub fn restitute_movement<W: RestitutionWorld>(
     }
     if emit {
         let position = world.movement_support_position()?;
-        velocity = world.bounce_on(input.block, position, input.fall_distance, velocity)?;
+        world.bounce_on(input.block, position, input.fall_distance)?;
         world.bounce_event()?;
         world.mark_position_for_sync();
     }

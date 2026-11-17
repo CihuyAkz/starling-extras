@@ -62,8 +62,7 @@ TARGETS = {
 LIBRARY = "horizon_android"
 # Every LOAD segment aligned for 16 KB pages, which Android 15 devices may use.
 PAGE_FLAGS = "-C link-arg=-Wl,-z,max-page-size=16384"
-# A BuildId in the library, so the native tombstones in diagnostic ZIPs name it and its frames can be matched to
-# the unstripped copy kept beside the APK (`lib<LIBRARY>-symbols.so`, docs/android-diagnostics.md).
+# A BuildId in the library, so native crash diagnostics can match frames to the unstripped CI copy.
 BUILD_ID_FLAGS = "-C link-arg=-Wl,--build-id=sha1"
 ICONS = {
     "mipmap-mdpi": "48x48",
@@ -180,7 +179,6 @@ def zip_folder(folder, archive):
             z.writestr(info, file.read_bytes())
 
 
-
 def native_bundle_allowed(relative):
     parts = relative.split("/")
     name = parts[-1]
@@ -257,11 +255,16 @@ def bundle_native_mods(assets_folder):
                 info.compress_type = zipfile.ZIP_DEFLATED
                 archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
+    # Dev APKs built through native_build.sh carry the corresponding game library itself.
+    # This marker lets the Android runtime distinguish those APK-built mods from source-only
+    # bundles, without putting another copy of the libraries in the APK assets.
     compiled_mods = os.environ.get("STARLING_APK_NATIVE_MODS", "").split()
     if compiled_mods:
         if len(compiled_mods) != len(set(compiled_mods)) or not set(compiled_mods).issubset(BUILTIN_NATIVE_MODS):
             raise RuntimeError("STARLING_APK_NATIVE_MODS contains unknown or duplicate mod ids")
         (destination / "compiled.txt").write_text(" ".join(sorted(compiled_mods)) + "\n", encoding="utf-8")
+
+
 def assets(out):
     """The APK's assets/: prepare-kit.zip (PREPARE_KIT, with the paths horizon-prepare reads),
     lowbudget.zip, the skin the setup draws the menus with (packaging/lowbudget/pack, made by its
@@ -312,28 +315,13 @@ def compile_java(build_tools, android_jar, out):
     return dex / "classes.dex"
 
 
-def version_name(variant):
-    """The APK's versionName: the release's VERSION_NAME, and a test build's (Preview, Dev) with
-    its variant and commit after it. Compile asks the native-mod build service for the game of this
-    version, and the service has the released versions' code only: a test build numbered as the
-    release got that release's game in place of its own (NativeMods.chosen loaded it)."""
-    if not variant:
-        return VERSION_NAME
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short=10", "HEAD"], cwd=ROOT, text=True,
-            stderr=subprocess.DEVNULL).strip()
-    except (OSError, subprocess.CalledProcessError):
-        commit = ""
-    return f"{VERSION_NAME}-{variant}" + (f".{commit}" if commit else "")
-
-
 def link_resources(aapt2, android_jar, out, assets, variant, abi=ABI):
     """The manifest, the launcher icon, the themes and `assets`, compiled and linked into
     `out/base.apk`; `variant` is None (the release's app) or a key of VARIANTS."""
     manifest = (HERE / "AndroidManifest.xml").read_text(encoding="utf-8")
     suffix, label_suffix = VARIANTS[variant] if variant else ("", "")
     application_id = APPLICATION_ID + suffix
+    # The Dev build is a separate package, but its user-visible name stays Starling Extras.
     label = LABEL if variant == "dev" else LABEL + label_suffix
     manifest = manifest.replace("@APPLICATION_ID@", application_id).replace("@LABEL@", label)
     if abi != ABI:
@@ -376,7 +364,7 @@ def link_resources(aapt2, android_jar, out, assets, variant, abi=ABI):
         "--java", out / "generated", "--custom-package", "dev.horizon.android",
         "-I", android_jar,
         "--min-sdk-version", MIN_SDK, "--target-sdk-version", TARGET_SDK,
-        "--version-code", VERSION_CODE, "--version-name", version_name(variant),
+        "--version-code", VERSION_CODE, "--version-name", VERSION_NAME,
         *debug,
         "-A", assets,
         *sorted(compiled.glob("*.flat")),
@@ -395,17 +383,26 @@ def add_code(base, libraries, dex, unsigned, abi=ABI):
 
 def sign(build_tools, aligned, apk, out):
     keystore = os.environ.get("HORIZON_ANDROID_KEYSTORE")
-    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS", "horizon-debug")
+    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS")
     env = dict(os.environ)
     if not keystore:
-        keystore = out / "debug.keystore"
-        env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
-        if not keystore.exists():
-            run(
-                "keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
-                "-keypass", "android", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
-                "-validity", "10000", "-dname", "CN=Horizon Android debug",
-            )
+        previous = ROOT / ".local" / "android" / "debug.keystore"
+        if previous.is_file():
+            keystore = previous
+            alias = alias or "androiddebugkey"
+            env.setdefault("HORIZON_ANDROID_STORE_PASSWORD", "android")
+            env.setdefault("HORIZON_ANDROID_KEY_PASSWORD", "android")
+        else:
+            keystore = out / "debug.keystore"
+            alias = alias or "horizon-debug"
+            env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
+            if not keystore.exists():
+                run(
+                    "keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
+                    "-keypass", "android", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
+                    "-validity", "10000", "-dname", "CN=Horizon Android debug",
+                )
+    alias = alias or "horizon-debug"
     apksigner = tool(build_tools, "apksigner")
     run(
         apksigner, "sign", "--ks", keystore, "--ks-key-alias", alias,
@@ -471,8 +468,7 @@ def main():
     if args.library_only:
         return
     if not args.keep_symbols:
-        # The same library with its symbols, never shipped: CI keeps it to read crash frames. Native-mod
-        # builds (--library-only) don't need one.
+        # Keep the same library unstripped for CI crash-symbolication; never put it in the APK.
         shutil.copyfile(built, out / f"lib{LIBRARY}-symbols.so")
 
     variant = "dev" if args.dev else "preview" if args.preview else None

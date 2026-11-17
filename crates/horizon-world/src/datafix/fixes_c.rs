@@ -7,7 +7,7 @@ use super::fixes_a::{block_rename, component_fix};
 use super::fixes_b::{advancements_rename, attributes_rename, feature_flag_remove};
 use super::schema::{Key, Ty, key};
 use super::{Cx, FixFn, id_is, renamer};
-use horizon_core::nbt::Tag;
+use crate::nbt::Tag;
 
 pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
     // NamedEntityConvertUncheckedFix: the typed Particle is written as

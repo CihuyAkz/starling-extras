@@ -459,9 +459,10 @@ impl BlockStateProvider {
                     if predicate
                         .test(world, position)
                         .map_err(StateProviderError::Query)?
-                        && let Some(state) = provider.get_optional_state(world, random, position)?
                     {
-                        return Ok(Some(state));
+                        if let Some(state) = provider.get_optional_state(world, random, position)? {
+                            return Ok(Some(state));
+                        }
                     }
                 }
                 match fallback {
@@ -609,7 +610,7 @@ fn rotation_table(registry: &BlockRegistry) -> Result<Rotations, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use horizon_core::nbt::Tag;
+    use crate::nbt::Tag;
 
     /// air, stone, oak_log axis x/y/z, furnace facing the four horizontal
     /// ways, observer facing all six with `powered` false then true, and a

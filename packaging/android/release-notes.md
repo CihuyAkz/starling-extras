@@ -25,7 +25,7 @@ Horizon Android and Starling are now one app, in [starling-client/starling](http
 
 - **More shader packs work:** packs written for the core profile, like Pixel Perfect, no longer leave a black screen, and packs with only world programs, like Round World, load.
 - **Many more native mods compile**, like Treefall, Eating Animation, Carry Block, Biome Compass and Dynamic FPS.
-- **Use GitHub (slower)** on the Compile card compiles your native mods on GitHub's machines, for when the build server has reached its limit for the day.
+- **Compile with GitHub** on the Compile card builds your native mods with GitHub Actions.
 - **More builds a day:** 32 instead of 16.
 - **Clearer build errors:** when a native mod can't compile, the message says which one, right away, and it no longer uses up your builds for the day. **Try again** on a failed compile compiles again.
 - **Build server...** on the Compile screen lets you use your own build server.
@@ -102,7 +102,7 @@ Starling now sits on the newest Horizon, about 4,800 commits ahead of the previo
 
 ## Report a bug
 
-Open an [issue](https://github.com/JuanLuci/starling/issues/new/choose): the form asks for your phone, your Android version and `Starling/logs/latest.log` (with `previous.log` beside it once Starling has been opened again).
+Open an [issue](https://github.com/starling-client/starling/issues/new/choose): the form asks for your phone, your Android version and `Starling/logs/latest.log` (with `previous.log` beside it once Starling has been opened again).
 
 ## Not sure which APK to install?
 

@@ -1,4 +1,13 @@
 use horizon_core::geometry::VoxelShape;
+use horizon_world::{
+    block_collision::{BlockCollisionRegistry, DynamicCollisionWorld, ShulkerCollisionState},
+    collision::CachedCollisionRegistry,
+    dynamic_support::DynamicSupportWorld,
+    nbt::{self, Limits},
+    registry::{BlockRegistry, BlockStateId},
+    suffocation::{SuffocationDefinition, SuffocationRegistry},
+    worldgen::tags::TagDefinitions,
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -6,17 +15,6 @@ use std::{
     io::{self, Write},
     path::Path,
     sync::Arc,
-};
-use {
-    horizon_core::{nbt, nbt::Limits},
-    horizon_world::{
-        block_collision::{BlockCollisionRegistry, DynamicCollisionWorld, ShulkerCollisionState},
-        collision::CachedCollisionRegistry,
-        dynamic_support::DynamicSupportWorld,
-        registry::{BlockRegistry, BlockStateId},
-        suffocation::{SuffocationDefinition, SuffocationRegistry},
-        worldgen::tags::TagDefinitions,
-    },
 };
 struct World<'a, W> {
     out: &'a mut W,

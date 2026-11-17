@@ -1,18 +1,13 @@
 use horizon_core::geometry::Direction;
+use horizon_world::{
+    block_support::{CachedBlockSupportRegistry, SupportType},
+    nbt::{self, Limits, Tag},
+    registry::{BlockRegistry, BlockStateId},
+};
 use std::{
     fs,
     io::{self, Write},
     path::Path,
-};
-use {
-    horizon_core::{
-        nbt,
-        nbt::{Limits, Tag},
-    },
-    horizon_world::{
-        block_support::{CachedBlockSupportRegistry, SupportType},
-        registry::{BlockRegistry, BlockStateId},
-    },
 };
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arg = crate::args().nth(1).expect("private fixture directory");

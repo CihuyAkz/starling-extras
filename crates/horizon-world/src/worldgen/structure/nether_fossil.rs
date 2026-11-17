@@ -1,17 +1,14 @@
 //! Nether fossils: NetherFossilStructure and NetherFossilPieces.
+use super::{
+    BoundingBox, Mirror, Rotation, StructureResources,
+    legacy::{LegacyPiece, PieceContext, Result, TemplateHandler, TemplatePiece},
+    processor::ProcessorList,
+};
 use horizon_core::{
     position::BlockPos,
     random::{LegacyRandom, PositionalRandom, RandomSource},
 };
 use std::sync::Arc;
-use {
-    super::{
-        Mirror, Rotation, StructureResources,
-        legacy::{LegacyPiece, PieceContext, Result, TemplateHandler, TemplatePiece},
-        processor::ProcessorList,
-    },
-    horizon_core::bounding_box::BoundingBox,
-};
 
 const FOSSILS: usize = 14;
 
@@ -46,7 +43,7 @@ pub fn find_floor(
 
 /// NetherFossilPiece: a template placed whole into every chunk it touches.
 #[derive(Debug)]
-pub struct NetherFossilPiece(pub(super) TemplatePiece);
+pub struct NetherFossilPiece(TemplatePiece);
 
 /// NetherFossilPieces.addPieces.
 pub fn piece(
@@ -76,7 +73,7 @@ impl LegacyPiece for NetherFossilPiece {
     fn bounding_box(&self) -> BoundingBox {
         self.0.bounding_box
     }
-    fn save(&self) -> Option<horizon_core::nbt::Compound> {
+    fn save(&self) -> Option<crate::nbt::Compound> {
         Some(self.0.saved())
     }
     fn type_name(&self) -> &'static str {

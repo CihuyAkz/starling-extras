@@ -1,7 +1,7 @@
 //! `TestBlockEntity`: the test block's mode, message and powered flag, with
 //! its save format (`saveAdditional` / `loadAdditional`).
 use horizon_client_core::nbt_value::{number, string, text};
-use horizon_core::nbt::Tag;
+use horizon_world::nbt::Tag;
 
 /// `TestBlockMode`, in id order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

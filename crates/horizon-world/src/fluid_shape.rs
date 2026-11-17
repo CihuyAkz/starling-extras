@@ -31,10 +31,9 @@ impl FluidShapeCache {
         if state.kind() == FluidKind::Empty {
             return Ok(VoxelShape::empty());
         }
-        // tick_id is distinct for every source and flowing registry entry.
-        let row = state.kind().tick_id() as usize;
-        let index = row * 18 + usize::from(state.falling()) * 9 + usize::from(state.amount());
-        self.shapes.resize(self.shapes.len().max(index + 1), None);
+        let index = state.kind() as usize * 18
+            + usize::from(state.falling()) * 9
+            + usize::from(state.amount());
         if let Some(shape) = &self.shapes[index] {
             return Ok(shape.clone());
         }

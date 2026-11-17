@@ -66,20 +66,6 @@ impl Modifier {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
-/// An attribute's sentiment (`Attribute.Sentiment`): how a rising or falling
-/// value colors its tooltip line. Vanilla's own sentiments stay where the
-/// tooltip reads them; a mod's declared attribute carries its own.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Sentiment {
-    /// Rising blue, falling red.
-    #[default]
-    Positive,
-    /// Gray either way.
-    Neutral,
-    /// Rising red, falling blue.
-    Negative,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Definition {
     default: f64,
@@ -148,8 +134,8 @@ pub struct Packed {
 pub struct Instance {
     definition: Definition,
     base: f64,
-    dirty: std::cell::Cell<bool>,
-    cached: std::cell::Cell<f64>,
+    dirty: bool,
+    cached: f64,
     by_id: Vec<Modifier>,
     permanent: Vec<Modifier>,
     operations: [Option<OperationMap>; 3],
@@ -159,8 +145,8 @@ impl Instance {
         Self {
             definition,
             base: definition.default,
-            dirty: std::cell::Cell::new(true),
-            cached: std::cell::Cell::new(0.0),
+            dirty: true,
+            cached: 0.0,
             by_id: Vec::new(),
             permanent: Vec::new(),
             operations: [None, None, None],
@@ -170,10 +156,10 @@ impl Instance {
         self.base
     }
     pub fn is_dirty(&self) -> bool {
-        self.dirty.get()
+        self.dirty
     }
     pub fn cached_value(&self) -> f64 {
-        self.cached.get()
+        self.cached
     }
     pub fn modifiers(&self) -> &[Modifier] {
         &self.by_id
@@ -191,7 +177,7 @@ impl Instance {
         &mut self,
         observer: &mut O,
     ) -> Result<(), AttributeError<O::Error>> {
-        self.dirty.set(true);
+        self.dirty = true;
         observer.dirty(self).map_err(AttributeError::Observer)
     }
     pub fn set_base_value<O: Observer>(
@@ -290,8 +276,8 @@ impl Instance {
         }
         Ok(())
     }
-    pub fn value(&self) -> f64 {
-        if self.dirty.get() {
+    pub fn value(&mut self) -> f64 {
+        if self.dirty {
             let mut base = self.base;
             for m in self.operation_modifiers(Operation::AddValue) {
                 base += m.amount();
@@ -303,10 +289,10 @@ impl Instance {
             for m in self.operation_modifiers(Operation::AddMultipliedTotal) {
                 value *= 1.0 + m.amount();
             }
-            self.cached.set(self.definition.sanitize(value));
-            self.dirty.set(false);
+            self.cached = self.definition.sanitize(value);
+            self.dirty = false;
         }
-        self.cached.get()
+        self.cached
     }
     pub fn replace_from<O: Observer>(
         &mut self,

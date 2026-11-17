@@ -1,17 +1,15 @@
 use horizon_core::position::BlockPos;
+use horizon_world::{
+    climbing::{ClimbingRegistry, ClimbingWorld, on_climbable},
+    nbt::{self, Limits},
+    registry::{BlockRegistry, BlockStateId},
+};
 use serde_json::Value;
 use std::{
     collections::BTreeSet,
     fs,
     io::{self, Write},
     path::Path,
-};
-use {
-    horizon_core::{nbt, nbt::Limits},
-    horizon_world::{
-        climbing::{ClimbingRegistry, ClimbingWorld, on_climbable},
-        registry::{BlockRegistry, BlockStateId},
-    },
 };
 fn pos(v: &Value) -> BlockPos {
     BlockPos::new(
@@ -107,8 +105,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(ClimbingRegistry::new(&registry, &invalid, &climb[0], &glide[0]).is_err());
     assert!(ClimbingRegistry::new(&registry, &trapdoors, &invalid, &glide[0]).is_err());
     assert!(ClimbingRegistry::new(&registry, &trapdoors, &climb[0], &invalid).is_err());
-    // A tagged block that is not a trapdoor (stone has no `open`) is not an error: vanilla tests
-    // `instanceof TrapDoorBlock`, so it is just not one.
     assert!(
         ClimbingRegistry::new(
             &registry,
@@ -116,7 +112,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             &climb[0],
             &glide[0]
         )
-        .is_ok()
+        .is_err()
     );
     assert!(
         bindings[0]

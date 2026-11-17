@@ -1,3 +1,0 @@
-# Native mods
-
-<!-- concept-pages -->

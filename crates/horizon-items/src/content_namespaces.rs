@@ -11,13 +11,8 @@ pub const MARKER: &str = "horizon-mod-content.json";
 pub fn namespaces(root: &Path) -> Vec<String> {
     fs::read(root.join(MARKER))
         .ok()
-        .map(|bytes| decode_namespaces(&bytes))
+        .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
-}
-
-/// Namespaces from the generated content marker, shared with resource-source loaders.
-pub fn decode_namespaces(bytes: &[u8]) -> Vec<String> {
-    serde_json::from_slice(bytes).unwrap_or_default()
 }
 
 /// The namespaces whose tags loaders read in `root`: `minecraft`, and in a
@@ -31,4 +26,18 @@ pub fn tag_namespaces(root: &Path) -> Vec<String> {
         out.extend(mods);
     }
     out
+}
+
+/// The mod ids (not namespaces) of the content mods in a root built by
+/// `mod_content::build`. `mod_loaded` conditions ask these: a mod that
+/// also owns a namespace doesn't make that namespace another mod.
+pub const MOD_IDS_MARKER: &str = "horizon-mod-ids.json";
+
+/// The content mods' ids in a root built by `mod_content::build`; none in
+/// any other root.
+pub fn mod_ids(root: &Path) -> Vec<String> {
+    fs::read(root.join(MOD_IDS_MARKER))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }

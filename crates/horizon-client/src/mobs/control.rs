@@ -185,8 +185,7 @@ impl Mob {
                         * if self.on_ground {
                             attr_speed
                         } else {
-                            // getAttributeValue(FLYING_SPEED): a summon's base counts.
-                            super::finalize::value(self, super::finalize::Attr::FlyingSpeed)
+                            self.kind.flying_speed
                         }) as f32;
                     self.set_speed(speed);
                     let sd = (xd * xd + zd * zd).sqrt();

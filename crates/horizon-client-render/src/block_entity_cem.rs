@@ -12,12 +12,14 @@
 //! block models here, so their files are not read; copper golem statues have no CEM name.
 
 use crate::block_entity_render::ModelPart;
-use horizon_assets::resource_source::ResourceSource;
 use horizon_optifine::cem::{
     files::{atlas_name, jem_files, load_jem},
     model::{Bone, EntityModel},
 };
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    path::Path,
+};
 
 /// One model the renderer draws, the CEM names that reshape it, best first, and OptiFine's
 /// names for its vanilla parts.
@@ -146,10 +148,7 @@ pub type Reshaped = (
 
 /// The models the packs under `root` reshape, over `vanilla`'s; None when no block entity has
 /// a `.jem` there.
-pub fn reshape(
-    root: &ResourceSource,
-    vanilla: &HashMap<&'static str, ModelPart>,
-) -> Option<Reshaped> {
+pub fn reshape(root: &Path, vanilla: &HashMap<&'static str, ModelPart>) -> Option<Reshaped> {
     let (reshaped, unused) = reshape_all(root, vanilla)?;
     for (path, part) in unused {
         log::warn!("Horizon: custom entity model {path}: no part {part}");
@@ -159,7 +158,7 @@ pub fn reshape(
 
 /// [`reshape`]'s models, and each file's entries whose part none of the models it reshapes has.
 fn reshape_all(
-    root: &ResourceSource,
+    root: &Path,
     vanilla: &HashMap<&'static str, ModelPart>,
 ) -> Option<(Reshaped, Vec<(String, String)>)> {
     let files = jem_files(root);
@@ -369,19 +368,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn resolved_chest_models_reshape_without_a_pack_directory() {
-        use horizon_assets::resource_source::Resource;
-        let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
-            "assets/minecraft/optifine/cem/chest.jem".into(),
-            Resource::bytes(jem(&["lid"]).into_bytes()),
-        )]));
-        let vanilla = HashMap::from([("chest", chest())]);
-        let ((models, _), unused) = reshape_all(&source, &vanilla).unwrap();
-        assert!(unused.is_empty());
-        assert!(replaced(&models["chest"], "lid"));
-    }
-
-    #[test]
     fn every_optifine_part_name_lands_on_its_vanilla_part() {
         // File, OptiFine's part, the model it reshapes, vanilla's part there.
         let cases = [
@@ -500,7 +486,7 @@ pub(crate) mod tests {
                 (*key, plane(parts))
             })
             .collect();
-        let result = reshape_all(&ResourceSource::directory(root.clone()), &vanilla);
+        let result = reshape_all(&root, &vanilla);
         fs::remove_dir_all(&root).unwrap();
         let ((models, _), unused) = result.unwrap();
         for (file, part, key, vanilla) in cases {
@@ -535,7 +521,7 @@ pub(crate) mod tests {
             )],
         );
         let vanilla: HashMap<_, _> = [("chest", chest()), ("double_chest_left", chest())].into();
-        let result = reshape_all(&ResourceSource::directory(root.clone()), &vanilla);
+        let result = reshape_all(&root, &vanilla);
         fs::remove_dir_all(&root).unwrap();
         let ((models, textures), unused) = result.unwrap();
         let chest = &models["chest"];
@@ -587,7 +573,7 @@ pub(crate) mod tests {
             ("book", book),
         ]
         .into();
-        let result = reshape_all(&ResourceSource::directory(root.clone()), &vanilla);
+        let result = reshape_all(&root, &vanilla);
         fs::remove_dir_all(&root).unwrap();
         let ((models, textures), unused) = result.unwrap();
         assert!(replaced(&models["standing_banner"], "pole"));
@@ -607,7 +593,7 @@ pub(crate) mod tests {
     fn book_jem_reshapes_the_lectern_book_without_its_own_file() {
         let root = pack("book", &[("optifine/cem/book.jem", jem(&["cover_left"]))]);
         let vanilla: HashMap<_, _> = [("book", plane(vec![("left_lid", plane(vec![]))]))].into();
-        let result = reshape(&ResourceSource::directory(root.clone()), &vanilla);
+        let result = reshape(&root, &vanilla);
         fs::remove_dir_all(&root).unwrap();
         let (models, _) = result.unwrap();
         assert!(replaced(&models["book"], "left_lid"));
@@ -633,7 +619,7 @@ pub(crate) mod tests {
             (key, plane(vec![(part, plane(vec![]))]))
         })
         .into();
-        let result = reshape(&ResourceSource::directory(root.clone()), &vanilla);
+        let result = reshape(&root, &vanilla);
         fs::remove_dir_all(&root).unwrap();
         let (models, textures) = result.unwrap();
         assert!(replaced(&models["conduit_eye"], "eye"));

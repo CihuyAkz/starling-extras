@@ -225,16 +225,15 @@ impl MineshaftSkyView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use {
-        crate::{
-            heightmap::HeightmapType,
-            worldgen::{
-                anchor::WorldGenerationContext, placement::PlacementQueryError, structure::Rotation,
-            },
+    use crate::{
+        heightmap::HeightmapType,
+        worldgen::{
+            anchor::WorldGenerationContext,
+            placement::PlacementQueryError,
+            structure::{BoundingBox, Rotation},
         },
-        horizon_core::bounding_box::BoundingBox,
     };
+    use serde_json::json;
 
     /// Sea level 63; every block of the world is `world`; marks recorded.
     struct Sea {

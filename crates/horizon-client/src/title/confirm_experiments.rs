@@ -53,20 +53,14 @@ pub struct ConfirmExperimentsScreen {
 impl ConfirmExperimentsScreen {
     /// `ConfirmExperimentalFeaturesScreen::new`: the picked selection's
     /// feature packs, each with the flags it asks for.
-    pub fn new(
-        resources: &std::path::Path,
-        selected: &[String],
-        additional: &[std::sync::Arc<crate::datapack::DataPack>],
-    ) -> Self {
-        let entries = crate::datapack::feature_repository(resources, additional)
+    pub fn new(resources: &std::path::Path, selected: &[String]) -> Self {
+        let entries = crate::datapack::feature_packs(resources)
             .into_iter()
             .filter(|p| selected.contains(&p.id))
             .filter(|p| !p.features().is_empty())
             .map(|p| {
                 let name = format!("dataPack.{}.name", p.id);
-                let title = (if let Some(info) = &p.selection {
-                    info.title.clone()
-                } else if crate::lang::has(&name) {
+                let title = (if crate::lang::has(&name) {
                     Text::translate(&name, &[])
                 } else {
                     Text::literal(p.id.clone())
@@ -170,10 +164,9 @@ impl ConfirmExperimentsScreen {
                 y += 10.0;
             }
             let [(bx, by)] = footer_single(w, h);
-            ui::action_button(
+            ui::button(
                 batch,
                 atlas,
-                crate::widgets::Action::Back,
                 bx,
                 by,
                 BUTTON,
@@ -216,7 +209,6 @@ impl ConfirmExperimentsScreen {
             ui::hovered(cursor, dx, dy, DETAILS, 20.0),
         );
         let [(px, py), (bx, by)] = footer_pair(w, h);
-        crate::widgets::declare_action(crate::widgets::Action::Back, [bx, by, BUTTON, 20.0], true);
         for (fx, fy, key) in [(px, py, "gui.proceed"), (bx, by, "gui.back")] {
             ui::button(
                 batch,

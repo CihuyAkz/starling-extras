@@ -1,18 +1,16 @@
 //! Desert pyramids and jungle temples (DesertPyramidPiece, JungleTemplePiece).
-use horizon_core::nbt::{Compound, Tag};
+use super::{
+    BoundingBox,
+    legacy::{HORIZONTAL, LegacyPiece, PieceContext, Result, random_horizontal},
+    simple::Scattered,
+};
+use crate::nbt::{Compound, Tag};
 use horizon_core::{
     geometry::Direction,
     position::BlockPos,
     random::{LegacyRandom, PositionalRandom, RandomSource},
 };
 use std::sync::Mutex;
-use {
-    super::{
-        legacy::{HORIZONTAL, LegacyPiece, PieceContext, Result, random_horizontal},
-        simple::Scattered,
-    },
-    horizon_core::bounding_box::BoundingBox,
-};
 
 #[derive(Debug)]
 pub struct DesertPyramidPiece {
@@ -84,12 +82,12 @@ impl LegacyPiece for DesertPyramidPiece {
     fn bounding_box(&self) -> BoundingBox {
         self.base.frame().bounding_box
     }
-    fn save(&self) -> Option<horizon_core::nbt::Compound> {
+    fn save(&self) -> Option<crate::nbt::Compound> {
         let mut tag = self.base.saved("minecraft:tedp");
         for (i, placed) in self.placed_chest.lock().unwrap().iter().enumerate() {
             tag.insert(
                 format!("hasPlacedChest{i}").as_str().into(),
-                horizon_core::nbt::Tag::Byte(i8::from(*placed)),
+                crate::nbt::Tag::Byte(i8::from(*placed)),
             );
         }
         Some(tag)
@@ -460,7 +458,7 @@ impl LegacyPiece for JungleTemplePiece {
     fn bounding_box(&self) -> BoundingBox {
         self.base.frame().bounding_box
     }
-    fn save(&self) -> Option<horizon_core::nbt::Compound> {
+    fn save(&self) -> Option<crate::nbt::Compound> {
         let mut tag = self.base.saved("minecraft:tejp");
         let placed = *self.placed.lock().unwrap();
         for (key, value) in [
@@ -472,7 +470,7 @@ impl LegacyPiece for JungleTemplePiece {
         .into_iter()
         .zip(placed)
         {
-            tag.insert(key.into(), horizon_core::nbt::Tag::Byte(i8::from(value)));
+            tag.insert(key.into(), crate::nbt::Tag::Byte(i8::from(value)));
         }
         Some(tag)
     }

@@ -1,7 +1,7 @@
 //! Living entity status storage and add/replace/remove lifecycle ordering.
-use {
-    crate::status_effect::EffectInstance,
-    horizon_core::java_hash_map::{JavaHashMap, JavaKey},
+use crate::{
+    java_hash_map::{JavaHashMap, JavaKey},
+    status_effect::EffectInstance,
 };
 
 pub struct ActiveEffects<H> {

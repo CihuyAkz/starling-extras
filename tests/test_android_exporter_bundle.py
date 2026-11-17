@@ -35,26 +35,6 @@ def bundle(path, name=CLASS):
     }))
 
 
-def native_mods(root):
-    revision = '1' * 40
-    mixins_hash = '2' * 40
-    for mod_id in apk.BUILTIN_NATIVE_MODS:
-        mod = root / 'native-mods' / mod_id
-        mixins = mod / 'mixins' / mod_id
-        mixins.mkdir(parents=True)
-        (mod / 'horizon-native.json').write_text(json.dumps({
-            'schema': 1,
-            'id': mod_id,
-            'version': '1.0.0',
-            'horizon': revision,
-            'mixins': mixins_hash,
-        }))
-        (mixins / 'horizon-mixin.toml').write_text(
-            f'[mod]\nid = "{mod_id}"\nversion = "1.0.0"\n'
-            f'[compatibility]\nhorizon_revision = "{revision}"\n'
-        )
-
-
 class ExporterBundle(unittest.TestCase):
     def test_fresh_build_fetches_the_pinned_manifest_package(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -143,7 +123,6 @@ class ExporterBundle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             bundle(root / 'exporters')
-            native_mods(root)
             (root / 'exporters/minecraft.jar').write_bytes(b'must stay out')
             foreign = root / 'exporters/server/net/minecraft/Foreign.class'
             foreign.parent.mkdir(parents=True)
@@ -166,18 +145,6 @@ class ExporterBundle(unittest.TestCase):
                 self.assertEqual(classes, {'exporters/manifest.json', 'exporters/' + CLASS})
                 self.assertEqual(archive.read('exporters/' + CLASS), BYTECODE)
                 self.assertFalse(any(n.endswith('.jar') for n in archive.namelist()))
-            bundled = folder / 'native-mods'
-            self.assertEqual(
-                {path.stem for path in bundled.glob('*.hnmod')},
-                set(apk.BUILTIN_NATIVE_MODS),
-            )
-            for archive_path in bundled.glob('*.hnmod'):
-                with zipfile.ZipFile(archive_path) as archive:
-                    self.assertTrue(archive.testzip() is None)
-                    self.assertIn(
-                        f'mixins/{archive_path.stem}/horizon-mixin.toml',
-                        archive.namelist(),
-                    )
 
     def test_bad_download_does_not_replace_existing_input(self):
         with tempfile.TemporaryDirectory() as folder:

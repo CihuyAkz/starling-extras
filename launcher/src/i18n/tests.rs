@@ -55,10 +55,6 @@ fn strings() -> (BTreeSet<String>, BTreeSet<String>) {
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
         &mut files,
     );
-    sources(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/horizon-mod-package/src"),
-        &mut files,
-    );
     let (mut asked, mut all) = (BTreeSet::new(), BTreeSet::new());
     for file in &files {
         strings_in(
@@ -119,7 +115,7 @@ fn holes(s: &str) -> BTreeSet<&str> {
 }
 
 #[test]
-fn translations_are_valid_and_coverage_is_reported() {
+fn every_language_has_every_string_the_code_asks_for() {
     let (mut asked, all) = strings();
     assert!(asked.contains("Language"), "the scan finds tr(\"…\")");
     let tables: Vec<_> = Language::ALL
@@ -131,33 +127,24 @@ fn translations_are_valid_and_coverage_is_reported() {
             (language, table)
         })
         .collect();
-    // Diverges from upstream: tables are sparse, using the existing English-source fallback.
-    // Missing and stale entries are coverage information, not failures that force every new
-    // label to edit every language. Keep existing translations; never add dummy English entries.
-    // A live label passed via a widget/constant is also known once any table translates it.
+    // A label passed through a widget or a constant is not a literal argument to `tr`. Once
+    // translated in any language it must exist in all of them, not silently fall back to English.
     for (_, table) in &tables {
-        asked.extend(table.keys().filter(|key| all.contains(*key)).cloned());
+        asked.extend(table.keys().cloned());
     }
-    // Show the detailed lists with HORIZON_LAUNCHER_I18N_DETAILS=1 cargo test
-    // --manifest-path launcher/Cargo.toml --lib i18n::tests::translations_are_valid_and_coverage_is_reported
-    use std::fmt::Write as _;
-    use std::io::Write as _;
-    let show_details = std::env::var("HORIZON_LAUNCHER_I18N_DETAILS").as_deref() == Ok("1");
-    let (mut missing_count, mut stale_count) = (0, 0);
-    let mut details = String::new();
     for (language, table) in &tables {
         let missing: Vec<_> = asked.iter().filter(|s| !table.contains_key(*s)).collect();
-        let stale: BTreeSet<_> = table.keys().filter(|s| !all.contains(*s)).collect();
-        missing_count += missing.len();
-        stale_count += stale.len();
-        if show_details && (!missing.is_empty() || !stale.is_empty()) {
-            writeln!(
-                details,
-                "lang/{}.json missing: {missing:#?}; stale: {stale:#?}",
-                language.code()
-            )
-            .unwrap();
-        }
+        assert!(
+            missing.is_empty(),
+            "lang/{}.json lacks {missing:#?}",
+            language.code()
+        );
+        let unused: Vec<_> = table.keys().filter(|s| !all.contains(*s)).collect();
+        assert!(
+            unused.is_empty(),
+            "lang/{}.json has strings the code no longer has: {unused:#?}",
+            language.code()
+        );
         for (en, said) in table {
             assert_eq!(holes(en), holes(said), "{}: {en:?}", language.code());
             assert!(
@@ -166,12 +153,6 @@ fn translations_are_valid_and_coverage_is_reported() {
                 language.code()
             );
         }
-    }
-    // Write directly so the single summary is visible even when libtest captures passing tests.
-    let mut out = std::io::stdout().lock();
-    writeln!(out, "Launcher locale coverage: {} languages, {missing_count} missing entries, {stale_count} stale entries (HORIZON_LAUNCHER_I18N_DETAILS=1 for lists).", tables.len()).unwrap();
-    if show_details {
-        write!(out, "{details}").unwrap();
     }
 }
 
@@ -184,10 +165,9 @@ fn the_system_language_is_the_first_one_the_launcher_has() {
     assert_eq!(Language::parse("tr_TR.UTF-8"), Some(Language::Turkish));
     assert_eq!(Language::parse("pl_PL.UTF-8"), Some(Language::Polish));
     assert_eq!(Language::pick(["fr-CH", "en-US"]), Language::French);
-    assert_eq!(Language::pick(["it-IT", "ja"]), Language::Italian);
-    assert_eq!(Language::pick(["tlh", "ru_RU.UTF-8"]), Language::Russian);
-    assert_eq!(Language::pick(["tlh", "zh-Hans-CN"]), Language::Chinese);
-    assert_eq!(Language::pick(["tlh", "ja"]), Language::Japanese);
+    assert_eq!(Language::pick(["it-IT", "ru_RU.UTF-8"]), Language::Russian);
+    assert_eq!(Language::pick(["it-IT", "zh-Hans-CN"]), Language::Chinese);
+    assert_eq!(Language::pick(["it-IT", "ja"]), Language::Japanese);
     assert_eq!(Language::pick(["de-CH", "ru_RU.UTF-8"]), Language::German);
     assert_eq!(Language::pick(["de-DE", "ja"]), Language::German);
     assert_eq!(Language::pick(["de-DE", "zh-Hans-CN"]), Language::German);
@@ -196,7 +176,7 @@ fn the_system_language_is_the_first_one_the_launcher_has() {
         Language::pick(["pt-BR", "en-US"]),
         Language::PortugueseBrazil
     );
-    assert_eq!(Language::pick(["ko", "it-IT"]), Language::Korean);
+    assert_eq!(Language::pick(["ko", "it-IT"]), Language::English);
     assert_eq!(Language::pick(["uk-UA", "ru-RU"]), Language::Ukrainian);
     assert_eq!(Language::parse("uk_UA.UTF-8"), Some(Language::Ukrainian));
     assert_eq!(
@@ -204,10 +184,7 @@ fn the_system_language_is_the_first_one_the_launcher_has() {
         Some(Language::PortugueseBrazil)
     );
     assert_eq!(Language::parse("pt-BR"), Some(Language::PortugueseBrazil));
-    assert_eq!(Language::parse("pt-PT"), Some(Language::Portuguese)); // European Portuguese now has its own table
-    assert_eq!(Language::parse("it_IT.UTF-8"), Some(Language::Italian));
-    assert_eq!(Language::pick(["nb-NO", "en-US"]), Language::Norwegian);
-    assert_eq!(Language::parse("nn_NO.UTF-8"), Some(Language::Norwegian));
+    assert_eq!(Language::parse("pt-PT"), None); // Explicit check: pt-PT won't alias pt-BR
     assert_eq!(Language::pick([]), Language::English);
     assert_eq!(Language::parse("FR"), Some(Language::French));
     assert_eq!(Language::parse("french"), None);
@@ -246,8 +223,10 @@ fn a_missing_string_shows_in_english() {
 
 #[test]
 fn polish_entries_are_valid_and_keep_placeholders() {
+    let (_, all) = strings();
     let table: HashMap<String, String> = serde_json::from_str(Language::Polish.source()).unwrap();
     for (en, said) in &table {
+        assert!(all.contains(en), "unused Polish string: {en:?}");
         assert!(!said.trim().is_empty(), "empty Polish string: {en:?}");
         assert_eq!(holes(en), holes(said), "Polish: {en:?}");
     }

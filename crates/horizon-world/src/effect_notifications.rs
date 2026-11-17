@@ -1,11 +1,9 @@
 //! Base LivingEntity effect eligibility, attribute refresh and passenger updates.
-use {
-    crate::{
-        active_effects::{ActiveEffects, EffectHooks},
-        object_open_set::{CursorError, ObjectKey, ObjectOpenSet},
-        status_effect::EffectInstance,
-    },
-    horizon_core::java_hash_map::JavaKey,
+use crate::{
+    active_effects::{ActiveEffects, EffectHooks},
+    java_hash_map::JavaKey,
+    object_open_set::{CursorError, ObjectKey, ObjectOpenSet},
+    status_effect::EffectInstance,
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImmunityTag {

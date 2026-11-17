@@ -92,14 +92,6 @@ pub trait BlockLandingWorld: BlockPushWorld {
     fn under_spawn_protection(&mut self, position: BlockPos) -> Result<bool, Self::Error>;
     fn mob_griefing(&mut self) -> Result<bool, Self::Error>;
     fn entity_dimensions(&self) -> (f32, f32);
-    fn cancel_farmland_trample(
-        &mut self,
-        _position: BlockPos,
-        _state: BlockStateId,
-        _distance: f64,
-    ) -> bool {
-        false
-    }
     fn suppressing_bounce(&mut self) -> Result<bool, Self::Error>;
     fn damage_source(
         &mut self,
@@ -427,9 +419,7 @@ impl BlockLandingRegistry {
                     };
                     if allowed {
                         let (width, height) = world.entity_dimensions();
-                        if width * width * height > 0.512f32
-                            && !world.cancel_farmland_trample(position, state, distance)
-                        {
+                        if width * width * height > 0.512f32 {
                             let next = push_entities_up(world, state, base, position)
                                 .map_err(LandingError::Push)?;
                             world

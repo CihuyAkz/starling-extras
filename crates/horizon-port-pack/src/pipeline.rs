@@ -1,7 +1,7 @@
 //! The steps on a work folder, as the command line and the launcher run
 //! them. Each one reads what the earlier steps wrote and says what it did
 //! through `log`, one line at a time.
-use crate::{carry, datapacks, fetch, import, inventory, modrinth, oracle, report};
+use crate::{carry, fetch, import, inventory, modrinth, oracle, report};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -96,12 +96,6 @@ fn vanilla_blocks(resources: &Path) -> Result<BTreeSet<String>, String> {
     Ok(defaults.keys().cloned().collect())
 }
 
-/// The pack's Minecraft version, empty when it can't be read.
-fn minecraft(work: &Path) -> String {
-    read_json::<import::Pack>(&work.join("pack.json"))
-        .map_or_else(|_| String::new(), |p| p.minecraft)
-}
-
 /// Step 4: the content mods with a jar (or the ones in `only`) carried over
 /// into `<work>/mods/<id>/carry/`. Returns how many were.
 pub fn carry(
@@ -136,15 +130,12 @@ pub fn carry(
     });
     let allowed = |b: &str| vanilla.as_ref().is_none_or(|v| v.contains(b));
     let conventions = crate::worldgen::loader_biome_tags(work);
-    let minecraft = minecraft(work);
-    // A data-only jar is a data pack (`datapacks`), never also a content mod.
     let chosen = |r: &inventory::Record| {
-        !datapacks::is_data_only(r, &minecraft)
-            && if only.is_empty() {
-                r.class == "content"
-            } else {
-                only.contains(&r.key)
-            }
+        if only.is_empty() {
+            r.class == "content"
+        } else {
+            only.contains(&r.key)
+        }
     };
     // The mods ported along (carried now or before), for the conditions of
     // the mods' worldgen modifiers.
@@ -254,7 +245,9 @@ pub fn loadable(mods: &[std::path::PathBuf]) -> (Vec<std::path::PathBuf>, Vec<St
     let mut on: Vec<(std::path::PathBuf, String, Vec<String>)> = Vec::new();
     let mut off = Vec::new();
     for path in mods {
-        let manifest = horizon_mod_package::Package::read(path).map(|package| package.manifest);
+        let manifest = fs::read_to_string(path.join(horizon_mods::manifest::MANIFEST))
+            .map_err(|e| e.to_string())
+            .and_then(|t| horizon_mods::Manifest::parse(&t));
         let m = match manifest {
             Ok(m) => m,
             Err(e) => {
@@ -267,7 +260,7 @@ pub fn loadable(mods: &[std::path::PathBuf]) -> (Vec<std::path::PathBuf>, Vec<St
             .collect();
         let clash = on
             .iter()
-            .find_map(|(_, id, ns)| horizon_mod_package::content::clash((id, ns), (&m.id, &owned)));
+            .find_map(|(_, id, ns)| horizon_mods::content::clash((id, ns), (&m.id, &owned)));
         match clash {
             Some(why) => off.push(format!("{} not loaded: {why}", m.id)),
             None => on.push((path.clone(), m.id, owned)),
@@ -349,17 +342,15 @@ pub fn port(
     let fetched = fetch::fetch(work, &records, from, &portable, log)?;
     // The jars tell classes and tiers better than metadata alone.
     let records = inventory(work, true, log)?;
-    let minecraft = minecraft(work);
-    let packs = datapacks::install(work, &records, &minecraft, log)?;
     let only: Vec<String> = records
         .iter()
-        .filter(|r| portable(r) && r.jar.is_some() && !datapacks::is_data_only(r, &minecraft))
+        .filter(|r| portable(r) && r.jar.is_some())
         .map(|r| r.key.clone())
         .collect();
-    if !only.is_empty() {
-        carry(work, resources, &only, log)?;
-    } else if packs == 0 {
+    if only.is_empty() {
         log("no portable mod has its jar: nothing to carry over".into());
+    } else {
+        carry(work, resources, &only, log)?;
     }
     Ok((fetched, report(work, log)?))
 }
@@ -434,14 +425,6 @@ mod tests {
         assert_eq!(on, [mods[0].clone(), mods[2].clone()]);
         assert_eq!(off.len(), 1);
         assert!(off[0].starts_with("betterfortresses not loaded"), "{off:?}");
-        // An invalid first package must not claim the shared namespace.
-        let asset = mods[0].join("assets/betterdungeons/model.bin");
-        fs::create_dir_all(asset.parent().unwrap()).unwrap();
-        fs::write(asset, b"\0asm").unwrap();
-        let (on, off) = loadable(&mods);
-        assert_eq!(on, [mods[1].clone(), mods[2].clone()]);
-        assert_eq!(off.len(), 1);
-        assert!(off[0].contains("unsupported executable file"), "{off:?}");
         fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -201,6 +201,3 @@ pub fn slime_chunk_random(x: i32, z: i32, seed: i64, salt: i64) -> LegacyRandom 
         ^ salt;
     LegacyRandom::new(mixed)
 }
-
-#[cfg(test)]
-mod oracle_tests;

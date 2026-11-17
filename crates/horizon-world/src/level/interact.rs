@@ -3,7 +3,7 @@
 use super::{Behaviours, LevelAccess, LevelEvent, Sim, Ticks, classes::Class, update::below};
 use crate::registry::BlockStateId;
 use horizon_core::{
-    geometry::{BlockHit, Direction, Vec3},
+    geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
@@ -117,7 +117,6 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
 
     pub(crate) fn use_without_item(
         &mut self,
-        state: BlockStateId,
         pos: BlockPos,
         face: Direction,
         hit: Vec3,
@@ -126,6 +125,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let b = self.b;
         let p = b.props;
         let table = &b.table;
+        let state = self.state(pos);
         let data = b.data(state);
         let block = b.block(state);
         use InteractionResult::*;
@@ -235,26 +235,11 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 }
                 Class::Note => {
                     let next = table.cycle(state, p.note);
-                    let old_note = table.int(state, p.note);
-                    let new_note = table.int(next, p.note);
-                    let instrument = self.note_instrument(state);
-                    let Some(note) = self
-                        .level
-                        .note_block_change(pos, instrument, old_note, new_note)
-                    else {
+                    if !self.note_play_allowed(pos, next) {
                         return Success;
-                    };
-                    let next = table.set_int(
-                        next,
-                        p.note,
-                        if (0..=24).contains(&note) {
-                            note
-                        } else {
-                            new_note
-                        },
-                    );
+                    }
                     self.set_block_and_update(pos, next);
-                    self.note_play(pos, next, true);
+                    self.note_play_unchecked(pos, next);
                     Success
                 }
                 Class::RedstoneWire => self.wire_use(pos, state, player),
@@ -269,7 +254,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     Success
                 }
                 Class::Cake => {
-                    if !self.level.cake_can_eat(player.can_eat) {
+                    if !player.can_eat {
                         return Pass;
                     }
                     self.player_effect(pos, state, PlayerEffect::EatCake);
@@ -284,7 +269,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     Success
                 }
                 Class::CandleCake => {
-                    if !self.level.cake_can_eat(player.can_eat) {
+                    if !player.can_eat {
                         return Pass;
                     }
                     self.player_effect(pos, state, PlayerEffect::EatCake);
@@ -686,7 +671,7 @@ impl Behaviours {
             sim.dragon_egg_teleport(pos, state);
         }
         if chain.contains(&Class::Note) {
-            sim.note_play(pos, state, true);
+            sim.note_play(pos, state);
             return true;
         }
         if chain.contains(&Class::RedStoneOre) && !self.table.bool(state, self.props.lit) {
@@ -695,23 +680,19 @@ impl Behaviours {
         false
     }
 
-    /// `BlockState.useWithoutItem` on the state captured before the item phase,
-    /// as in `ServerPlayerGameMode.useItemOn`, even if that phase replaced it.
+    /// `BlockState.useWithoutItem` for a right-click on `pos` (hit face and
+    /// absolute hit location as in `BlockHitResult`).
     pub fn use_without_item<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
-        state: BlockStateId,
-        hit: BlockHit,
+        pos: BlockPos,
+        face: Direction,
+        hit: Vec3,
         player: PlayerContext,
     ) -> InteractionResult {
-        self.sim(level, ticks).use_without_item(
-            state,
-            hit.block,
-            hit.direction,
-            hit.location,
-            player,
-        )
+        self.sim(level, ticks)
+            .use_without_item(pos, face, hit, player)
     }
     /// `DoorBlock.setOpen`: a mob opens or closes the door at `pos` (either half), with its sound
     /// and game event. False when it is no door or already so.
@@ -813,55 +794,56 @@ impl Behaviours {
     /// block asks to try with an empty hand (the default), `useWithoutItem`.
     /// `SweetBerryBushBlock.useItemOn` passes bone meal on a bush that can
     /// still grow on to the item.
+    #[allow(clippy::too_many_arguments)]
     pub fn use_item_on<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
-        hit: BlockHit,
+        pos: BlockPos,
+        face: Direction,
+        hit: Vec3,
         player: PlayerContext,
         item: Option<&str>,
     ) -> InteractionResult {
-        let state = level.block_state(hit.block);
-        self.use_item_on_branch(level, ticks, state, hit, player, item)
+        self.use_item_on_branch(level, ticks, pos, face, hit, player, item)
             .0
     }
     /// `use_item_on`, and which of the two answered: `ServerPlayerGameMode.useItemOn`
     /// triggers ITEM_USED_ON_BLOCK when `useItemOn` consumes the click and
     /// DEFAULT_BLOCK_USE when `useWithoutItem` does.
+    #[allow(clippy::too_many_arguments)]
     pub fn use_item_on_branch<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
-        state: BlockStateId,
-        hit: BlockHit,
+        pos: BlockPos,
+        face: Direction,
+        hit: Vec3,
         player: PlayerContext,
         item: Option<&str>,
     ) -> (InteractionResult, UseBranch) {
-        match self.block_use_item_on(level, ticks, state, hit, player, item) {
+        match self.block_use_item_on(level, ticks, pos, face, hit, player, item) {
             Some(result) => (result, UseBranch::ItemOn),
             None => (
-                self.use_without_item(level, ticks, state, hit, player),
+                self.use_without_item(level, ticks, pos, face, hit, player),
                 UseBranch::WithoutItem,
             ),
         }
     }
     /// `BlockState.useItemOn`: the result, or `None` for
     /// `TRY_WITH_EMPTY_HAND`.
-    pub fn block_use_item_on<L: LevelAccess + ?Sized>(
+    #[allow(clippy::too_many_arguments)]
+    fn block_use_item_on<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
-        state: BlockStateId,
-        hit: BlockHit,
+        pos: BlockPos,
+        face: Direction,
+        hit: Vec3,
         player: PlayerContext,
         item: Option<&str>,
     ) -> Option<InteractionResult> {
-        let BlockHit {
-            block: pos,
-            direction: face,
-            location: hit,
-            ..
-        } = hit;
+        let state = level.block_state(pos);
         if item == Some("minecraft:bone_meal")
             && self.data(state).chain.contains(&Class::SweetBerryBush)
             && self.table.int(state, self.props.age) < 3

@@ -357,22 +357,18 @@ impl Keyboard {
                 );
             }
         }
-        // Upstream names a button only by the job it does in menus (pad_glyph::Glyph).
-        use horizon_client_input::gamepad::MenuJob;
-        use horizon_client_render::pad_glyph::{Glyph, Glyphs};
-        let shown = Glyphs::unheld(&Default::default(), glyphs);
         let hints = [
-            (MenuJob::Confirm, "Type"),
-            (MenuJob::Alternate, "Delete"),
-            (MenuJob::Extra, "Space"),
-            (MenuJob::GroupPrev, "Shift"),
-            (MenuJob::PageNext, "Symbols"),
-            (MenuJob::Start, "Done"),
-            (MenuJob::Back, "Close"),
+            (Button::South, "Type"),
+            (Button::West, "Delete"),
+            (Button::North, "Space"),
+            (Button::LeftTrigger, "Shift"),
+            (Button::RightBumper, "Symbols"),
+            (Button::Start, "Done"),
+            (Button::East, "Close"),
         ];
         let line: Vec<String> = hints
             .iter()
-            .map(|(job, what)| format!("{} {what}", Glyph::menu(*job, shown).label()))
+            .map(|(b, what)| format!("{} {what}", b.label(glyphs)))
             .collect();
         ui.text_centered(
             Face::Regular,

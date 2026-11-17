@@ -28,6 +28,18 @@
 //! chunk corner, then buried in the terrain or moved onto Nether land.
 //! Repurposed's overworld mineshafts are not centred: their top goes 15
 //! blocks under the terrain around the chunk.
+use super::{
+    BoundingBox, Rotation, StructureResources, StructureTemplate,
+    jigsaw::{
+        Free, JigsawConfig, Junction, PoolElement, PoolPiece, Pools, Projection, can_attach,
+        shuffle, step,
+    },
+    start::StartContext,
+};
+use crate::{
+    heightmap::HeightmapType, identifier::Identifier, java_hash_map::JavaHashMap,
+    worldgen::block_feature::FeatureBlockBindings,
+};
 use horizon_core::{
     position::ChunkPos,
     random::{LegacyRandom, RandomSource, WorldgenRandom},
@@ -38,21 +50,6 @@ use std::{
     collections::{HashSet, VecDeque},
     rc::Rc,
     sync::Arc,
-};
-use {
-    super::{
-        Rotation, StructureResources, StructureTemplate,
-        jigsaw::{
-            Free, JigsawConfig, Junction, PoolElement, PoolPiece, Pools, Projection, can_attach,
-            shuffle, step,
-        },
-        start::StartContext,
-    },
-    horizon_core::bounding_box::BoundingBox,
-};
-use {
-    crate::{heightmap::HeightmapType, worldgen::block_feature::FeatureBlockBindings},
-    horizon_core::{identifier::Identifier, java_hash_map::JavaHashMap},
 };
 
 /// Which mod's copy of the code: they differ in a few post-layout steps.
@@ -204,7 +201,7 @@ impl Counts {
         let PoolElement::Single { template, .. } = element else {
             return None;
         };
-        self.0.iter().position(|t| Arc::ptr_eq(t, template.arc()))
+        self.0.iter().position(|t| Arc::ptr_eq(t, template))
     }
 }
 
@@ -693,7 +690,7 @@ struct Assembler<'a> {
 /// Where a child goes: the parent's jigsaw and what it needs.
 struct Slot<'s> {
     source: usize,
-    jigsaw: &'s super::jigsaw::Jigsaw<'s>,
+    jigsaw: &'s super::jigsaw::Jigsaw,
     target_pos: [i32; 3],
     free: Rc<RefCell<Free>>,
     depth: i32,
@@ -783,6 +780,7 @@ impl Assembler<'_> {
         let (x, z) = (jigsaw.pos[0], jigsaw.pos[2]);
         let mut base =
             |context: &mut dyn SurfaceQuery| *surface.get_or_insert_with(|| context.surface(x, z));
+        let mut total: i32 = candidates.iter().map(|c| c.1).sum();
         while !candidates.is_empty() {
             let mut chosen = None;
             // The first required piece still short is forced in once deep enough.
@@ -796,12 +794,13 @@ impl Assembler<'_> {
                 let need_template = &self.counted.0[need_index];
                 let found = candidates.iter().position(|(e, _)| {
                     matches!(e.as_ref(), PoolElement::Single { template, .. }
-                        if Arc::ptr_eq(template.arc(), need_template))
+                        if Arc::ptr_eq(template, need_template))
                 });
                 if let Some(i) = found {
                     if slot.depth >= (self.config.max_depth - 1).min(need.min_depth) {
                         chosen = Some(i);
                     } else {
+                        total -= candidates[i].1;
                         candidates.remove(i);
                     }
                 }
@@ -809,13 +808,22 @@ impl Assembler<'_> {
             let index = match chosen {
                 Some(i) => i,
                 None => {
-                    let Some(index) = weighted_candidate(&candidates, random) else {
+                    if total <= 0 || candidates.is_empty() {
                         return false;
-                    };
-                    index
+                    }
+                    let mut weight = random.next_int_bound(total).unwrap_or(0) + 1;
+                    let mut found = candidates.len() - 1;
+                    for (i, (_, w)) in candidates.iter().enumerate() {
+                        weight -= w;
+                        if weight <= 0 {
+                            found = i;
+                            break;
+                        }
+                    }
+                    found
                 }
             };
-            let (target, _) = candidates[index].clone();
+            let (target, weight) = candidates[index].clone();
             if matches!(target.as_ref(), PoolElement::Empty) {
                 return false;
             }
@@ -827,6 +835,7 @@ impl Assembler<'_> {
                     .is_some_and(|m| self.counts[i] >= m)
             });
             if full {
+                total -= weight;
                 candidates.remove(index);
                 continue;
             }
@@ -934,22 +943,11 @@ impl Assembler<'_> {
                     return true;
                 }
             }
+            total -= weight;
             candidates.remove(index);
         }
         false
     }
-}
-
-fn weighted_candidate(
-    candidates: &[(Arc<PoolElement>, i32)],
-    random: &mut impl RandomSource,
-) -> Option<usize> {
-    let total: i64 = candidates.iter().map(|c| i64::from(c.1)).sum();
-    let mut weight = crate::worldgen::weighted::draw(total, random)? + 1;
-    candidates.iter().position(|(_, w)| {
-        weight -= i64::from(*w);
-        weight <= 0
-    })
 }
 
 /// The surface height query, object-safe for the per-call cache.
@@ -966,35 +964,6 @@ impl<C: StartContext> SurfaceQuery for C {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn wide_weights_piece_limited() {
-        use horizon_core::random::LegacyRandom;
-        for weights in [[1, 1, 1], [0, 2, 5], [7, 0, 1]] {
-            for seed in -20..20 {
-                let mut old = LegacyRandom::new(seed);
-                let mut new = old.clone();
-                let small = weights.map(|w| (Arc::new(PoolElement::Empty), w));
-                let mut at = old.next_int_bound(weights.iter().sum()).unwrap() + 1;
-                let expected = weights.iter().position(|w| {
-                    at -= w;
-                    at <= 0
-                });
-                assert_eq!(weighted_candidate(&small, &mut new), expected);
-                assert_eq!(new.next_long(), old.next_long());
-            }
-        }
-        let candidates = vec![(Arc::new(PoolElement::Empty), i32::MAX); 3];
-        for seed in 0..30 {
-            assert!(
-                weighted_candidate(
-                    &candidates,
-                    &mut horizon_core::random::LegacyRandom::new(seed)
-                )
-                .is_some()
-            );
-        }
-    }
 
     #[test]
     fn required_pieces_follow_javas_hash_map() {
@@ -1059,7 +1028,7 @@ mod tests {
     fn repurposed_moves_junctions_as_its_code_does() {
         let template = Arc::new(StructureTemplate::empty());
         let element = Arc::new(PoolElement::Single {
-            template: crate::worldgen::structure::LazyTemplate::loaded(template),
+            template,
             processors: Default::default(),
             processors_source: serde_json::Value::Null,
             legacy: false,

@@ -8,8 +8,7 @@ use horizon_client::{
     blocks::BlockFacts,
     items::Items,
     mobs::{
-        Mob, MobTypes, Species, cube, drops, enderman, gear, raider, render::DYE_NAMES,
-        species::can_be_a_baby, sulfur_cube,
+        Mob, MobTypes, Species, cube, drops, enderman, gear, raider, render::DYE_NAMES, sulfur_cube,
     },
     random_sequences::RandomSequences,
 };
@@ -70,13 +69,12 @@ pub fn main() -> horizon_client::Result<()> {
     );
     let input = fs::read_to_string(args.get(2).ok_or("missing INPUT")?)?;
     let types = MobTypes::load(root)?;
-    let defaults = horizon_world::item_defaults::read(root)?;
-    let loot = LootData::load(root, &PackOverlay::NONE, &defaults)?;
+    let loot = LootData::load(root, &PackOverlay::NONE)?;
     // Block loot for an enderman's carried block (BlockState.getDrops).
     let assets = Assets::load(root)?;
     let registry = assets.registry;
     let facts = BlockFacts::load(root, registry)?;
-    let block_items = Items::load(root, registry, &facts, &PackOverlay::NONE, &defaults)?;
+    let block_items = Items::load(root, registry, &facts, &PackOverlay::NONE)?;
     // The stand-in level's random (RandomSource.create(0)), never reset.
     let mut level_random = LegacyRandom::new(0);
     let mut out = String::new();
@@ -113,7 +111,7 @@ pub fn main() -> horizon_client::Result<()> {
             for slot in drops::SLOTS {
                 drops::clear_slot(&mut m, slot);
             }
-            if get("baby", "0") == "1" && can_be_a_baby(m.species()) {
+            if get("baby", "0") == "1" && drops::can_be_baby(m.species()) {
                 m.extra.age = -24000;
             }
             if get("fire", "0") == "1" {
@@ -146,10 +144,7 @@ pub fn main() -> horizon_client::Result<()> {
                 raider::state_mut(&mut m).patrol_leader = true;
             }
             if get("captain", "0") == "1" {
-                m.extra.set_slot_id(
-                    horizon_items::equipment::HEAD,
-                    Some(Arc::from(raider::BANNER)),
-                );
+                m.extra.head = Some(Arc::from(raider::BANNER));
             }
             let mut chances = [drops::DEFAULT_DROP_CHANCE; 8];
             for (i, slot) in drops::SLOTS.iter().enumerate() {
@@ -162,15 +157,15 @@ pub fn main() -> horizon_client::Result<()> {
                             Some(gear::MAIN)
                         }
                         "offhand" => {
-                            m.extra.set_slot_id(horizon_items::equipment::OFFHAND, item);
+                            m.extra.off_hand = item;
                             Some(gear::OFF)
                         }
                         "head" => {
-                            m.extra.set_slot_id(horizon_items::equipment::HEAD, item);
+                            m.extra.head = item;
                             Some(gear::HEAD)
                         }
-                        "body" => {
-                            m.extra.set_body(item);
+                        "body" if drops::head_is_body(m.species()) => {
+                            m.extra.head = item;
                             None
                         }
                         "saddle" => {
@@ -178,15 +173,15 @@ pub fn main() -> horizon_client::Result<()> {
                             None
                         }
                         "chest" => {
-                            m.extra.set_slot_id(horizon_items::equipment::CHEST, item);
+                            m.extra.chest = item;
                             Some(gear::CHEST)
                         }
                         "legs" => {
-                            m.extra.set_slot_id(horizon_items::equipment::LEGS, item);
+                            m.extra.legs = item;
                             Some(gear::LEGS)
                         }
                         "feet" => {
-                            m.extra.set_slot_id(horizon_items::equipment::FEET, item);
+                            m.extra.feet = item;
                             Some(gear::FEET)
                         }
                         _ => None,
@@ -287,7 +282,6 @@ pub fn main() -> horizon_client::Result<()> {
                 loot: &loot,
                 damage: Some(source),
                 player: player.filter(|_| pkill),
-                player_killed: pkill,
                 luck: get("luck", "0").parse()?,
                 vehicle: c.get("vehicle").map(|v| LootEntity::new(v)),
                 mob_drops: true,
@@ -302,18 +296,14 @@ pub fn main() -> horizon_client::Result<()> {
                     // The fixture's mobs keep no whole stacks.
                     drops::Drop::Stack(s) => writeln!(out, "drop {} {}", s.item, s.count),
                     drops::Drop::CarriedBlock(state) => {
-                        let tool = enderman::carried_block_tool();
-                        let stacks = block_items.block_drops(
+                        let stacks = enderman::carried_block_drops(
+                            &block_items,
                             registry,
                             state,
-                            enderman::carried_block_roll(&tool),
                             &mut level_random,
                             Some((&mut sequences, world_seed)),
                         );
-                        for s in stacks
-                            .iter()
-                            .filter(|s| enderman::carried_block_drop_kept(s))
-                        {
+                        for s in stacks {
                             let _ = write!(out, "drop {} {}", s.item, s.count);
                             if s.damage != 0 {
                                 let _ = write!(out, " damage={}", s.damage);
@@ -322,15 +312,7 @@ pub fn main() -> horizon_client::Result<()> {
                         }
                         Ok(())
                     }
-                    drops::Drop::Experience(amount) => {
-                        let mut left = amount.max(0) as u32;
-                        while left > 0 {
-                            let v = horizon_world::level::removal::orb_value(left);
-                            left -= v;
-                            let _ = writeln!(out, "orb {v}");
-                        }
-                        Ok(())
-                    }
+                    drops::Drop::Orb(v) => writeln!(out, "orb {v}"),
                 };
             }
         }

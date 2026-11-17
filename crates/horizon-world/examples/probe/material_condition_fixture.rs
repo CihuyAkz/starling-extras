@@ -18,6 +18,11 @@ use horizon_world::worldgen::{
     material_surface::{ClayBandBlocks, MaterialSurface},
     tags::TagDefinitions,
 };
+use horizon_world::{
+    DATA_VERSION,
+    nbt::Tag,
+    registry::{BlockRegistry, BlockStateId, BlockStateJsonCodec},
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -25,13 +30,6 @@ use std::{
     io::{self, Write},
     path::Path,
     sync::{Arc, Mutex},
-};
-use {
-    horizon_core::nbt::Tag,
-    horizon_world::{
-        DATA_VERSION,
-        registry::{BlockRegistry, BlockStateId, BlockStateJsonCodec},
-    },
 };
 // Canonicalize numeric values as double bits, avoiding differences in JSON
 // number formatting while preserving every encoded int32/double value.
@@ -324,7 +322,6 @@ fn rule(
                 inputs: inputs.clone(),
                 channel: Some(2),
             }),
-            positive_y: [i32::MIN, i32::MAX],
         },
         "if" => MaterialRule::Condition {
             if_true: condition(&v[1], registry),
@@ -428,16 +425,16 @@ where
     let mut library = rules_data
         .map(|data| data.library(f, registry, noises, None))
         .transpose()?;
-    if let Some(data) = rules_data
-        && let Some(values) = f.get("library_json")
-    {
-        for value in values.as_array().unwrap() {
-            let result = data.library(f, registry, noises, Some(value.as_str().unwrap()));
-            writeln!(
-                out,
-                "rule decode {}",
-                if result.is_ok() { "ok" } else { "error" }
-            )?;
+    if let Some(data) = rules_data {
+        if let Some(values) = f.get("library_json") {
+            for value in values.as_array().unwrap() {
+                let result = data.library(f, registry, noises, Some(value.as_str().unwrap()));
+                writeln!(
+                    out,
+                    "rule decode {}",
+                    if result.is_ok() { "ok" } else { "error" }
+                )?;
+            }
         }
     }
     let block_id = |name: &str, fallback| {

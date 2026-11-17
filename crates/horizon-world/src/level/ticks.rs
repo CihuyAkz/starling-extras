@@ -15,7 +15,7 @@ use horizon_core::{
 pub struct Ticks {
     /// Block ticks keyed by `BlockId` (vanilla Block registry ID).
     pub blocks: LevelTicks,
-    /// Fluid ticks keyed by `FluidKind::tick_id`, vanilla's Fluid registry ID for its own.
+    /// Fluid ticks keyed by vanilla Fluid registry ID (`FluidKind as u32`).
     pub fluids: LevelTicks,
     sub_tick: i64,
     /// `Level.randValue`, the LCG behind `getBlockRandomPos`.
@@ -58,13 +58,6 @@ impl Default for Ticks {
     }
 }
 impl Ticks {
-    /// `ServerLevel.blockEvent`: queue `event` for `Behaviours::run_block_events`, once
-    /// (`blockEvents` is a set, so the same event queued twice runs once).
-    pub fn queue_block_event(&mut self, event: super::pistons::BlockEventData) {
-        if !self.block_events.contains(&event) {
-            self.block_events.push(event);
-        }
-    }
     /// `random_tick_seed` seeds `Level.randValue` (vanilla draws it from a
     /// thread-local random at level construction).
     pub fn new(random_tick_seed: i32) -> Self {
@@ -150,14 +143,14 @@ impl Ticks {
         if let Some(captured) = &mut self.capture {
             captured.push(CapturedTick {
                 fluid: true,
-                kind: fluid.tick_id(),
+                kind: fluid as u32,
                 pos,
                 delay,
             });
             return ScheduleResult::Added;
         }
         let tick = ScheduledTick {
-            kind: TickTypeId(fluid.tick_id()),
+            kind: TickTypeId(fluid as u32),
             pos,
             trigger_tick: game_time.wrapping_add(i64::from(delay)),
             priority: TickPriority::Normal,

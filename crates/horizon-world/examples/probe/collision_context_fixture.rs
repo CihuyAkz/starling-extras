@@ -3,26 +3,24 @@ use horizon_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
 };
+use horizon_world::{
+    block_collision::{BlockCollisionRegistry, DynamicCollisionWorld, ShulkerCollisionState},
+    chunk::BlockState,
+    collision::CachedCollisionRegistry,
+    collision_context::{CollisionContext, CollisionEntity, CollisionItem},
+    dynamic_support::DynamicSupportWorld,
+    entity_obstruction::EntityIdentity,
+    fluid::{FluidKind, FluidState},
+    liquid_collision::{LiquidCollision, LiquidCollisionWorld},
+    nbt::{self, Limits},
+    powder_snow_collision::{PowderSnowEntity, PowderSnowWorld, powder_snow_collision_shape},
+    registry::{BlockRegistry, BlockStateId},
+};
 use serde_json::Value;
 use std::{
     fs,
     io::{self, Write},
     path::Path,
-};
-use {
-    horizon_core::{nbt, nbt::Limits},
-    horizon_world::{
-        block_collision::{BlockCollisionRegistry, DynamicCollisionWorld, ShulkerCollisionState},
-        chunk::BlockState,
-        collision::CachedCollisionRegistry,
-        collision_context::{CollisionContext, CollisionEntity, CollisionItem, EntityContextKind},
-        dynamic_support::DynamicSupportWorld,
-        entity_obstruction::EntityIdentity,
-        fluid::{FluidKind, FluidState},
-        liquid_collision::{LiquidCollision, LiquidCollisionWorld},
-        powder_snow_collision::{PowderSnowEntity, PowderSnowWorld, powder_snow_collision_shape},
-        registry::{BlockRegistry, BlockStateId},
-    },
 };
 const ITEMS: [&str; 5] = [
     "minecraft:air",
@@ -67,7 +65,7 @@ impl<W: Write> LiquidCollisionWorld for LiquidWorld<'_, W> {
         self.query(&format!(
             "stand {} {} {} {}",
             entity.0,
-            fluid.kind().vanilla_index().unwrap(),
+            fluid.kind() as u8,
             fluid.amount(),
             fluid.falling()
         ))?;
@@ -244,7 +242,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         let f: Value = serde_json::from_str(line)?;
         let player = CollisionEntity {
             identity: EntityIdentity(1),
-            kind: EntityContextKind::Player,
             y: number(&f["y"]),
             descending: f["descending"].as_bool().unwrap(),
             main_hand: Some(CollisionItem {
@@ -254,7 +251,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let marker = CollisionEntity {
             identity: EntityIdentity(2),
-            kind: EntityContextKind::Other,
             main_hand: None,
             ..player
         };
@@ -438,7 +434,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let result = context.can_stand_on_fluid(first, second, |entity, fluid| {
                     assert_eq!(entity, player.identity);
                     calls += 1;
-                    last = i32::from(fluid.kind().vanilla_index().unwrap());
+                    last = fluid.kind() as i32;
                     if f["fail"].as_bool().unwrap() {
                         Err(())
                     } else {

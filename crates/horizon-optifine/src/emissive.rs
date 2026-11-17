@@ -16,10 +16,9 @@
 //! Written from OptiFine's `emissive.properties` and ETF's `EMISSIVE_GUIDE.md` and
 //! `emissive.properties`; no mod's source was read.
 
-use horizon_assets::resource_source::ResourceSource;
 use std::collections::HashMap;
-#[cfg(test)]
 use std::fs;
+use std::path::Path;
 
 use crate::paths::files_under;
 use crate::properties::Properties;
@@ -42,19 +41,23 @@ const PROPERTIES: [&str; 3] = [
 ];
 
 impl Emissive {
-    pub fn scan(root: &ResourceSource, random: &RandomTextures) -> Self {
+    pub fn scan(root: &Path, random: &RandomTextures) -> Self {
         let suffix = suffix(root);
         let mut out = Self {
             suffix,
             ..Self::default()
         };
+        let Ok(namespaces) = fs::read_dir(root.join("assets")) else {
+            return out;
+        };
         let png = format!("{}.png", out.suffix);
-        for ns in root.namespaces("assets") {
+        for ns in namespaces.flatten() {
+            let ns = ns.file_name().to_string_lossy().into_owned();
             let prefix = format!("assets/{ns}/");
             for file in files_under(root, &format!("{prefix}textures/entity"), &[png.as_str()]) {
                 let overlay = &file[prefix.len()..file.len() - ".png".len()];
                 let base = &overlay[..overlay.len() - out.suffix.len()];
-                if root.contains(&format!("{prefix}{base}.png")) {
+                if root.join(format!("{prefix}{base}.png")).is_file() {
                     out.overlays
                         .insert(atlas_name(&ns, base), atlas_name(&ns, overlay));
                 }
@@ -68,7 +71,7 @@ impl Emissive {
     /// with an overlay beside it, and lists those outside `textures/` for the atlas.
     pub fn pair_beside<'a>(
         &mut self,
-        root: &ResourceSource,
+        root: &Path,
         files: impl Iterator<Item = (&'a str, &'a str)>,
     ) {
         let png = format!("{}.png", self.suffix);
@@ -77,7 +80,7 @@ impl Emissive {
                 continue;
             };
             let overlay = format!("{stem}{png}");
-            if root.contains(&overlay) {
+            if root.join(&overlay).is_file() {
                 let overlay_name = format!("{name}{}", self.suffix);
                 self.overlays.insert(name.to_owned(), overlay_name.clone());
                 // Those under `textures/` are the atlas's already.
@@ -106,13 +109,17 @@ impl Emissive {
 
 /// The pack's emissive suffix: `suffix.emissive` from the first of [`PROPERTIES`] that sets it,
 /// `_e` without one.
-pub fn suffix(root: &ResourceSource) -> String {
+pub fn suffix(root: &Path) -> String {
     // The first file that sets it (read as Java reads properties: Latin-1 when not UTF-8).
     // A suffix is a name's end: no path separators or `..`, so it can't leave the folder.
     PROPERTIES
         .iter()
         .find_map(|p| {
-            let text = decode(root.read_limited(p, MAX_PROPERTIES).ok()?);
+            let path = root.join(p);
+            if fs::metadata(&path).ok()?.len() > MAX_PROPERTIES {
+                return None;
+            }
+            let text = decode(fs::read(path).ok()?);
             Properties::parse(&text)
                 .get("suffix.emissive")
                 .map(str::to_owned)
@@ -139,10 +146,7 @@ mod tests {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, format!("suffix.emissive={suffix}\n")).unwrap();
         }
-        let e = Emissive::scan(
-            &ResourceSource::directory(root.clone()),
-            &RandomTextures::scan(&ResourceSource::directory(root.clone())),
-        );
+        let e = Emissive::scan(&root, &RandomTextures::scan(&root));
         (root, e)
     }
 
@@ -231,10 +235,7 @@ mod tests {
                 fs::create_dir_all(path.parent().unwrap()).unwrap();
                 fs::write(path, bytes).unwrap();
             }
-            let e = Emissive::scan(
-                &ResourceSource::directory(root.clone()),
-                &RandomTextures::default(),
-            );
+            let e = Emissive::scan(&root, &RandomTextures::default());
             let _ = fs::remove_dir_all(root);
             e.suffix
         };
@@ -281,11 +282,8 @@ mod tests {
             ],
             None,
         );
-        let blinks = crate::blink::Blinks::scan(
-            &ResourceSource::directory(root.clone()),
-            &RandomTextures::scan(&ResourceSource::directory(root.clone())),
-        );
-        e.pair_beside(&ResourceSource::directory(root.clone()), blinks.files());
+        let blinks = crate::blink::Blinks::scan(&root, &RandomTextures::scan(&root));
+        e.pair_beside(&root, blinks.files());
         let frame = "minecraft:optifine/random/entity/zombie/zombie3_blink";
         assert_eq!(e.overlay(frame), Some(format!("{frame}_e").as_str()));
         assert!(e.files().any(|(_, name)| name == format!("{frame}_e")));

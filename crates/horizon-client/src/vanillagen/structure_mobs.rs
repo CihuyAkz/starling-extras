@@ -8,8 +8,7 @@ use crate::{
     items::Items,
     mobs::{
         Mob, MobType, MobTypes,
-        finalize::{self, Ctx, FinalizeLevel, Group, SpawnRegistries},
-        spawn_rules::Reason,
+        finalize::{self, Ctx, FinalizeLevel, Group, Reason, SpawnData, SpawnRegistries},
         spawning::{LocalDifficulty, MOON_BRIGHTNESS},
     },
 };
@@ -17,19 +16,16 @@ use horizon_core::{
     geometry::{Aabb, Vec3},
     random::{LegacyRandom, RandomSource, XoroshiroRandom},
 };
+use horizon_world::{
+    nbt::{Compound, Tag},
+    worldgen::{generator::StructureMobs, structure::legacy::PieceRandom},
+};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
         Arc, OnceLock,
         atomic::{AtomicI64, AtomicU8, Ordering},
-    },
-};
-use {
-    horizon_core::nbt::{Compound, Tag},
-    horizon_world::{
-        item_defaults::{ItemData, ItemDefaults},
-        worldgen::{generator::StructureMobs, structure::legacy::PieceRandom},
     },
 };
 
@@ -41,7 +37,7 @@ struct Data {
     items: Items,
     camel_husk: (f32, f32),
 }
-fn load(root: &std::path::Path, defaults: &ItemDefaults) -> Option<Data> {
+fn load(root: &std::path::Path) -> Option<Data> {
     let types = MobTypes::load(root).ok()?.types;
     let camel = types.get("minecraft:camel_husk")?;
     let camel_husk = (camel.width as f32, camel.height as f32);
@@ -54,15 +50,14 @@ fn load(root: &std::path::Path, defaults: &ItemDefaults) -> Option<Data> {
         )
         .unwrap_or_default(),
         registries: SpawnRegistries::load(root),
-        enchantments: Enchantments::load(root, defaults).ok()?,
-        items: Items::tags_only(root, &horizon_world::loot::PackOverlay::NONE, defaults).ok()?,
+        enchantments: Enchantments::load(root),
+        items: Items::tags_only(root, &horizon_world::loot::PackOverlay::NONE).ok()?,
         camel_husk,
     })
 }
 
 pub struct StructureMobFinalizer {
     root: PathBuf,
-    item_data: Arc<ItemData>,
     dimension: String,
     data: OnceLock<Option<Data>>,
     /// The level's difficulty (0 peaceful to 3 hard) and overworld clock.
@@ -70,10 +65,9 @@ pub struct StructureMobFinalizer {
     day_time: AtomicI64,
 }
 impl StructureMobFinalizer {
-    pub fn new(root: PathBuf, dimension: &str, item_data: Arc<ItemData>) -> Self {
+    pub fn new(root: PathBuf, dimension: &str) -> Self {
         Self {
             root,
-            item_data,
             dimension: dimension.to_owned(),
             data: OnceLock::new(),
             difficulty: AtomicU8::new(2),
@@ -136,20 +130,13 @@ impl FinalizeLevel for Level<'_> {
         self.next_id += 1;
         Some(Mob::new(self.next_id, t, Vec3::ZERO, 0.0))
     }
-    fn spawn_data(&self) -> finalize::SpawnData<'_> {
-        finalize::SpawnData {
-            registries: &self.data.registries,
-            enchantments: &self.data.enchantments,
-            items: &self.data.items,
-            camel_husk_size: self.data.camel_husk,
-        }
-    }
 }
 
 fn run<R: RandomSource>(
     level: &mut Level<'_>,
     random: &mut R,
     difficulty: LocalDifficulty,
+    data: &SpawnData<'_>,
     m: &mut Mob,
     reason: Reason,
     group: &mut Option<Group>,
@@ -158,6 +145,7 @@ fn run<R: RandomSource>(
         level,
         random,
         difficulty,
+        data,
         created: Vec::new(),
         jockey_rider: None,
     };
@@ -173,8 +161,7 @@ fn run<R: RandomSource>(
 fn tree(mobs: &[(Mob, Option<Tag>)], i: usize, dimension: &str) -> Compound {
     let (m, raw) = &mobs[i];
     // No block registry here: a carried block stays as the template had it.
-    let saved = entity_nbt::mob_to_nbt(m, [0; 4], raw.as_ref(), None, |_| None);
-    let Tag::Compound(mut c) = saved else {
+    let Tag::Compound(mut c) = entity_nbt::mob_to_nbt(m, [0; 4], raw.as_ref(), None) else {
         return Compound::new();
     };
     c.remove(&"UUID".into());
@@ -190,7 +177,7 @@ fn tree(mobs: &[(Mob, Option<Tag>)], i: usize, dimension: &str) -> Compound {
     ] {
         c.remove(&key.into());
     }
-    crate::mobs::brain::put_brain(&mut c, m, dimension);
+    entity_nbt::put_brain(&mut c, m, dimension);
     let riders: Vec<Tag> = (0..mobs.len())
         .filter(|&j| mobs[j].0.extra.mount == Some(m.id))
         .map(|j| Tag::Compound(tree(mobs, j, dimension)))
@@ -244,7 +231,7 @@ impl StructureMobFinalizer {
     fn data(&self) -> Option<&Data> {
         self.data
             .get_or_init(|| {
-                let data = load(&self.root, self.item_data.defaults());
+                let data = load(&self.root);
                 if data.is_none() {
                     log::error!("Horizon: no mob data, structure mobs are finalized when loaded");
                 }
@@ -294,11 +281,17 @@ impl StructureMobFinalizer {
         let moon = MOON_BRIGHTNESS[level.moon_phase([0; 3])];
         // WorldGenRegion.getCurrentDifficultyAt: no inhabited time.
         let difficulty = LocalDifficulty::new(base, day_time, 0, moon);
+        let spawn = SpawnData {
+            registries: &data.registries,
+            enchantments: &data.enchantments,
+            items: &data.items,
+            camel_husk_size: data.camel_husk,
+        };
         let any = random.as_any();
         let created = if let Some(r) = any.downcast_mut::<LegacyRandom>() {
-            run(&mut level, r, difficulty, &mut m, reason, group)
+            run(&mut level, r, difficulty, &spawn, &mut m, reason, group)
         } else if let Some(r) = any.downcast_mut::<XoroshiroRandom>() {
-            run(&mut level, r, difficulty, &mut m, reason, group)
+            run(&mut level, r, difficulty, &spawn, &mut m, reason, group)
         } else {
             log::error!("Horizon: unknown region random, structure mobs are finalized when loaded");
             return None;
@@ -316,49 +309,6 @@ impl StructureMobFinalizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use horizon_world::native_load_context::DataLoadOrigin;
-
-    #[test]
-    fn structure_zombie_preserves_unknown_profession() {
-        let Some(root) = std::env::var_os("HORIZON_TEST_RESOURCES").map(PathBuf::from) else {
-            return;
-        };
-        let item_data =
-            crate::test_resources::item_data(&root, DataLoadOrigin::ServerDataLoad).unwrap();
-        let hook = StructureMobFinalizer::new(root, "minecraft:overworld", item_data);
-        let mut nbt = match Tag::compound([
-            ("id", Tag::String("minecraft:zombie_villager".into())),
-            (
-                "Pos",
-                Tag::List(vec![
-                    Tag::Double(0.0_f64.to_bits()),
-                    Tag::Double(64.0_f64.to_bits()),
-                    Tag::Double(0.0_f64.to_bits()),
-                ]),
-            ),
-            (
-                "VillagerData",
-                Tag::compound([
-                    ("type", Tag::String("minecraft:plains".into())),
-                    ("profession", Tag::String("example:engineer".into())),
-                    ("level", Tag::Int(1)),
-                ]),
-            ),
-        ]) {
-            Tag::Compound(c) => c,
-            _ => unreachable!(),
-        };
-        assert!(hook.finalize(
-            &mut nbt,
-            "minecraft:plains",
-            &[],
-            &mut LegacyRandom::new(12345)
-        ));
-        let result = Tag::Compound(nbt);
-        assert!(
-            matches!(result.get("VillagerData").and_then(|v| v.get("profession")), Some(Tag::String(s)) if s.to_string_lossy() == "example:engineer")
-        );
-    }
 
     /// The bastion's crossbow piglin keeps its crossbow (STRUCTURE skips
     /// createSpawnWeapon) and saves what Piglin.addAdditionalSaveData writes.
@@ -374,8 +324,11 @@ mod tests {
             &mut bytes,
         )
         .unwrap();
-        let limits = horizon_core::nbt::Limits::templates();
-        let template = horizon_core::nbt::read_named(&bytes, limits).unwrap().0.tag;
+        let limits = horizon_world::nbt::Limits::templates();
+        let template = horizon_world::nbt::read_named(&bytes, limits)
+            .unwrap()
+            .0
+            .tag;
         let Some(Tag::List(entities)) = template.get("entities") else {
             panic!("no entities");
         };
@@ -383,9 +336,7 @@ mod tests {
             panic!("no nbt");
         };
         nbt.remove(&"UUID".into());
-        let item_data =
-            crate::test_resources::item_data(&root, DataLoadOrigin::ServerDataLoad).unwrap();
-        let hook = StructureMobFinalizer::new(root, "minecraft:the_nether", item_data);
+        let hook = StructureMobFinalizer::new(root, "minecraft:the_nether");
         let mut random = LegacyRandom::new(12345);
         hook.finalize(&mut nbt, "minecraft:nether_wastes", &[], &mut random);
         let keys: Vec<String> = {
@@ -453,25 +404,6 @@ mod tests {
             _ => "-".into(),
         }
     }
-    /// `Mob.finalizeSpawn`'s follow range bonus in the saved attributes.
-    fn spawn_bonus(mob: &Tag) -> Option<f64> {
-        let named = |t: &Tag, want: &str| matches!(t.get("id"), Some(Tag::String(s)) if s.to_string_lossy() == want);
-        let Some(Tag::List(attrs)) = mob.get("attributes") else {
-            return None;
-        };
-        let range = attrs.iter().find(|a| named(a, "minecraft:follow_range"))?;
-        let Some(Tag::List(modifiers)) = range.get("modifiers") else {
-            return None;
-        };
-        let bonus = modifiers
-            .iter()
-            .find(|m| named(m, "minecraft:random_spawn_bonus"))?;
-        match bonus.get("amount") {
-            Some(Tag::Double(v)) => Some(f64::from_bits(*v)),
-            Some(Tag::Float(v)) => Some(f32::from_bits(*v) as f64),
-            _ => None,
-        }
-    }
     /// What a vanilla world saves of a structure mob that finalizeSpawn decides.
     fn describe(mob: &Tag) -> String {
         let eq = mob.get("equipment");
@@ -488,7 +420,7 @@ mod tests {
             Some(Tag::Long(t)) => t.to_string(),
             _ => "-".into(),
         };
-        let bonus = spawn_bonus(mob).unwrap_or(f64::NAN);
+        let bonus = crate::entity_nbt::spawn_bonus(mob).unwrap_or(f64::NAN);
         let flag = |k: &str| matches!(mob.get(k), Some(Tag::Byte(1)));
         let riders = match mob.get("Passengers") {
             Some(Tag::List(p)) => format!(
@@ -515,22 +447,15 @@ mod tests {
     ) -> Vec<String> {
         use crate::streaming::{ChunkGenerator, Proto};
         let assets = crate::assets::Assets::load(root).unwrap();
-        let biomes = crate::biome::Biomes::load(
-            &horizon_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+        let biomes = crate::biome::Biomes::load(root).unwrap();
+        let terrain = super::super::VanillaTerrain::for_dimension(
+            &root.join("worldgen"),
+            assets.registry,
+            &biomes,
+            seed,
+            dimension,
         )
         .unwrap();
-        let item_data =
-            crate::test_resources::item_data(root, DataLoadOrigin::ServerDataLoad).unwrap();
-        let terrain_resources = crate::vanillagen::TerrainResources {
-            data: None,
-            dir: &root.join("worldgen"),
-            registry: assets.registry,
-            biomes: &biomes,
-            item_data: &item_data,
-        };
-        let terrain =
-            super::super::VanillaTerrain::for_dimension(terrain_resources, seed, dimension)
-                .unwrap();
         let mut worker = terrain.worker();
         let mut region: [Proto; 9] = std::array::from_fn(|i| {
             terrain.proto(&mut worker, x + i as i32 % 3 - 1, z + i as i32 / 3 - 1)

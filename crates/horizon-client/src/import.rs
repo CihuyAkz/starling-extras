@@ -68,12 +68,9 @@ pub fn classify(path: &Path) -> (Kind, String) {
     if let Some(prefix) = found("horizon-resources.json") {
         return (Kind::Resources, prefix);
     }
-    if names.iter().any(|n| n == "horizon-native.json") {
-        return (Kind::NativeMod, String::new());
-    }
-    // A flat package with native code (Horizon's native mod) goes where Compile reads it.
-    if (ext == "hmod" || names.iter().any(|n| n == "horizon-mod.toml"))
-        && horizon_mod_package::index::native::holds(path)
+    if names
+        .iter()
+        .any(|n| n == horizon_mods::index::native::MANIFEST)
     {
         return (Kind::NativeMod, String::new());
     }
@@ -215,10 +212,9 @@ pub fn install(path: &Path, name: &str, places: &Places) -> Result<Installed, St
             )
         }
         Kind::NativeMod => {
-            // Either format: the registry's `horizon-native.json` bundle or a flat package.
-            let bundle = horizon_mod_package::index::native::Any::read(path)
+            let bundle = horizon_mods::index::native::Bundle::read(path)
                 .map_err(|e| format!("{name} can't be added: {e}"))?;
-            let id = bundle.id().to_owned();
+            let id = bundle.manifest.id;
             let dir = places.game.join("horizon-native-mods");
             fs::create_dir_all(&dir).map_err(fail)?;
             copy_file(path, &dir.join(format!("{id}.hnmod"))).map_err(fail)?;

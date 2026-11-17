@@ -5,9 +5,8 @@
 //! vanilla's glint's is. Without enchantment rules nothing here is made.
 
 use super::HudVertex;
-use crate::gfx::hud_coverage::Pipeline;
-use horizon_assets::resource_source::ResourceSource;
 use horizon_optifine::cit::{Blend, Factor, Kind, Rule};
+use std::path::Path;
 
 /// Slots the shader's table holds; rules past it draw no layer (and match no stack).
 pub const MAX_SLOTS: usize = 256;
@@ -45,7 +44,7 @@ pub struct GlintTextures {
 
 impl GlintTextures {
     /// The textures of `rules` under the overlay resource root.
-    pub fn load(root: &ResourceSource, rules: &[Rule]) -> Self {
+    pub fn load(root: &Path, rules: &[Rule]) -> Self {
         let mut images = Vec::new();
         let mut past = 0;
         for (i, rule) in rules.iter().enumerate() {
@@ -59,11 +58,7 @@ impl GlintTextures {
                 past += 1;
                 continue;
             }
-            match root
-                .read(path)
-                .map_err(Into::into)
-                .and_then(|bytes| super::decode_bytes(&bytes))
-            {
+            match super::decode(&root.join(path)) {
                 Ok(image) => images.push((i, image)),
                 Err(e) => log::warn!("custom item textures: glint {path} left out: {e}"),
             }
@@ -235,7 +230,7 @@ pub fn blend_state(blend: Option<Blend>) -> wgpu::BlendState {
 /// pipeline per blend.
 pub(super) struct CitGlintPass {
     group: wgpu::BindGroup,
-    pipelines: Vec<Pipeline>,
+    pipelines: Vec<wgpu::RenderPipeline>,
 }
 
 impl CitGlintPass {
@@ -246,7 +241,6 @@ impl CitGlintPass {
         format: wgpu::TextureFormat,
         hud: &wgpu::BindGroupLayout,
         textures: &GlintTextures,
-        coverage: bool,
     ) -> Option<Self> {
         use wgpu::util::DeviceExt;
         if textures.is_empty() {
@@ -327,16 +321,17 @@ impl CitGlintPass {
             ty,
             count: None,
         };
-        // hud.wgsl binds the array once per sampler (`cit_tex`, `cit_tex_sharp`).
-        let array = wgpu::BindingType::Texture {
-            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: wgpu::TextureViewDimension::D2Array,
-            multisampled: false,
-        };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("CIT glint bindings"),
             entries: &[
-                entry(0, array),
+                entry(
+                    0,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                ),
                 entry(1, filtering),
                 entry(2, filtering),
                 entry(
@@ -347,7 +342,6 @@ impl CitGlintPass {
                         min_binding_size: None,
                     },
                 ),
-                entry(4, array),
             ],
         });
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -370,10 +364,6 @@ impl CitGlintPass {
                     binding: 3,
                     resource: table.as_entire_binding(),
                 },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -391,7 +381,7 @@ impl CitGlintPass {
             .blends
             .iter()
             .map(|&blend| {
-                let desc = wgpu::RenderPipelineDescriptor {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("CIT glint"),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
@@ -419,9 +409,7 @@ impl CitGlintPass {
                     }),
                     multiview_mask: None,
                     cache: None,
-                };
-                let source = wgpu::ShaderSource::Wgsl(include_str!("../hud.wgsl").into());
-                Pipeline::new(device, &desc, source, coverage).expect("the CIT glint's coverage")
+                })
             })
             .collect();
         Some(Self { group, pipelines })
@@ -433,10 +421,9 @@ impl CitGlintPass {
         pass: &mut wgpu::RenderPass<'_>,
         blend: u8,
         vertices: std::ops::Range<u32>,
-        coverage: bool,
     ) {
         if let Some(pipeline) = self.pipelines.get(usize::from(blend)) {
-            pass.set_pipeline(pipeline.get(coverage));
+            pass.set_pipeline(pipeline);
             pass.set_bind_group(1, &self.group, &[]);
             pass.draw(vertices, 0..1);
         }

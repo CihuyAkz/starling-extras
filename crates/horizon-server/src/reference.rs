@@ -2,8 +2,7 @@
 //! endpoints, generated from the source, and the tests that fail when it is out of date. Update it with:
 //! `HORIZON_WRITE_DOCS=1 cargo test -p horizon-server reference`.
 
-use crate::api::ROUTES;
-use horizon_server_launch::config;
+use crate::{api::ROUTES, config};
 use std::fmt::Write;
 
 const DOC: &str = "docs/api/server-reference.md";
@@ -43,7 +42,7 @@ pub fn markdown() -> String {
     let w = &mut out;
     let _ = writeln!(
         w,
-        "<!-- Generated from crates/horizon-server/src and crates/horizon-server-launch/src (the help text, config::TEMPLATE, api::ROUTES) by reference.rs; a test fails when this file is out of date. Update it with: HORIZON_WRITE_DOCS=1 cargo test -p horizon-server reference -->"
+        "<!-- Generated from crates/horizon-server/src (the help text, config::TEMPLATE, api::ROUTES) by reference.rs; a test fails when this file is out of date. Update it with: HORIZON_WRITE_DOCS=1 cargo test -p horizon-server reference -->"
     );
     let _ = writeln!(w, "# Server reference\n");
     let _ = writeln!(

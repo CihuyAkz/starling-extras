@@ -63,9 +63,7 @@ fn draw_json(d: &ScreenDraw) -> Value {
 pub fn main() -> horizon_client::Result<()> {
     let args: Vec<String> = crate::args().collect();
     let usage = "usage: screen_layout_fixture RESOURCES INPUT OUTPUT";
-    let root = Path::new(args.get(1).ok_or(usage)?);
-    let defaults = horizon_world::item_defaults::read(root)?;
-    let banners = Banners::load(root, &defaults);
+    let banners = Banners::load(Path::new(args.get(1).ok_or(usage)?));
     let input = fs::read_to_string(args.get(2).ok_or(usage)?)?;
     let mut out = String::new();
     for line in input.lines().filter(|l| !l.trim().is_empty()) {

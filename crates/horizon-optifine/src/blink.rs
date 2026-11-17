@@ -9,10 +9,9 @@
 //!
 //! Written from ETF's README ("Blinking textures"); no mod's source was read.
 
-use horizon_assets::resource_source::ResourceSource;
 use std::collections::HashMap;
-#[cfg(test)]
 use std::fs;
+use std::path::Path;
 
 use crate::paths::files_under;
 use crate::properties::Properties;
@@ -39,13 +38,17 @@ pub struct Blink {
 }
 
 impl Blinks {
-    pub fn scan(root: &ResourceSource, random: &RandomTextures) -> Self {
+    pub fn scan(root: &Path, random: &RandomTextures) -> Self {
         let mut out = Self::default();
-        for ns in root.namespaces("assets") {
+        let Ok(namespaces) = fs::read_dir(root.join("assets")) else {
+            return out;
+        };
+        for ns in namespaces.flatten() {
+            let ns = ns.file_name().to_string_lossy().into_owned();
             let prefix = format!("assets/{ns}/");
             for file in files_under(root, &format!("{prefix}textures/entity"), &["_blink.png"]) {
                 let stem = &file[..file.len() - "_blink.png".len()];
-                if root.contains(&format!("{stem}.png")) {
+                if root.join(format!("{stem}.png")).is_file() {
                     let blink =
                         Blink::read(root, stem, |path| atlas_name(&ns, &path[prefix.len()..]));
                     out.blinks
@@ -57,7 +60,7 @@ impl Blinks {
             let Some(stem) = file.strip_suffix(".png") else {
                 continue;
             };
-            if !root.contains(&format!("{stem}_blink.png")) {
+            if !root.join(format!("{stem}_blink.png")).is_file() {
                 continue;
             }
             let frame = |path: &str| format!("{name}{}", &path[stem.len()..]);
@@ -92,9 +95,8 @@ impl Blinks {
 impl Blink {
     /// The blink of the texture at `stem` (its path from the root, no `.png`); `name` gives a
     /// frame's atlas name from its path.
-    fn read(root: &ResourceSource, stem: &str, name: impl Fn(&str) -> String) -> Self {
-        let props = root
-            .read_to_string(&format!("{stem}_blink.properties"))
+    fn read(root: &Path, stem: &str, name: impl Fn(&str) -> String) -> Self {
+        let props = fs::read_to_string(root.join(format!("{stem}_blink.properties")))
             .map(|text| Properties::parse(&text))
             .unwrap_or_default();
         let number = |key, default| {
@@ -108,7 +110,10 @@ impl Blink {
         let half = format!("{stem}_blink2");
         Self {
             shut: name(&format!("{stem}_blink")),
-            half: root.contains(&format!("{half}.png")).then(|| name(&half)),
+            half: root
+                .join(format!("{half}.png"))
+                .is_file()
+                .then(|| name(&half)),
             length,
             frequency: number("blinkFrequency", FREQUENCY).max(length + 1),
         }
@@ -142,10 +147,7 @@ mod tests {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, text).unwrap();
         }
-        let b = Blinks::scan(
-            &ResourceSource::directory(root.clone()),
-            &RandomTextures::scan(&ResourceSource::directory(root.clone())),
-        );
+        let b = Blinks::scan(&root, &RandomTextures::scan(&root));
         (root, b)
     }
 
