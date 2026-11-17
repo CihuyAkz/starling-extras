@@ -94,6 +94,7 @@ BUILTIN_NATIVE_MODS = (
     "firstpersonmodel",
     "eatinganimation",
     "veinminer",
+    "liteminer",
     "rightharvest",
     "customhud",
     "carryblock",

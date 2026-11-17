@@ -31,7 +31,7 @@ pub fn is_android_bundled(_id: &str) -> bool {
 }
 
 #[cfg(target_os = "android")]
-pub const ANDROID_BUNDLED: [&str; 19] = [
+pub const ANDROID_BUNDLED: [&str; 20] = [
     "zoom",
     "recipes",
     "smartf3",
@@ -48,6 +48,7 @@ pub const ANDROID_BUNDLED: [&str; 19] = [
     "firstpersonmodel",
     "eatinganimation",
     "veinminer",
+    "liteminer",
     "rightharvest",
     "customhud",
     "carryblock",

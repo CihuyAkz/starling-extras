@@ -2356,7 +2356,7 @@ enum StarlingModSide {
 
 fn starling_extra_mod_side(id: &str) -> StarlingModSide {
     match id {
-        "veinminer" | "rightharvest" | "carryblock" => StarlingModSide::Server,
+        "veinminer" | "liteminer" | "rightharvest" | "carryblock" => StarlingModSide::Server,
         _ => StarlingModSide::Client,
     }
 }
@@ -8398,6 +8398,7 @@ mod tests {
             installed("eatinganimation"),
             installed("cinematic_interactions"),
             installed("veinminer"),
+            installed("liteminer"),
             installed("appleskin"),
             installed("rightharvest"),
             installed("customhud"),
@@ -8418,6 +8419,7 @@ mod tests {
             "eatinganimation",
             "cinematic_interactions",
             "veinminer",
+            "liteminer",
             "appleskin",
             "rightharvest",
             "customhud",
@@ -8426,6 +8428,7 @@ mod tests {
             assert!(crate::mod_list::ANDROID_BUNDLED.contains(&id));
         }
         assert_eq!(starling_extra_mod_side("veinminer"), StarlingModSide::Server);
+        assert_eq!(starling_extra_mod_side("liteminer"), StarlingModSide::Server);
         assert_eq!(starling_extra_mod_side("rightharvest"), StarlingModSide::Server);
         assert_eq!(starling_extra_mod_side("carryblock"), StarlingModSide::Server);
         for id in [
@@ -8452,7 +8455,7 @@ mod tests {
         // The main Mods page still shows manually installed mods, not APK-bundled extras.
         ui.show(Page::Mods);
         let (widgets, ..) = ui.layout(&s, size.0, size.1);
-        assert_eq!(visible_indices(&widgets), [9]);
+        assert_eq!(visible_indices(&widgets), [10]);
         let open = widgets
             .iter()
             .find(|w| matches!(w.kind, WKind::Button { act: Act::Push(Page::StarlingExtra), .. }))
@@ -8499,7 +8502,7 @@ mod tests {
         );
         assert_eq!(ui.page(), Page::StarlingExtraClient);
         let (client_widgets, ..) = ui.layout(&s, size.0, size.1);
-        assert_eq!(visible_indices(&client_widgets), [0, 1, 2, 3, 5, 7]);
+        assert_eq!(visible_indices(&client_widgets), [0, 1, 2, 3, 6, 8]);
 
         ui.show(Page::StarlingExtra);
         let (categories, ..) = ui.layout(&s, size.0, size.1);
@@ -8522,7 +8525,7 @@ mod tests {
             lang::Language::load(&[], "en_us"),
             || ui.layout(&s, size.0, size.1),
         );
-        assert_eq!(visible_indices(&server_widgets), [4, 6, 8]);
+        assert_eq!(visible_indices(&server_widgets), [4, 5, 7, 9]);
         assert!(server_widgets.iter().any(|w| matches!(
             &w.kind,
             WKind::Text { text, color, .. }
