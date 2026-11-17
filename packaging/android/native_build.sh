@@ -78,6 +78,8 @@ cp "$work/lib.rs" "$work/source/crates/horizon-client/src/lib.rs"
 # which horizon-mixins cannot follow: they are written out as plain module lines in this copy
 # first, as Horizon's launcher does (horizon-materialize, crates/horizon-mod-api-gen). Before the
 # mods are adapted: native_mod_adapt.py finds where things went in the module tree it leaves.
+rm -f "$work/source/native-hooks.json"
+rm -rf "$work/source/tools/native-hook-fragments"
 cargo fetch --locked --manifest-path "$work/source/Cargo.toml" > /dev/null
 CARGO_TARGET_DIR=$cache/materialize-target cargo run --quiet --locked --offline \
   --manifest-path "$work/source/Cargo.toml" -p horizon-mod-api-gen --bin horizon-materialize \
