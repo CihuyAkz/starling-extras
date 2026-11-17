@@ -86,20 +86,13 @@ bindings = [
 ]
 
 [[injection]]
-id = "highlight"
+id = "visuals"
 kind = "HEAD"
-target = "horizon_client::game::native_hooks::Game<'_>::native_block_highlight"
-helper = "h_highlight.rs"
-bindings = []
-
-[[injection]]
-id = "world"
-kind = "HEAD"
-target = "horizon_client::game::native_hooks::Game<'_>::native_world_primitives"
-helper = "h_world.rs"
+target = "horizon_client::game::native_hooks::Game<'_>::native_visuals"
+helper = "h_visuals.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
-  { name = "primitives", ty = "&mut horizon_client::world_primitives::WorldPrimitives", value = "&mut *primitives" },
+  { name = "rims", ty = "&mut Vec<horizon_client::mod_api::NativeBlockRim>", value = "&mut *rims" },
 ]
 
 [[injection]]

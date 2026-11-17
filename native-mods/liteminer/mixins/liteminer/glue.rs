@@ -8,9 +8,8 @@
 use super::Game;
 use horizon_client::hud::{HudBatch, rgba};
 use horizon_client::items::ItemStack;
-use horizon_client::mod_api::{NativeMod, NativeScreenView};
+use horizon_client::mod_api::{NativeBlockRim, NativeMod, NativeScreenView};
 use horizon_client::text::Text;
-use horizon_client::world_primitives::WorldPrimitives;
 use horizon_world::registry::BlockStateId;
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
@@ -1076,7 +1075,6 @@ type SelKey = (Pos, Pos, usize, u32, Option<(Arc<str>, u32)>, u64);
 pub(crate) struct Selection {
     key: SelKey,
     pub blocks: Vec<Pos>,
-    pub lines: Vec<([f64; 3], [f64; 3])>,
     made: u64,
 }
 
@@ -1113,7 +1111,6 @@ pub(crate) static CLIENT: Mutex<Client> = Mutex::new(Client {
     close: false,
 });
 static FRAME: AtomicU64 = AtomicU64::new(100);
-static HIGHLIGHT: AtomicU64 = AtomicU64::new(0);
 /// Bumped by each change of the configuration, so the selection is worked out again.
 static CFG_GEN: AtomicU64 = AtomicU64::new(1);
 
@@ -1277,100 +1274,11 @@ fn select(game: &Game<'_>, cfg: &Config, frame: u64) {
     let look = Look::new(game, cfg, held.as_ref());
     let yaw = game.player.as_ref().map_or(0.0, |p| p.yaw);
     let blocks = walk(&look, cfg, shape, hit.pos, hit.face, yaw);
-    // The same blocks keep their outline.
-    let lines = match old {
-        Some(s) if s.blocks == blocks => s.lines,
-        _ => outline(&blocks),
-    };
-    client().sel = Some(Selection { key, blocks, lines, made: frame });
+    client().sel = Some(Selection { key, blocks, made: frame });
 }
 
-/// `BlockHighlightRenderer.createHighlightLines`: the outside edges of the blocks as one
-/// shape (an edge with one or three of its four neighbours taken, or two across), each run
-/// of edges joined into one line, a hair out from the faces.
-pub(crate) fn outline(blocks: &[Pos]) -> Vec<([f64; 3], [f64; 3])> {
-    let set: PosSet = blocks.iter().copied().collect();
-    // (axis, u, v, offset pattern) -> starts along the axis.
-    let mut runs: HashMap<(usize, i32, i32, u8), Vec<i32>, FxBuild> = HashMap::default();
-    let mut seen: HashSet<(usize, Pos), FxBuild> = HashSet::default();
-    for &b in blocks {
-        for a in 0..3usize {
-            let (ua, va) = ((a + 1) % 3, (a + 2) % 3);
-            for (u, v) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let mut start = b;
-                start[ua] += u;
-                start[va] += v;
-                if !seen.insert((a, start)) {
-                    continue;
-                }
-                // The four blocks round the edge, as bits: (-u,-v), (0,-v), (-u,0), (0,0).
-                let mut bits = 0u8;
-                for (k, (du, dv)) in [(-1, -1), (0, -1), (-1, 0), (0, 0)].into_iter().enumerate() {
-                    let mut c = start;
-                    c[ua] += du;
-                    c[va] += dv;
-                    if set.contains(&c) {
-                        bits |= 1 << k;
-                    }
-                }
-                let n = bits.count_ones();
-                if n == 1 || n == 3 || bits == 0b1001 || bits == 0b0110 {
-                    runs.entry((a, start[ua], start[va], bits)).or_default().push(start[a]);
-                }
-            }
-        }
-    }
-    let mut lines = Vec::new();
-    let mut keys: Vec<_> = runs.keys().copied().collect();
-    keys.sort_unstable();
-    for k in keys {
-        let (a, u, v, bits) = k;
-        let (ua, va) = ((a + 1) % 3, (a + 2) % 3);
-        // A hair toward the empty quadrants.
-        let mut off = [0.0f64; 2];
-        for (kk, (du, dv)) in [(-0.5, -0.5), (0.5, -0.5), (-0.5, 0.5), (0.5, 0.5)].into_iter().enumerate() {
-            if bits & (1 << kk) == 0 {
-                off[0] += du;
-                off[1] += dv;
-            }
-        }
-        let len = (off[0] * off[0] + off[1] * off[1]).sqrt();
-        let s = if len > 1e-9 { 0.002 / len } else { 0.0 };
-        let mut starts = runs[&k].clone();
-        starts.sort_unstable();
-        let mut i = 0;
-        while i < starts.len() {
-            let from = starts[i];
-            let mut to = from + 1;
-            while i + 1 < starts.len() && starts[i + 1] == to {
-                i += 1;
-                to += 1;
-            }
-            i += 1;
-            let mut p0 = [0.0f64; 3];
-            p0[ua] = f64::from(u) + off[0] * s;
-            p0[va] = f64::from(v) + off[1] * s;
-            let mut p1 = p0;
-            p0[a] = f64::from(from);
-            p1[a] = f64::from(to);
-            lines.push((p0, p1));
-        }
-    }
-    lines
-}
-
-/// The game would draw its block highlight this frame.
-pub(crate) fn highlight() {
-    HIGHLIGHT.store(FRAME.load(Ordering::Relaxed), Ordering::Relaxed);
-}
-
-/// The selection's outline: a see-through pass, then the lines in front.
-pub(crate) fn world(game: &Game<'_>, primitives: &mut WorldPrimitives) {
+pub(crate) fn visuals(game: &Game<'_>, rims: &mut Vec<NativeBlockRim>) {
     if !game.native_window() || !game.native_on(ID) {
-        return;
-    }
-    let frame = FRAME.load(Ordering::Relaxed);
-    if frame.saturating_sub(HIGHLIGHT.load(Ordering::Relaxed)) > 2 {
         return;
     }
     let cfg = cfg();
@@ -1382,19 +1290,11 @@ pub(crate) fn world(game: &Game<'_>, primitives: &mut WorldPrimitives) {
         return;
     }
     let Some(sel) = c.sel.as_ref() else { return };
-    if sel.blocks.is_empty() {
-        return;
-    }
-    let behind = 0x4B << 24 | cfg.highlight_see_through_line_color;
-    let front = 0xFF << 24 | cfg.highlight_foreground_line_color;
-    for (from, to) in &sel.lines {
-        primitives.line(*from, *to, behind, LINE_WIDTH).through_walls();
-    }
-    for (from, to) in &sel.lines {
-        primitives.line(*from, *to, front, LINE_WIDTH);
+    let argb = 0xFF00_0000 | cfg.highlight_foreground_line_color;
+    for &pos in sel.blocks.iter().take(8) {
+        rims.push(NativeBlockRim { pos, argb, width: 2.0 });
     }
 }
-const LINE_WIDTH: f32 = 2.0;
 
 /// `HUD.onRenderHUD`: the count and the shape, by the crosshair.
 pub(crate) fn hud(game: &Game<'_>, batch: &mut HudBatch) {
