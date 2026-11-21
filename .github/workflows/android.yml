@@ -303,8 +303,30 @@ jobs:
 
           if [[ "$BUILD_TYPE" == "Dev Builds" ]]; then
             BUILTIN_MODS="$(python - <<'PY'
-          import runpy
-          print(" ".join(sorted(runpy.run_path("packaging/android/build_apk.py")["BUILTIN_NATIVE_MODS"])))
+          from pathlib import Path
+
+          manifest = Path("native-mods/prebuilt.txt")
+          if not manifest.is_file():
+              raise SystemExit("Missing native-mods/prebuilt.txt")
+
+          mods = []
+          for raw in manifest.read_text(encoding="utf-8").splitlines():
+              line = raw.split("#", 1)[0].strip()
+              if line:
+                  mods.extend(line.split())
+
+          mods = sorted(set(mods))
+          if not mods:
+              raise SystemExit("native-mods/prebuilt.txt contains no built-in mods")
+
+          missing = [
+              mod for mod in mods
+              if not (Path("native-mods") / mod / "mixins" / mod / "horizon-mixin.toml").is_file()
+          ]
+          if missing:
+              raise SystemExit("Missing native mod mixin bundles: " + ", ".join(missing))
+
+          print(" ".join(mods))
           PY
             )"
             read -r -a MOD_IDS <<< "$BUILTIN_MODS"
