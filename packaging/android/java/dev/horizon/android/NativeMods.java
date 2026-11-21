@@ -53,10 +53,6 @@ final class NativeMods {
         if (!library.isFile() || version == null || !version.equals(read(new File(build, "for")))) {
             return null;
         }
-        if (containsRetiredMapMod(build)) {
-            setAside(dir, "This build includes a retired map mod, so Starling started without it. Compile a new build to continue using native mods.");
-            return null;
-        }
         // Every test build of a version has the same versionName and versionCode: a build made
         // under another install has another commit's code, and the game says it is out of date.
         String stamp = stamp(context);
@@ -79,26 +75,6 @@ final class NativeMods {
         return library;
     }
 
-    private static boolean containsRetiredMapMod(File build) {
-        String text = read(new File(build, "build.json"));
-        if (text == null) {
-            return false;
-        }
-        try {
-            JSONArray mods = new JSONObject(text).optJSONArray("mods");
-            for (int i = 0; mods != null && i < mods.length(); i++) {
-                JSONObject mod = mods.optJSONObject(i);
-                String id = mod == null ? "" : mod.optString("id");
-                if ("minimap".equals(id) || "worldmap".equals(id)) {
-                    return true;
-                }
-            }
-        } catch (JSONException e) {
-            return false;
-        }
-        return false;
-    }
-
     /**
      * This install of the APK: when Android installed or last updated it, which changes with every
      * APK put on the phone. The game writes it beside each build it downloads (STARLING_APK).
@@ -119,7 +95,7 @@ final class NativeMods {
 
     /**
      * What the build at `library` says its mods need of Android, each with the mods that need it,
-     * in build.json's order ({"microphone": ["native_mod"]}): native_build.sh finds it in their
+     * in build.json's order ({"microphone": ["voicechat"]}): native_build.sh finds it in their
      * source (native_mod_permissions.py); none from a build made before it did, or unreadable.
      */
     static Map<String, List<String>> permissions(File library) {

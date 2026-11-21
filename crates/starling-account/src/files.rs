@@ -6,10 +6,10 @@
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use std::io::{Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 /// What `research-lock.json` pins about the game files.
 #[derive(Clone, Debug)]
@@ -77,6 +77,10 @@ pub struct Progress {
     pub files_total: usize,
     pub bytes: u64,
     pub bytes_total: u64,
+    /// Verified bytes fetched in this attempt. Cached files count only toward `bytes`.
+    pub downloaded_bytes: u64,
+    pub transfer_started: Option<Instant>,
+    pub last_transfer: Option<Instant>,
 }
 
 /// Where the fetched files are.
@@ -252,20 +256,6 @@ pub fn download(
     progress: &(dyn Fn(Progress) + Sync),
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Result<Installed, String> {
-    download_with_legacy_assets(sources, pins, root, wanted, None, progress, cancelled)
-}
-
-/// As `download`, but may reuse verified asset files from Horizon Android's prepared version.
-/// Those files live in the same app-private storage after a Dev build is updated to Starling.
-pub fn download_with_legacy_assets(
-    sources: &Sources,
-    pins: &Pins,
-    root: &Path,
-    wanted: Wanted,
-    legacy_version_dir: Option<&Path>,
-    progress: &(dyn Fn(Progress) + Sync),
-    cancelled: &(dyn Fn() -> bool + Sync),
-) -> Result<Installed, String> {
     let v = &pins.version;
     let version_dir = root.join("versions").join(v);
     let manifest_path = version_dir.join(format!("{v}.json"));
@@ -348,9 +338,6 @@ pub fn download_with_legacy_assets(
                 data
             }
         };
-        if let Some(legacy) = legacy_version_dir {
-            reuse_prepared_assets(legacy, root, &data);
-        }
         let objects: Value =
             serde_json::from_slice(&data).map_err(|_| "The asset index is not valid JSON.")?;
         for object in objects["objects"]
@@ -382,102 +369,30 @@ pub fn download_with_legacy_assets(
     })
 }
 
-/// The old installer unpacked assets by their logical names (`assets/minecraft/...`), while
-/// this launcher stores the same verified bytes by SHA-1 (`assets/objects/<prefix>/<hash>`).
-/// Hard links let both layouts refer to one inode: no second copy of the downloaded assets.
-fn reuse_prepared_assets(legacy: &Path, root: &Path, index: &[u8]) -> usize {
-    if !legacy.join("horizon-resources.json").is_file()
-        || !legacy.join("android-downloads-v2.json").is_file()
-    {
-        return 0;
-    }
-    let Ok(objects) = serde_json::from_slice::<Value>(index) else {
-        return 0;
-    };
-    let old_assets = legacy.join("assets");
-    let Ok(old_assets_real) = std::fs::canonicalize(&old_assets) else {
-        return 0;
-    };
-    if !old_assets_real.is_dir() {
-        return 0;
-    }
-
-    let mut reused = 0;
-    for (name, object) in objects["objects"].as_object().into_iter().flatten() {
-        let relative = Path::new(name);
-        if name.contains('\\')
-            || relative.is_absolute()
-            || relative.components().any(|part| !matches!(part, Component::Normal(_)))
-        {
-            continue;
-        }
-        let Some(hash) = object["hash"]
-            .as_str()
-            .filter(|hash| hash.len() == 40 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
-        else {
-            continue;
-        };
-        let Some(size) = object["size"].as_u64() else {
-            continue;
-        };
-        let source = old_assets.join(relative);
-        let Ok(metadata) = std::fs::symlink_metadata(&source) else {
-            continue;
-        };
-        if !metadata.file_type().is_file() || metadata.len() != size {
-            continue;
-        }
-        let Ok(source_real) = std::fs::canonicalize(&source) else {
-            continue;
-        };
-        if !source_real.starts_with(&old_assets_real)
-            || sha1_file(&source_real).as_deref() != Some(hash)
-        {
-            continue;
-        }
-
-        let target = root.join("assets/objects").join(&hash[..2]).join(hash);
-        if sha1_file(&target).as_deref() == Some(hash) {
-            continue;
-        }
-        let Some(parent) = target.parent() else {
-            continue;
-        };
-        if std::fs::create_dir_all(parent).is_err() {
-            continue;
-        }
-        if std::fs::symlink_metadata(&target).is_ok() && std::fs::remove_file(&target).is_err() {
-            continue;
-        }
-        if std::fs::hard_link(&source_real, &target).is_ok() {
-            reused += 1;
-        }
-    }
-    reused
-}
-
 /// Every item, a few at a time; what is already there with its hash counts as done.
 fn fetch_all(
     items: Vec<Item>,
     progress: &(dyn Fn(Progress) + Sync),
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Result<(), String> {
-    let total = Progress {
+    let initial = Progress {
         files_total: items.len(),
         bytes_total: items.iter().map(|i| i.size).sum(),
         ..Progress::default()
     };
-    let (files, bytes) = (AtomicU64::new(0), AtomicU64::new(0));
-    let report = |size: u64| {
-        let files = files.fetch_add(1, Ordering::Relaxed) + 1;
-        let bytes = bytes.fetch_add(size, Ordering::Relaxed) + size;
-        progress(Progress {
-            files: files as usize,
-            bytes,
-            ..total
-        });
+    let completed = Mutex::new(initial);
+    let report = |size: u64, fetched: bool| {
+        // Serialize both the counters and their publication so the UI cannot go backwards.
+        let mut done = completed.lock().unwrap();
+        done.files += 1;
+        done.bytes += size;
+        if fetched {
+            done.downloaded_bytes += size;
+            done.last_transfer = Some(Instant::now());
+        }
+        progress(*done);
     };
-    progress(total);
+    progress(initial);
     let queue = Mutex::new(items);
     let failed: Mutex<Option<String>> = Mutex::new(None);
     let stop = AtomicBool::new(false);
@@ -497,13 +412,21 @@ fn fetch_all(
                         .file_name()
                         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
                     let result = if sha1_file(&item.path).as_deref() == Some(item.sha1.as_str()) {
-                        Ok(())
+                        Ok(false)
                     } else {
+                        {
+                            let mut done = completed.lock().unwrap();
+                            if done.transfer_started.is_none() {
+                                done.transfer_started = Some(Instant::now());
+                                progress(*done);
+                            }
+                        }
                         fetch_checked(&item.url, &item.sha1, &name)
                             .and_then(|data| write_file(&item.path, &data))
+                            .map(|()| true)
                     };
                     match result {
-                        Ok(()) => report(item.size),
+                        Ok(fetched) => report(item.size, fetched),
                         Err(e) => {
                             failed.lock().unwrap().get_or_insert(e);
                             stop.store(true, Ordering::Relaxed);

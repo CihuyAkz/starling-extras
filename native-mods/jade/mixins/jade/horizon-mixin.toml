@@ -31,7 +31,7 @@ source = "jade_config.rs"
 # BlockDisplayProvider and ItemDisplayProvider: what a display shows is private to its file.
 [[module]]
 id = "display-access"
-file = "crates/horizon-client/src/game/text_displays.rs"
+file = "crates/horizon-client/src/game/entities/text_displays.rs"
 name = "hz_jade_displays"
 source = "display_access.rs"
 

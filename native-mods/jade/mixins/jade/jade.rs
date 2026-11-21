@@ -861,7 +861,7 @@ pub fn mod_name(game: &Game<'_>, ns: &str) -> String {
     let mut name = loader;
     if on(game, "mod_name_translated") {
         for key in [format!("jade.modName.{ns}"), format!("itemGroup.{ns}")] {
-            let t = game.translate(&key, "");
+            let t = game.translate_or(&key, "");
             if !t.is_empty() && t != key {
                 name = t;
                 break;
@@ -887,7 +887,7 @@ pub fn rich(s: &str) -> horizon_client::text::Text {
             }
             span.style.color = Some(color);
         }
-        out.spans.extend(t.spans);
+        out.push(t);
     }
     out
 }
@@ -970,7 +970,7 @@ fn target(game: &Game<'_>) -> Option<Target> {
     // Extended Reach, and Perspective Mode's camera: the block on the crosshair from there.
     let extra = num(game, "reach_distance");
     let block_reach = game.block_reach + extra; // RayTracing.fire: the player's own range, Extended Reach on top.
-    let camera_ray = opt(game, "perspective_mode") == "camera" && !game.camera_type.first_person();
+    let camera_ray = opt(game, "perspective_mode") == "camera" && !game.camera_type.is_first_person();
     let mut block = game
         .aim()
         .and_then(|(eye, direction)| ray_block_hit(game, eye, direction, block_reach));
@@ -978,7 +978,7 @@ fn target(game: &Game<'_>) -> Option<Target> {
         && let Some((eye, direction)) = game.aim()
     {
         let (origin, look) = match game.camera_type {
-            crate::game::perspective::CameraType::ThirdPersonFront => (
+            ::mod_api::CameraType::ThirdPersonFront => (
                 [eye[0] + direction[0] * 4.0, eye[1] + direction[1] * 4.0, eye[2] + direction[2] * 4.0],
                 [-direction[0], -direction[1], -direction[2]],
             ),
@@ -1000,7 +1000,7 @@ fn target(game: &Game<'_>) -> Option<Target> {
             entity = Some((d, t));
         }
     };
-    if let Some((i, d)) = game.mob_hit() {
+    if let Some((i, d, _)) = game.mob_hit() {
         offer(d, Target::Mob { index: i });
     }
     if let Some((i, d)) = game.frame_hit() {
@@ -1525,10 +1525,10 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             }
             // HeldItemProvider: both hands.
             if access(game, "access_held") {
-                if let Some(held) = m.extra.main_hand.as_deref() {
+                if let Some(held) = m.extra.equipment.get(horizon_items::equipment::MAINHAND).map(|s| &*s.item).as_deref() {
                     lines.push(Line::text(trf("jade.access.held_item.main", "Main Hand: %s", &[&item_name(game, held)])));
                 }
-                if let Some(held) = m.extra.off_hand.as_deref() {
+                if let Some(held) = m.extra.equipment.get(horizon_items::equipment::OFFHAND).map(|s| &*s.item).as_deref() {
                     lines.push(Line::text(trf("jade.access.held_item.off", "Off Hand: %s", &[&item_name(game, held)])));
                 }
             }
@@ -1544,7 +1544,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 use horizon_client::mobs::leash::Holder;
                 let mob_name = |id: u32| game.mobs.iter().find(|o| o.id == id).map(|o| o.custom_name.clone().unwrap_or_else(|| {
                     let short = o.kind.id.trim_start_matches("minecraft:");
-                    game.translate(&format!("entity.minecraft.{short}"), short)
+                    game.translate_or(&format!("entity.minecraft.{short}"), short)
                 }));
                 match &m.extra.leash {
                     Some(Holder::Knot(p)) => lines.push(Line::text(trf("jade.access.entity.leashed_to", "Leashed to: %s", &[&format!("{} {} {}", p[0], p[1], p[2])]))),
@@ -1567,11 +1567,11 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                     "leatherworker", "librarian", "mason", "nitwit", "shepherd", "toolsmith", "weaponsmith"];
                 // 15 is AE2's Fluix Researcher (InitVillager.PROFESSION).
                 let prof = if m.extra.variant2 == 15 { "fluix_researcher" } else { PROFESSIONS[m.extra.variant2 as usize % PROFESSIONS.len()] };
-                let mut text = game.translate(&format!("entity.minecraft.villager.{prof}"), prof);
+                let mut text = game.translate_or(&format!("entity.minecraft.villager.{prof}"), prof);
                 let level = m.extra.variant3;
                 if !matches!(prof, "none" | "nitwit") && (1..=5).contains(&level) {
                     const LEVELS: [&str; 5] = ["Novice", "Apprentice", "Journeyman", "Expert", "Master"];
-                    text = format!("{text} - {}", game.translate(&format!("merchant.level.{level}"), LEVELS[level as usize - 1]));
+                    text = format!("{text} - {}", game.translate_or(&format!("merchant.level.{level}"), LEVELS[level as usize - 1]));
                 }
                 lines.push(Line::text(format!("§f{text}")));
             }
@@ -1581,7 +1581,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 && matches!(kind, "minecraft:wolf" | "minecraft:cat" | "minecraft:parrot" | "minecraft:horse" | "minecraft:donkey" | "minecraft:mule"
                     | "minecraft:skeleton_horse" | "minecraft:zombie_horse" | "minecraft:llama" | "minecraft:trader_llama" | "minecraft:camel"
                     | "minecraft:camel_husk" | "minecraft:nautilus" | "minecraft:zombie_nautilus" | "minecraft:happy_ghast")
-                && let Some(armor) = m.extra.head.as_deref()
+                && let Some(armor) = m.extra.equipment.get(horizon_items::equipment::HEAD).map(|s| &*s.item).as_deref()
                 && (opt(game, "pet_armor_mode") != "damageable" || game.res.items().get(armor).is_some_and(|i| i.max_damage > 0))
             {
                 lines.push(Line::new().with(Line::small(armor)).with(El::Text(format!("§f{}", item_name(game, armor)))));
@@ -1589,7 +1589,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             // SulfurCubeProvider: what a sulfur cube swallowed.
             if kind == "minecraft:sulfur_cube"
                 && on(game, "sulfur_cube")
-                && let Some(block) = m.extra.head.as_deref()
+                && let Some(block) = m.extra.equipment.get(horizon_items::equipment::HEAD).map(|s| &*s.item).as_deref()
             {
                 lines.push(Line::new().with(Line::small(block)).with(El::Text(format!("§f{}", item_name(game, block)))));
             }
@@ -1597,9 +1597,9 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             let limit = num(game, "effects_limit") as usize;
             for (id, ticks, amp) in m.extra.effects.iter().filter(|_| config(game).effects).take(limit) {
                 let short = id.trim_start_matches("minecraft:");
-                let mut name = game.translate(&format!("effect.minecraft.{short}"), short);
+                let mut name = game.translate_or(&format!("effect.minecraft.{short}"), short);
                 if (1..=9).contains(amp) {
-                    name = format!("{name} {}", game.translate(&format!("potion.potency.{amp}"), &roman(*amp + 1)));
+                    name = format!("{name} {}", game.translate_or(&format!("potion.potency.{amp}"), &roman(*amp + 1)));
                 }
                 let time = if *ticks < 0 { tr("effect.duration.infinite", "∞") } else { tick_duration(i64::from(*ticks)) };
                 let color = match horizon_client::brewing::effect(short).map(|e| e.category) {
@@ -1612,7 +1612,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             // AnimalOwnerProvider: a tamed animal's owner (a player in the world, or the uuid).
             if let Some(owner) = m.extra.owner.filter(|_| on(game, "animal_owner")) {
                 let uuid = ((owner[0] as u32 as u128) << 96) | ((owner[1] as u32 as u128) << 64) | ((owner[2] as u32 as u128) << 32) | (owner[3] as u32 as u128);
-                let name = game.native_server_players().into_iter().find(|p| p.uuid == uuid).map(|p| p.name).unwrap_or_else(|| format!("{uuid:032x}"));
+                let name = game.native_server_players_old().into_iter().find(|p| p.uuid == uuid).map(|p| p.name).unwrap_or_else(|| format!("{uuid:032x}"));
                 lines.push(Line::text(trf("jade.owner", "Owner: %s", &[&format!("§f{name}")])));
             }
         }
@@ -1627,8 +1627,8 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
         Target::Painting { index } => {
             if let Some(p) = game.paintings.get(*index).filter(|_| on(game, "painting")) {
                 let (ns, v) = p.variant.split_once(':').unwrap_or(("minecraft", &p.variant));
-                let title = game.translate(&format!("painting.{ns}.{v}.title"), "");
-                let author = game.translate(&format!("painting.{ns}.{v}.author"), "");
+                let title = game.translate_or(&format!("painting.{ns}.{v}.title"), "");
+                let author = game.translate_or(&format!("painting.{ns}.{v}.author"), "");
                 if !title.is_empty() {
                     lines.push(Line::text(format!("§e{title}")));
                 }
@@ -1826,7 +1826,7 @@ fn access_title(game: &Game<'_>, t: &Target, mut title: String) -> String {
             {
                 wrap(&tr(&format!("jade.access.entity.{}", color.to_lowercase().replace(' ', "_")), &format!("{color} {{0}}")));
             }
-            if m.extra.saddled {
+            if m.extra.saddled() {
                 wrap(&tr("jade.access.entity.saddled", "Saddled {0}"));
             }
         }
@@ -1839,10 +1839,10 @@ fn access_title(game: &Game<'_>, t: &Target, mut title: String) -> String {
         && &*m.kind.id == "minecraft:mannequin"
     {
         let description = match m.extra.description.component() {
-            Some(horizon_world::nbt::Tag::String(j)) => j.to_string().ok(),
+            Some(horizon_core::nbt::Tag::String(j)) => j.to_string().ok(),
             _ => None,
         };
-        let description = description.unwrap_or_else(|| game.translate("entity.minecraft.mannequin.label", "NPC"));
+        let description = description.unwrap_or_else(|| game.translate_or("entity.minecraft.mannequin.label", "NPC"));
         title = trf("jade.access.npc_description", "%s (%s)", &[&title, &description]);
     }
     title
@@ -1850,7 +1850,7 @@ fn access_title(game: &Game<'_>, t: &Target, mut title: String) -> String {
 
 /// The owner's name on a player head (`SkullBlockEntity`'s custom name, or its profile: a name, or a compound's).
 fn head_owner(game: &Game<'_>, pos: [i32; 3]) -> Option<String> {
-    use horizon_world::nbt::{JavaString, Tag};
+    use horizon_core::nbt::{JavaString, Tag};
     let Some(horizon_client::containers::BlockEntity::Skull(s)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else { return None };
     match s.profile.as_ref()? {
         Tag::String(j) => j.to_string().ok(),
@@ -1961,7 +1961,7 @@ fn info_lines(game: &Game<'_>, t: &Target, cfg: &Config, lines: &mut Vec<Line>) 
                 let key = (pos[0], pos[1], pos[2]);
                 if let Some(be) = game.world.block_entities.get(&key).filter(|_| &*game.res.facts().get(game.world.block(pos[0], pos[1], pos[2])).name == name) {
                     let tag = horizon_client::save::encode_block_entity(key, be, name);
-                    if let Some(horizon_world::nbt::Tag::String(j)) = tag.get("id")
+                    if let Some(horizon_core::nbt::Tag::String(j)) = tag.get("id")
                         && let Ok(type_id) = j.to_string()
                     {
                         lines.push(Line::text(format!("§8{}", trf("config.jade.plugin_jade.registry_name.special.block_entity_type", "BlockEntity: %s", &[&type_id]))));
@@ -2039,7 +2039,7 @@ fn roman(n: i32) -> String {
 
 /// What a mod's block with no provider of its own counts as along: the ints `progress` and `max_progress` it saves.
 fn saved_progress(m: &horizon_client::containers::ModBlockEntity) -> Option<f32> {
-    use horizon_world::nbt::{JavaString, Tag};
+    use horizon_core::nbt::{JavaString, Tag};
     let int = |k: &str| match m.nbt.get(&JavaString::from(k)) {
         Some(Tag::Int(v)) => Some(*v),
         _ => None,
@@ -2086,12 +2086,12 @@ fn shelf_hit(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<String>) {
 
 /// The entity an id of a spawner's data shows (BaseSpawner.getOrCreateDisplayEntity's type), by name.
 fn spawn_data_name(game: &Game<'_>, data: &horizon_client::mobs::spawner::SpawnData) -> Option<String> {
-    let id = match data.entity.get(&horizon_world::nbt::JavaString::from("id")) {
-        Some(horizon_world::nbt::Tag::String(t)) => t.to_string().ok()?,
+    let id = match data.entity.get(&horizon_core::nbt::JavaString::from("id")) {
+        Some(horizon_core::nbt::Tag::String(t)) => t.to_string().ok()?,
         _ => return None,
     };
     let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id.as_str()));
-    Some(game.translate(&format!("entity.{ns}.{path}"), path))
+    Some(game.translate_or(&format!("entity.{ns}.{path}"), path))
 }
 
 /// MobSpawnerProvider.appendTooltip: the target's title as "name (mob)".
@@ -2123,7 +2123,7 @@ fn vanilla_server(game: &mut Game<'_>, player: u128, pos: [i32; 3], block: &str,
     let fluids = on(game, "fluid_storage");
     use horizon_client::containers::BlockEntity as Be;
     let key = (pos[0], pos[1], pos[2]);
-    let asking = game.native_server_players().into_iter().find(|p| p.uuid == player);
+    let asking = game.native_server_players_old().into_iter().find(|p| p.uuid == player);
     // Creative or spectator: not kept out of what is locked or unrolled.
     let privileged = asking.as_ref().is_some_and(|p| matches!(p.game_mode, 1 | 3));
     // BodyProviderAdapter: AE2's blocks don't show Jade's fluid and energy lines.
@@ -2364,7 +2364,7 @@ fn cauldron(block: &str, game: &mut Game<'_>, pos: [i32; 3], details: bool, line
 /// A fluid's name (its block's).
 fn fluid_name(game: &Game<'_>, fluid: &str) -> String {
     let (ns, path) = fluid.split_once(':').unwrap_or(("minecraft", fluid));
-    game.translate(&format!("block.{ns}.{path}"), path)
+    game.translate_or(&format!("block.{ns}.{path}"), path)
 }
 
 /// Fluid Storage's Display Style: the bar, or its text with or without a bucket.
@@ -2447,17 +2447,17 @@ const ARROW_DONE: &[(u8, u8, u8, u32)] = &[
 /// An element's size.
 fn size(game: &Game<'_>, e: &El) -> (f32, f32) {
     match e {
-        El::Text(t) => (game.native_text_width(&plain(t)), 9.0),
+        El::Text(t) => (game.native_text_width_old(&plain(t)), 9.0),
         El::Item { small: true, .. } => (10.0, 9.0),
         El::Item { .. } => (18.0, 18.0),
         El::Arrow(_) => (22.0, 16.0),
-        El::Bar { text, .. } => ((game.native_text_width(&plain(text)) + 6.0).max(100.0), 12.0),
-        El::Small(t) => (game.native_text_width(&plain(t)) * 0.75, 7.0),
+        El::Bar { text, .. } => ((game.native_text_width_old(&plain(text)) + 6.0).max(100.0), 12.0),
+        El::Small(t) => (game.native_text_width_old(&plain(t)) * 0.75, 7.0),
         El::Hearts { max, absorb, .. } => {
             let icons = ((max.ceil() + absorb.ceil()) / 2.0).ceil().max(1.0);
             let line = num(game, "health_per_line").max(1.0) as f32;
             if icons * 2.0 > num(game, "health_max") as f32 || on(game, "health_fractions") {
-                (game.native_text_width(&format!("{:.0}/{:.0}", 0, max)) + 10.0, 9.0)
+                (game.native_text_width_old(&format!("{:.0}/{:.0}", 0, max)) + 10.0, 9.0)
             } else {
                 let per = icons.min(line);
                 let rows = (icons / line).ceil();
@@ -2466,7 +2466,7 @@ fn size(game: &Game<'_>, e: &El) -> (f32, f32) {
         }
         El::Armor(a) => {
             if *a > num(game, "armor_max") as f32 {
-                (game.native_text_width(&format!("{a:.0}")) + 10.0, 9.0)
+                (game.native_text_width_old(&format!("{a:.0}")) + 10.0, 9.0)
             } else {
                 let icons = (a / 2.0).ceil();
                 (8.0 * icons.min(10.0) + 1.0, 5.0 + 4.0 * (icons / 10.0).ceil())
@@ -2497,7 +2497,7 @@ fn draw_el(game: &Game<'_>, batch: &mut HudBatch, e: &El, x: f32, y: f32, h: f32
                 game.native_item(batch, id, [x + 1.0, y + 1.0], 16.0);
                 if *count > 1 {
                     let s = if *count >= 10_000 { format!("{}k", count / 1000) } else { count.to_string() };
-                    let w = game.native_text_width(&s);
+                    let w = game.native_text_width_old(&s);
                     batch.text_styled(atlas, &horizon_client::text::Text::legacy(&s), x + 18.0 - w, y + 10.0, look.amount, look.shadow);
                 }
             }
@@ -3023,7 +3023,7 @@ pub fn client_command(game: &mut Game<'_>, command: &str, ran: &mut bool) {
             let rest: Vec<&str> = words.collect();
             let msg = format!("c {}", rest.join(" "));
             if game.native_net_send_to_server(NET_REQUEST, msg.as_bytes()).is_err() {
-                let me = game.native_server_players().into_iter().next();
+                let me = game.native_server_players_old().into_iter().next();
                 if let Some(me) = me {
                     server_command(game, me.uuid, me.permission, &rest);
                 }
@@ -3055,7 +3055,7 @@ fn server_command(game: &mut Game<'_>, from: u128, level: u8, args: &[&str]) {
             return;
         }
     };
-    let players = game.native_server_players();
+    let players = game.native_server_players_old();
     let mut told = 0;
     for p in players.iter().filter(|p| wanted == "@a" || (matches!(wanted, "@s" | "@p") && p.uuid == from) || p.name == wanted) {
         let line = format!("o {}", u8::from(show));
@@ -3206,7 +3206,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             game.native_set_setting(ID, flag, "shown");
             let default = KEYS.iter().find(|k| k[0] == key_name).map_or("", |k| k[2]);
             let bound = game.native_mod_key(ID, key_name, default);
-            let bound = game.translate(&bound, &bound);
+            let bound = game.translate_or(&bound, &bound);
             game.native_chat(&first);
             game.native_chat(&second.replace("%s", &bound));
         }
@@ -3313,13 +3313,13 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             let id = c.kind.id();
             let short = id.trim_start_matches("minecraft:");
             // AbstractMinecart.getPickResult.
-            (Some(c.kind.item().to_owned()), game.translate(&format!("entity.minecraft.{short}"), short), "minecraft".to_owned())
+            (Some(c.kind.item().to_owned()), game.translate_or(&format!("entity.minecraft.{short}"), short), "minecraft".to_owned())
         }
         Target::Boat { index } => {
             let Some(b) = game.boats.get(*index) else { return };
             let id = if b.chest { format!("minecraft:{}_chest_boat", b.wood) } else { format!("minecraft:{}_boat", b.wood) };
             let short = id.trim_start_matches("minecraft:").to_owned();
-            (Some(id), game.translate(&format!("entity.minecraft.{short}"), &short), "minecraft".to_owned())
+            (Some(id), game.translate_or(&format!("entity.minecraft.{short}"), &short), "minecraft".to_owned())
         }
         // FallingBlockProvider: the block's item as its icon, its name.
         Target::Falling { index } => {
@@ -3335,7 +3335,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             icon_stack = ber_icon(game, *pos);
             let name = head_owner(game, *pos);
             let title = match name {
-                Some(owner) => game.translate("block.minecraft.player_head.named", "%s's Head").replace("%s", &owner),
+                Some(owner) => game.translate_or("block.minecraft.player_head.named", "%s's Head").replace("%s", &owner),
                 None => item_name(game, "minecraft:player_head"),
             };
             (Some("minecraft:player_head".to_owned()), title, "minecraft".to_owned())
@@ -3366,16 +3366,16 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             let Some(d) = game.text_displays.get(id) else { return };
             if let Some(stack) = d.hz_jade_item() {
                 icon_stack = Some(stack.clone());
-                (Some(stack.item.to_string()), game.translate("entity.minecraft.item_display", "Item Display"), "minecraft".to_owned())
+                (Some(stack.item.to_string()), game.translate_or("entity.minecraft.item_display", "Item Display"), "minecraft".to_owned())
             } else {
                 let block = d.hz_jade_block().map(|state| game.res.facts().get(state).name.to_string());
-                (block.filter(|b| game.res.items().get(b).is_some()), game.translate("entity.minecraft.block_display", "Block Display"), "minecraft".to_owned())
+                (block.filter(|b| game.res.items().get(b).is_some()), game.translate_or("entity.minecraft.block_display", "Block Display"), "minecraft".to_owned())
             }
         }
         Target::Mob { index } => {
             let Some(m) = game.mobs.get(*index) else { return };
             let id = m.kind.id.trim_start_matches("minecraft:");
-            let name = m.custom_name.clone().unwrap_or_else(|| game.translate(&format!("entity.minecraft.{id}"), &horizon_client::text::Text::legacy(id).plain()));
+            let name = m.custom_name.clone().unwrap_or_else(|| game.translate_or(&format!("entity.minecraft.{id}"), &horizon_client::text::Text::legacy(id).plain()));
             let egg = format!("minecraft:{id}_spawn_egg");
             // WaxedProvider.EntityComponent.getIcon: a copper golem shows as its statue (the server says if it is waxed).
             let icon = if id == "copper_golem" && on(game, "waxed") {
@@ -3390,11 +3390,11 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
         Target::Frame { index } => {
             let Some(f) = game.item_frames.get(*index) else { return };
             let kind = f.kind();
-            let name = game.translate(&format!("entity.minecraft.{}", &kind[10..]), "Item Frame");
+            let name = game.translate_or(&format!("entity.minecraft.{}", &kind[10..]), "Item Frame");
             (Some(f.item.as_ref().map_or_else(|| kind.to_owned(), |s| s.item.to_string())), name, "minecraft".to_owned())
         }
-        Target::Painting { .. } => (Some("minecraft:painting".to_owned()), game.translate("entity.minecraft.painting", "Painting"), "minecraft".to_owned()),
-        Target::Stand { .. } => (Some("minecraft:armor_stand".to_owned()), game.translate("entity.minecraft.armor_stand", "Armor Stand"), "minecraft".to_owned()),
+        Target::Painting { .. } => (Some("minecraft:painting".to_owned()), game.translate_or("entity.minecraft.painting", "Painting"), "minecraft".to_owned()),
+        Target::Stand { .. } => (Some("minecraft:armor_stand".to_owned()), game.translate_or("entity.minecraft.armor_stand", "Armor Stand"), "minecraft".to_owned()),
         Target::Item { index } => {
             let Some(e) = game.dropped.get(*index) else { return };
             let name = game.stack_tooltip(&e.stack).first().map_or_else(|| e.stack.item.to_string(), |(t, _)| t.plain());
@@ -3797,7 +3797,7 @@ pub fn from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]
     }
     let text = String::from_utf8_lossy(data);
     if let Some(rest) = text.strip_prefix("c ") {
-        let level = game.native_server_players().into_iter().find(|p| p.uuid == player).map_or(0, |p| p.permission);
+        let level = game.native_server_players_old().into_iter().find(|p| p.uuid == player).map_or(0, |p| p.permission);
         let args: Vec<&str> = rest.split_whitespace().collect();
         server_command(game, player, level, &args);
         return;
@@ -3822,7 +3822,7 @@ fn out_of_reach(game: &Game<'_>, player: u128, at: [f64; 3], base: f64) -> bool 
     if game.level.player_uuid == Some(horizon_client::lan::playerdata::uuid_ints(player)) {
         return false;
     }
-    let Some(p) = game.native_server_players().into_iter().find(|p| p.uuid == player) else { return true };
+    let Some(p) = game.native_server_players_old().into_iter().find(|p| p.uuid == player) else { return true };
     let most = base + f64::from(game.ui.rules.int(horizon_client::gamerules::hz_jade_rule::NAME));
     (0..3).map(|i| (p.position[i].floor() - at[i].floor()).powi(2)).sum::<f64>() > most * most
 }
@@ -3954,7 +3954,7 @@ fn mob_server_lines(game: &Game<'_>, m: &horizon_client::mobs::Mob, player: u128
         storage(game, details, lines, m.extra.items.iter().flatten());
     }
     // EntityLootTableProvider: for game masters.
-    if on(game, "loot_table") && game.native_server_players().into_iter().find(|p| p.uuid == player).is_some_and(|p| p.permission >= 2) {
+    if on(game, "loot_table") && game.native_server_players_old().into_iter().find(|p| p.uuid == player).is_some_and(|p| p.permission >= 2) {
         let (ns, path) = kind.split_once(':').unwrap_or(("minecraft", kind));
         let table = format!("{ns}:entities/{path}");
         lines.push(trf("jade.lootTable", "Loot Table: %s", &[&table]));
@@ -4083,7 +4083,7 @@ pub fn rule_level_opened(game: &mut Game<'_>) {
         return;
     }
     use horizon_client::gamerules::{Value, hz_jade_rule::NAME};
-    use horizon_world::nbt::Tag;
+    use horizon_core::nbt::Tag;
     let saved = horizon_client::save::read_dat(&game.world_root.join("data/jade/game_rules.dat"));
     let value = match saved.as_ref().and_then(|t| t.get("data")).and_then(|d| d.get(NAME)) {
         Some(Tag::Int(v)) => Some(*v),

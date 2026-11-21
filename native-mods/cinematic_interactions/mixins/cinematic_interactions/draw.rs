@@ -42,7 +42,7 @@ fn cinematic_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -> ::c
         for (a, b) in ci::BLOCK_EDGES {
             ci::line(batch, atlas, pts[a], pts[b], 0.75, rgba(255, 255, 255, 200));
         }
-        let title = game.translate(&format!("block.{}", name.replace(':', ".")), &name);
+        let title = game.translate_or(&format!("block.{}", name.replace(':', ".")), &name);
         let label = format!("{title}  \u{a7}7{}", ci::MOVE_OVER);
         let w = HudBatch::text_width(atlas, &label);
         let top = pts.iter().fold((0.0f32, f32::MAX), |(sx, sy), p| (sx + p.0 / 8.0, sy.min(p.1)));
@@ -248,17 +248,17 @@ fn cinematic_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -> ::c
                     let mut lines: Vec<(Text, u32)> = Vec::new();
                     if let Some((id, l)) = &offers.clues[i] {
                         let (name, _) = game.stations().enchantments.full_name(id, *l);
-                        let clue = game.translate("container.enchant.clue", "%s . . . ?").replace("%s", &name);
+                        let clue = game.translate_or("container.enchant.clue", "%s . . . ?").replace("%s", &name);
                         lines.push((Text::literal(format!("\u{a7}f{clue}")), u32::MAX));
                     }
                     if !creative {
                         if level < cost {
-                            lines.push((Text::literal(game.translate("container.enchant.level.requirement", "Level Requirement: %s").replace("%s", &cost.to_string())), rgba(255, 85, 85, 255)));
+                            lines.push((Text::literal(game.translate_or("container.enchant.level.requirement", "Level Requirement: %s").replace("%s", &cost.to_string())), rgba(255, 85, 85, 255)));
                         } else {
                             let n = i + 1;
-                            let l = if n == 1 { game.translate("container.enchant.lapis.one", "1 Lapis Lazuli") } else { game.translate("container.enchant.lapis.many", "%s Lapis Lazuli").replace("%s", &n.to_string()) };
+                            let l = if n == 1 { game.translate_or("container.enchant.lapis.one", "1 Lapis Lazuli") } else { game.translate_or("container.enchant.lapis.many", "%s Lapis Lazuli").replace("%s", &n.to_string()) };
                             lines.push((Text::literal(l), if lapis >= n as i32 { rgba(170, 170, 170, 255) } else { rgba(255, 85, 85, 255) }));
-                            let l = if n == 1 { game.translate("container.enchant.level.one", "1 Enchantment Level") } else { game.translate("container.enchant.level.many", "%s Enchantment Levels").replace("%s", &n.to_string()) };
+                            let l = if n == 1 { game.translate_or("container.enchant.level.one", "1 Enchantment Level") } else { game.translate_or("container.enchant.level.many", "%s Enchantment Levels").replace("%s", &n.to_string()) };
                             lines.push((Text::literal(l), rgba(170, 170, 170, 255)));
                         }
                     }
@@ -371,7 +371,7 @@ fn cinematic_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -> ::c
                 let lw = HudBatch::text_width(&game.gui.atlas, label);
                 batch.text(&game.gui.atlas, label, sx - lw * 0.5, sy + r + 2.0, if chosen { rgba(0xFF, 0xF2, 0xC0, 255) } else { rgba(0x9A, 0x9A, 0xA6, 255) }, false);
                 if hovered == Some(k) {
-                    let name = game.translate(&format!("effect.minecraft.{effect}"), effect);
+                    let name = game.translate_or(&format!("effect.minecraft.{effect}"), effect);
                     let mut lines = vec![(Text::literal(format!("\u{a7}f{name}{}", if p.upgrade { " II" } else { "" })), u32::MAX)];
                     lines.push((Text::literal(if p.primary { "\u{a7}7Primary Power" } else { "\u{a7}7Secondary Power" }), u32::MAX));
                     let need = if p.primary { p.level } else { 4 };

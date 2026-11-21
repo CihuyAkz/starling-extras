@@ -279,7 +279,7 @@ id = "options-layout"
 kind = "HEAD"
 cancellable = true
 priority = 300
-target = "horizon_client_render::options_ui::OptionsUi::layout"
+target = "horizon_client_render::options_ui::layout::OptionsUi::layout"
 helper = "options_layout.rs"
 bindings = [
   { name = "ui", ty = "&mut OptionsUi", value = "&mut *self" },

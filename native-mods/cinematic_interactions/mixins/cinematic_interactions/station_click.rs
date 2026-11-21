@@ -11,7 +11,7 @@ fn cinematic_station_click(game: &mut crate::game::Game<'_>, right: bool) -> ::c
     let Some(size) = game.renderer.as_ref().map(|r| [r.config.width, r.config.height]) else {
         return ::core::ops::ControlFlow::Break(true);
     };
-    let batch = HudBatch::new(size);
+    let batch = HudBatch::new_old(size);
     let (x, y) = game.cursor;
     if !right && kind == ci::Kind::Enchanting
         && let Some(i) = ci::rune_at(x, y, batch.width, batch.height)
@@ -59,7 +59,7 @@ fn cinematic_station_click(game: &mut crate::game::Game<'_>, right: bool) -> ::c
                 game.remote_station_button(index as i32);
             }
             let input = if game.has_shift_down() { horizon_client::menu::Input::QuickMove } else { horizon_client::menu::Input::Pickup };
-            game.menu_click(Some(650), 0, input);
+            game.menu_click_old(Some(650), 0, input);
             return ::core::ops::ControlFlow::Break(true);
         }
     }
@@ -74,6 +74,6 @@ fn cinematic_station_click(game: &mut crate::game::Game<'_>, right: bool) -> ::c
         return ::core::ops::ControlFlow::Break(true);
     }
     let input = if game.has_shift_down() { horizon_client::menu::Input::QuickMove } else { horizon_client::menu::Input::Pickup };
-    game.menu_click(Some(slot), i32::from(right), input);
+    game.menu_click_old(Some(slot), i32::from(right), input);
     ::core::ops::ControlFlow::Break(true)
 }

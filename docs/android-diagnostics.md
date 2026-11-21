@@ -44,7 +44,7 @@ traces contribute only a bounded crashed-thread summary to the ZIP; register and
 memory dumps remain private. No replacement signal handler is installed.
 
 The game library carries a BuildId, and every CI build keeps the same library
-unstripped as the `starling-symbols-<abi>` artifact (90 days). To read the
+unstripped as the `starling-extras-symbols-<abi>` artifact (90 days). To read the
 `libhorizon_android.so` frames of a tombstone summary, take the artifact of the
 build whose BuildId matches and run, with the NDK's tools:
 

@@ -1,7 +1,17 @@
+> [!IMPORTANT]
+> **Starling Extras is an unofficial, independently maintained fork of [Starling](https://github.com/starling-client/starling).**
+> This repository is **not the official Starling project** and is maintained at [CihuyAkz/starling-extras](https://github.com/CihuyAkz/starling-extras).
+> Releases, Android builds, signing keys, update checks, bug reports and support are managed by this fork.
+> The upstream project remains [starling-client/starling](https://github.com/starling-client/starling).
+>
+> - **Downloads:** use this fork's [Starling Extras releases](https://github.com/CihuyAkz/starling-extras/releases).
+> - **Android builds:** this repository's [GitHub Actions](https://github.com/CihuyAkz/starling-extras/actions/workflows/android.yml) builds Preview APKs; `v*` tags publish Starling Extras releases here.
+> - **Bug reports:** report fork-specific issues in [this repository's issue tracker](https://github.com/CihuyAkz/starling-extras/issues).
+
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-Java%2026.3-5D9C3F" alt="Minecraft Java 26.3">
   <img src="https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white" alt="Rust">
-  <a href="https://github.com/ludovic111/horizon"><img src="https://img.shields.io/badge/fork%20of-Horizon-F0795A" alt="Fork of Horizon"></a>
+  <a href="https://github.com/starling-client/starling"><img src="https://img.shields.io/badge/unofficial%20fork-Starling-F0795A" alt="Unofficial fork of Starling"></a>
   <img src="https://img.shields.io/badge/platform-Android-2A2470" alt="Android">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B2F7E" alt="MIT license"></a>
   <a href="https://discord.gg/7xcp8Y5nkv"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
@@ -14,25 +24,26 @@
   <a href="roadmap/starling.md"><b>Roadmap</b></a> ·
   <a href="#mods"><b>Mods</b></a> ·
   <a href="#build-from-source"><b>Build from source</b></a> ·
+  <a href="docs/android-builds.md"><b>Android build workflow</b></a> ·
   <a href="CONTRIBUTING.md"><b>Contributing</b></a> ·
   <a href="https://github.com/ludovic111/horizon"><b>Horizon</b></a>
 </p>
 
-# Starling
+# Starling Extras
 
-**Starling, formerly Horizon Android, is a lightweight port of Minecraft: Java Edition 26.3 to Android.** Co-founded by [JuanLuci](https://github.com/JuanLuci), founder of Starling, and [Vasysik](https://github.com/Vasysik), founder of Horizon Android. It is a fork of [Horizon](https://github.com/ludovic111/horizon), the Java game rewritten in Rust: it reads the same worlds, follows the same rules and generates the same terrain as Java Edition, and is checked against it by differential harnesses. You play it on the files from your own copy of Minecraft; it is free, open source and unofficial. And it runs natively, with no Java virtual machine and no OpenGL translation in between, so it starts fast and plays smoothly on a phone.
+**Starling Extras is an unofficial fork of Starling, a lightweight Android port of Minecraft: Java Edition 26.3.** This fork is maintained separately from the upstream Starling project. The underlying game is [Horizon](https://github.com/ludovic111/horizon), the Java game rewritten in Rust: it reads the same worlds, follows the same rules and generates the same terrain as Java Edition, and is checked against it by differential harnesses. You play it on the files from your own copy of Minecraft; it is free, open source and unofficial. And it runs natively, with no Java virtual machine and no OpenGL translation in between, so it starts fast and plays smoothly on a phone.
 
 > Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft. Starling contains no Minecraft code, assets or data: you need your own legally obtained copy of Minecraft: Java Edition 26.3.
 
 ## Download
 
-**Join us on [Discord](https://discord.gg/7xcp8Y5nkv)** for help, bug reports and news.
+**Join the Starling community on [Discord](https://discord.gg/7xcp8Y5nkv)** for community chat and news. Report Starling Extras bugs in [this fork's issue tracker](https://github.com/CihuyAkz/starling-extras/issues).
 
-**[Starling v0.8.0](https://github.com/starling-client/starling/releases/latest)**. Already have Starling? Tap **Update** inside the game. New here? Download `starling-0.8.0-arm64-v8a.apk` from [the releases page](https://github.com/starling-client/starling/releases) and open it on the phone (Android asks you to allow installing apps from your browser or file manager).
+**Starling Extras v0.9.0** is based on upstream Starling 0.9.0. This fork builds and publishes its own Android APKs; it is not an official Starling release.
 
 **You need** Android 8 or newer, a compatible graphics driver, and about 2 GB free. See [Android architectures](docs/android-armv7.md) for ABI, GPU and preparation limits; 32-bit x86 imports prepared resources. Sign in with a Microsoft account that owns Minecraft: Java Edition, or play offline (most servers need the sign-in). No computer: on the first start Starling downloads the game's files from Mojang's servers and prepares them on the phone, once (79 seconds on a POCO F6 Pro, longer on slower phones). Go fishing or change the settings while it works.
 
-Development happens in [starling-client/starling](https://github.com/starling-client/starling), on the `starling` branch, where Starling and Horizon Android are now one app. Builds of every push there are **Starling Preview**, in [GitHub Actions](https://github.com/starling-client/starling/actions/workflows/android.yml) (the `starling-apk-<abi>` artifact of a run; GitHub asks you to sign in to download it): an app of its own, installed beside the release, with its own `StarlingPreview` folder and sign-in. You can also [build it from source](#build-from-source).
+Development of Starling Extras happens in this fork, [CihuyAkz/starling-extras](https://github.com/CihuyAkz/starling-extras). Builds of pushes and pull requests are **Starling Extras Preview** in [this fork's GitHub Actions](https://github.com/CihuyAkz/starling-extras/actions/workflows/android.yml) (`starling-extras-apk-<abi>` artifacts; GitHub asks you to sign in to download them). A `v*` tag builds all four ABIs and publishes a release in this repository. Preview installs beside the release with its own `StarlingPreview` folder and sign-in. You can also [build it from source](#build-from-source).
 
 ## What works today
 
@@ -95,6 +106,8 @@ reach it without starting the game.
 
 Starling runs Horizon's mods. Open the file with Starling, from your file manager or your downloads, and it shows up in **Options > Mods**.
 
+Starling Extras also carries its own **20-mod native bundle**, migrated from the 0.8.0 Extras source and built from this fork. See the [Starling Extras native bundle catalogue](docs/starling-extras-native-bundle.md) for the complete list and how the app loads it.
+
 - **`.hnmod`, native mods (ARM64 only):** tap **Compile**. Starling tells you the risks, builds the game with your mods while you fish or mine, and restarts with them. It takes a few minutes and needs a connection, and after an update you compile again. The build service currently produces ARM64 libraries; other app architectures explain this limitation and do not offer compilation or prebuilt downloads. A native mod runs as part of the game, so install only the ones you trust. See [native mods](docs/native-mods.md) and [how Starling builds them](docs/starling-native-mods.md); [wrench](native-mods/wrench) is an example.
 - **`.hmod`, content mods:** data-only mods, with nothing to compile. See [mods](docs/mods.md).
 
@@ -105,8 +118,8 @@ The old Starling mods and the WebAssembly mod format of v0.1 are gone.
 For developers. Requirements: Rust 1.90 or newer with the `aarch64-linux-android` target, [cargo-ndk](https://github.com/bbqsrc/cargo-ndk), the Android SDK (build-tools 35.0.0, platform 36, NDK r28c), a JDK 25 and Python 3.10 or newer.
 
 ```sh
-git clone -b starling https://github.com/starling-client/starling.git
-cd starling
+git clone --branch starling https://github.com/CihuyAkz/starling-extras.git
+cd starling-extras
 python packaging/android/build_apk.py            # the APK lands in target/android/
 ```
 
@@ -130,7 +143,7 @@ The prepared files land in the gitignored `.local/horizon-client/26.3`. Zip that
 
 ## Contributing
 
-Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Changes to the game itself belong upstream, in [Horizon](https://github.com/ludovic111/horizon); Starling is the Android app around it.
+Issues and pull requests for Starling Extras are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and use this fork's issue tracker. Changes intended for upstream Starling belong in [starling-client/starling](https://github.com/starling-client/starling); this repository maintains the separate Extras fork.
 
 ## Licence
 
@@ -140,6 +153,6 @@ Third-party credits and licenses: [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Author
 
-Starling, the Android port, by JuanLuci ([@JuanLuci](https://github.com/JuanLuci)). Horizon made by [Ludovic Marie](https://lu4ovic.com) ([@ludovic111](https://github.com/ludovic111)).
+Upstream Starling, the Android port, is by JuanLuci ([@JuanLuci](https://github.com/JuanLuci)). Starling Extras is maintained independently as a fork. Horizon is made by [Ludovic Marie](https://lu4ovic.com) ([@ludovic111](https://github.com/ludovic111)).
 
 Tested on a POCO F6 Pro (Snapdragon 8 Gen 2, Adreno 740, 12 GB of RAM, Android 16). It has also run on a Tecno Pova 7, on Mali-G57 and Mali-G68 GPUs, on a Redmi Note 8 (Mali-G52) and on many others.

@@ -51,7 +51,7 @@ visibility = "pub"
 [[injection]]
 id = "pickup_poll"
 kind = "RETURN"
-target = "horizon_client::net::Session::poll"
+target = "horizon_client_lib::net::Session::poll"
 helper = "pickup_poll.rs"
 bindings = [
   { name = "events", ty = "Vec<Event>", value = "$value" },

@@ -8,7 +8,7 @@
 use super::Game;
 use horizon_client::hud::{HudBatch, rgba};
 use horizon_client::items::ItemStack;
-use horizon_client::mod_api::{NativeBlockRim, NativeMod, NativeScreenView};
+use horizon_client::starling_mod_api::{NativeBlockRim, NativeMod, NativeScreenView};
 use horizon_client::text::Text;
 use horizon_world::registry::BlockStateId;
 use serde::{Deserialize, Serialize};

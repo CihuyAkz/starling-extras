@@ -30,7 +30,7 @@ ROOT = pathlib.Path(os.environ.get("MOD_BUILD_ROOT", pathlib.Path.home() / "modb
 SANDBOX = pathlib.Path(__file__).with_name("mod_build_sandbox.sh")
 PORT = int(os.environ.get("MOD_BUILD_PORT", "8787"))
 MAX_BODY = 32 << 20
-MAX_MODS = 32
+MAX_MODS = 16
 MAX_EXPANDED = 64 << 20
 MAX_ENTRIES = 512
 MAX_QUEUE = 8
@@ -105,7 +105,11 @@ def read_bundle(path):
         return mod_id, entries
 
 
-def split_body(body):
+def split_body(body, most=MAX_MODS):
+    """The mods a request's body holds. `most` is this machine's count, which is here to keep one
+    player from filling the service's small machine; `None` is for a machine that lives for one
+    build (mod_build_once.py on GitHub's runner), where the body's size, what it expands to and the
+    build's own clock are the limits and a count on top of them only turns players away."""
     mods, at = [], 0
     while at < len(body):
         if at + 4 > len(body):
@@ -116,8 +120,10 @@ def split_body(body):
             raise Refused("The request was cut short.")
         mods.append(body[at : at + size])
         at += size
-    if not mods or len(mods) > MAX_MODS:
-        raise Refused("Send from 1 to 32 mods.")
+    if not mods:
+        raise Refused("Send at least one mod.")
+    if most is not None and len(mods) > most:
+        raise Refused(f"The build server takes {most} mods at a time; build on GitHub for more.")
     return mods
 
 
@@ -141,21 +147,9 @@ def unpack(files, work):
 
 def commit_of(version):
     try:
-        versions = json.loads((ROOT / "versions.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raise Refused("Could not read MOD_BUILD_ROOT/versions.json.")
-    if not isinstance(versions, dict):
-        raise Refused("MOD_BUILD_ROOT/versions.json must be a JSON object.")
-    commit = versions.get(version)
-    if commit is None:
-        commit = versions.get("*")
-    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
-        raise Refused(
-            f"No valid source commit is registered for Starling {version[:32]}. "
-            "Add this exact version or a universal '*' entry with the fork's 40-character commit "
-            "to MOD_BUILD_ROOT/versions.json."
-        )
-    return commit
+        return json.loads((ROOT / "versions.json").read_text())[version]
+    except (OSError, ValueError, KeyError):
+        raise Refused(f"The build server has no game for Starling {version[:32]}. Update the game.")
 
 
 def result_of(key):

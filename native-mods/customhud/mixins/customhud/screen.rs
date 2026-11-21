@@ -42,7 +42,7 @@ fn millis() -> u64 {
 }
 
 fn text_width(game: &Game<'_>, text: &str) -> i32 {
-    game.native_text_width(text).round() as i32
+    game.native_text_width_old(text).round() as i32
 }
 
 // ---- HUD (`DayHud.extract`) ----
@@ -93,7 +93,7 @@ fn frame(game: &Game<'_>, batch: &HudBatch, overworld: bool) -> hud::Frame {
         },
         hardcore: game.level.hardcore,
         low_air: game.player.as_ref().is_some_and(|p| p.air < 300),
-        status_bar_height: game.health_hud.left_height.max(game.health_hud.right_height),
+        status_bar_height: game.status_rows_height_old(),
         millis: millis(),
         lang: lang(game),
     }
@@ -208,10 +208,10 @@ fn close_screen(game: &mut Game<'_>) {
 
 fn vanilla(game: &Game<'_>) -> hud::Vanilla {
     hud::Vanilla {
-        on: game.translate("options.on", "ON"),
-        off: game.translate("options.off", "OFF"),
-        done: game.translate("gui.done", "Done"),
-        generic_value: game.translate("options.generic_value", "%s: %s"),
+        on: game.translate_or("options.on", "ON"),
+        off: game.translate_or("options.off", "OFF"),
+        done: game.translate_or("gui.done", "Done"),
+        generic_value: game.translate_or("options.generic_value", "%s: %s"),
     }
 }
 

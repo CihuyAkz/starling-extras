@@ -2,7 +2,7 @@
 // to the camera the player had.
 fn freelook_key(game: &mut crate::game::Game<'_>, key: &str, pressed: bool) {
     use crate::game::freelook as m;
-    use crate::game::perspective::CameraType;
+    use ::mod_api::CameraType;
     if !game.native_on(m::ID) || !game.native_window() {
         return;
     }

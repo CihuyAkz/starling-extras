@@ -2,7 +2,7 @@
 fn firstpersonmodel_render(
     game: &crate::game::Game<'_>,
     batch: &mut horizon_client::hud::HudBatch,
-    screen: &horizon_client::mod_api::NativeScreenView<'_>,
+    screen: &horizon_client::starling_mod_api::NativeScreenView<'_>,
 ) {
     crate::game::firstpersonmodel_screen::render(game, batch, screen);
 }

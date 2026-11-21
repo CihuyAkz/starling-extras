@@ -28,11 +28,11 @@ fn freecam_key(game: &mut crate::game::Game<'_>, key: &str, pressed: bool) {
         // so the player stands still instead of walking on.
         Some(freecam::Command::Enter) => {
             freecam::remember_camera(match game.camera_type {
-                crate::game::perspective::CameraType::ThirdPersonBack => 1,
-                crate::game::perspective::CameraType::ThirdPersonFront => 2,
-                crate::game::perspective::CameraType::FirstPerson => 0,
+                ::mod_api::CameraType::ThirdPersonBack => 1,
+                ::mod_api::CameraType::ThirdPersonFront => 2,
+                ::mod_api::CameraType::FirstPerson => 0,
             });
-            game.camera_type = crate::game::perspective::CameraType::ThirdPersonBack;
+            game.camera_type = ::mod_api::CameraType::ThirdPersonBack;
             for k in [
                 winit::keyboard::KeyCode::KeyW,
                 winit::keyboard::KeyCode::KeyS,
@@ -46,9 +46,9 @@ fn freecam_key(game: &mut crate::game::Game<'_>, key: &str, pressed: bool) {
         // The camera returns: the player's own view kind comes back.
         Some(freecam::Command::Exit) => {
             game.camera_type = match freecam::camera_kind() {
-                1 => crate::game::perspective::CameraType::ThirdPersonBack,
-                2 => crate::game::perspective::CameraType::ThirdPersonFront,
-                _ => crate::game::perspective::CameraType::FirstPerson,
+                1 => ::mod_api::CameraType::ThirdPersonBack,
+                2 => ::mod_api::CameraType::ThirdPersonFront,
+                _ => ::mod_api::CameraType::FirstPerson,
             };
         }
         None => {}

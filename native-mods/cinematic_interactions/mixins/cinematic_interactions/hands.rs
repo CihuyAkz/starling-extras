@@ -25,7 +25,7 @@ fn cinematic_hands(game: &mut crate::game::Game<'_>, alpha: f64) -> ::core::ops:
     let cam = pose.0;
     let world_fov = game.fov_degrees(a, cam.to_array());
     let hud_fov = game.hud_fov_degrees(a, cam.to_array());
-    let batch = HudBatch::new(size);
+    let batch = HudBatch::new_old(size);
     ci::set_lens(world_fov, batch.width / batch.height.max(1.0));
     let over_panel = ci::on_panel(batch.width, game.cursor.0, game.cursor.1);
     ci::set_carrying(game.carried.is_some());

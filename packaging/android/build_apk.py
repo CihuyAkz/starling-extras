@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build Starling's Android APK (Horizon on Android): horizon-android as a
+"""Build Starling Extras' Android APK, an unofficial Starling fork: horizon-android as a
 NativeActivity library.
 
 The APK holds the game library, the launcher icon, Starling Visuals and what prepares the game
-files on the phone (the Java launchers in native/ and original exporter classes/sources), nothing of
+files on the phone (the Java launchers in native/ and original exporter classes/sources), and, on
+arm64-v8a, the libadrenotools Vulkan hook libraries for custom GPU drivers. Nothing of
 Minecraft: the resources
 horizon-prepare makes from the player's own copy are made on the phone, or copied there.
 
@@ -11,8 +12,8 @@ horizon-prepare makes from the player's own copy are made on the phone, or copie
     python3 packaging/android/build_apk.py --no-build      # package the library built last
     python3 packaging/android/build_apk.py --install       # and adb install it
     python3 packaging/android/build_apk.py --zip           # and a zip of it to send
-    python3 packaging/android/build_apk.py --dev           # Starling Dev, beside the release
-    python3 packaging/android/build_apk.py --preview       # Starling Preview, the organisation's CI build
+    python3 packaging/android/build_apk.py --dev           # Starling Extras Dev, beside the release
+    python3 packaging/android/build_apk.py --preview       # Starling Extras Preview, this fork's CI build
 
 Needs the Android SDK (ANDROID_HOME, else the default folder) with the build-tools, platform and
 NDK pinned below, the aarch64-linux-android Rust target, cargo-ndk and a JDK (javac, keytool,
@@ -28,7 +29,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tomllib
 import zipfile
 from pathlib import Path
 
@@ -39,12 +39,11 @@ APPLICATION_ID = "dev.horizon.android"
 LABEL = "Starling Extras"
 # --dev and --preview: an app of its own, installed beside the release (which a build signed with
 # another key cannot install over), with its own folder (StarlingActivity.sharedFolder: StarlingDev,
-# StarlingPreview) and its own sign-in and game files. Preview is what starling-client/starling's
-# CI builds, signed with that repository's test key: the release key stays out of it.
+# StarlingPreview) and its own sign-in and game files. Preview is this fork's CI build.
 DEV_SUFFIX = ".dev"
-VARIANTS = {"dev": (DEV_SUFFIX, ""), "preview": (".preview", " Preview")}
-VERSION_NAME = "0.8.0"
-VERSION_CODE = 31
+VARIANTS = {"dev": (DEV_SUFFIX, " Dev"), "preview": (".preview", " Preview")}
+VERSION_NAME = "0.9.0"
+VERSION_CODE = 32
 MIN_SDK = 26  # AAudio (cpal)
 TARGET_SDK = 35
 PLATFORM = 36
@@ -62,8 +61,17 @@ TARGETS = {
 LIBRARY = "horizon_android"
 # Every LOAD segment aligned for 16 KB pages, which Android 15 devices may use.
 PAGE_FLAGS = "-C link-arg=-Wl,-z,max-page-size=16384"
-# A BuildId in the library, so native crash diagnostics can match frames to the unstripped CI copy.
+# A BuildId in the library, so the native tombstones in diagnostic ZIPs name it and its frames can be matched to
+# the unstripped copy kept beside the APK (`lib<LIBRARY>-symbols.so`, docs/android-diagnostics.md).
 BUILD_ID_FLAGS = "-C link-arg=-Wl,--build-id=sha1"
+# Rust's Android targets keep each `thread_local!` in a pthread key, and bionic gives a process 128 of them, the
+# system's and the GPU driver's included: the game outgrew them once Wasmtime ran in it, and aborted with "out of TLS
+# keys" on the first use of one more (saving a world). With `cfg(target_thread_local)` they are the targets' own
+# thread-local storage (LLVM's emulated TLS on Android), which has no such limit. No released std is built that way,
+# so the std is built with the library from the toolchain's rust-src (`-Zbuild-std`); RUSTC_BOOTSTRAP lets the
+# pinned stable Rust take both flags.
+TLS_FLAGS = "-Z has-thread-local=yes"
+BUILD_STD = "-Zbuild-std=std,panic_unwind"
 ICONS = {
     "mipmap-mdpi": "48x48",
     "mipmap-xxhdpi": "128x128",
@@ -76,28 +84,6 @@ PREPARE_KIT = (
     "research-lock.json",
     "crates/horizon-prepare/src/exporters.rs",
     "mods/horizon/src/test/java",
-)
-BUILTIN_NATIVE_MODS = (
-    "zoom",
-    "recipes",
-    "smartf3",
-    "freecam_plus",
-    "connected_textures",
-    "armorhud",
-    "jade",
-    "basic_hud",
-    "appleskin",
-    "visuality_horizon",
-    "punchy",
-    "freelook",
-    "cinematic_interactions",
-    "firstpersonmodel",
-    "eatinganimation",
-    "veinminer",
-    "liteminer",
-    "rightharvest",
-    "customhud",
-    "carryblock",
 )
 
 
@@ -132,7 +118,52 @@ def ndk_tool(ndk, name):
     return tool(ndk / "toolchains" / "llvm" / "prebuilt" / host / "bin", name)
 
 
-def build_library(profile, ndk, sdk, abi=ABI):
+def emutls_runtime(ndk, abi):
+    """The NDK's compiler runtime for `abi`, whose `emutls.c` is LLVM's emulated TLS (`__emutls_get_address`),
+    which the thread locals of `TLS_FLAGS` call. Rust links with -nodefaultlibs and its own compiler_builtins, which
+    has none, so without this archive the library left the symbol to the phone's dynamic linker, which has none
+    either: "dlopen failed: cannot locate symbol "__emutls_get_address"" before the game's first line."""
+    arch = TARGETS[abi][2].split("-")[0]
+    host = {"win32": "windows-x86_64", "darwin": "darwin-x86_64"}.get(sys.platform, "linux-x86_64")
+    clang = ndk / "toolchains" / "llvm" / "prebuilt" / host / "lib" / "clang"
+    found = sorted(clang.glob(f"*/lib/linux/libclang_rt.builtins-{arch}-android.a"))
+    if not found:
+        sys.exit(f"build_apk: no libclang_rt.builtins-{arch}-android.a under {clang}")
+    path = found[-1].as_posix()
+    if " " in path:
+        sys.exit(f"build_apk: {path} has a space, which RUSTFLAGS would split: move the NDK")
+    return path
+
+
+def rust_dylib_build():
+    """Whether this build keeps the game's crates in libraries of their own (tools/android_native_sdk.py)."""
+    return "prefer-dynamic" in os.environ.get("RUSTFLAGS", "")
+
+
+def emutls_shared(ndk, abi):
+    """`emutls_runtime`'s emulated TLS as one shared library, `libemutls.so`, for a build whose game is several Rust
+    libraries (`rust_dylib_build`). Each variable's control block keeps the slot the runtime gave it, and the runtime
+    hands slots out from a counter of its own: the archive put a hidden copy of the runtime in every library, so two
+    variables of two libraries got one slot, and the first world a phone made aborted in std's thread-local
+    destructor list ("already borrowed", 2026-11-19). Every library needs this one instead."""
+    archive = emutls_runtime(ndk, abi)
+    folder = ROOT / "target" / TARGETS[abi][0] / "emutls"
+    folder.mkdir(parents=True, exist_ok=True)
+    ar = ndk_tool(ndk, "llvm-ar")
+    members = [name for name in subprocess.check_output([str(ar), "t", archive], text=True).split() if "emutls" in name]
+    if len(members) != 1:
+        sys.exit(f"build_apk: expected one emutls object in {archive}, found {members}")
+    run(ar, "x", archive, members[0], cwd=folder)
+    library = folder / "libemutls.so"
+    run(ndk_tool(ndk, f"{TARGETS[abi][1]}{MIN_SDK}-clang"), "-shared", "-o", library, folder / members[0],
+        "-Wl,-soname,libemutls.so", "-Wl,-z,max-page-size=16384", "-Wl,--build-id=sha1")
+    path = library.as_posix()
+    if " " in path:
+        sys.exit(f"build_apk: {path} has a space, which RUSTFLAGS would split: move the checkout")
+    return path
+
+
+def build_library(profile, ndk, sdk, abi=ABI, packages=("horizon-android",)):
     env = dict(os.environ, ANDROID_NDK_HOME=str(ndk), ANDROID_HOME=str(sdk))
     # Preserve source identity in local diagnostic reports, including source builds.
     try:
@@ -142,10 +173,33 @@ def build_library(profile, ndk, sdk, abi=ABI):
             ["git", "status", "--porcelain"], cwd=ROOT, text=True))).lower()
     except (OSError, subprocess.CalledProcessError):
         pass  # An exported source archive may not have Git metadata.
-    env["RUSTFLAGS"] = (env.get("RUSTFLAGS", "") + " " + PAGE_FLAGS + " " + BUILD_ID_FLAGS).strip()
+    tls = f"{TLS_FLAGS} -C link-arg={emutls_runtime(ndk, abi)}"
+    if rust_dylib_build():
+        # libemutls.so first: the linker takes __emutls_get_address from it and then pulls only the rest from the
+        # archive (its outline atomics, `__aarch64_cas8_acq_rel` and the like, which the phone has nowhere else:
+        # without the archive the library did not open), never its emutls object.
+        tls = f"{TLS_FLAGS} -C link-arg={emutls_shared(ndk, abi)} -C link-arg={emutls_runtime(ndk, abi)}"
+    env["RUSTFLAGS"] = " ".join(
+        flags for flags in (env.get("RUSTFLAGS", ""), PAGE_FLAGS, BUILD_ID_FLAGS, tls) if flags
+    )
+    env["RUSTC_BOOTSTRAP"] = "1"
+    # Incremental compilation is part of a profile, and so of the hash in every workspace crate's symbol names:
+    # `fast` turns it on, while CI's rust-cache turns it off (CARGO_INCREMENTAL=0). The APK's game built on CI and
+    # Compile v2's store's copy of it built elsewhere then named mod_vocab and the rest differently, and every mod
+    # library from the store failed to open on the phone ("cannot locate symbol", 2026-11-20). Off here, wherever
+    # the build runs, so a native mod built beside any copy of this game build loads in the APK.
+    env["CARGO_INCREMENTAL"] = "0"
+    # The std's source (`TLS_FLAGS`): CI installs it with the toolchain (`--component rust-src`), and the mod
+    # service's build cache holds it, with its crates, for its sandbox, which has no network.
+    sysroot = subprocess.check_output(["rustc", "--print", "sysroot"], cwd=ROOT, text=True, env=env).strip()
+    if not (Path(sysroot) / "lib" / "rustlib" / "src" / "rust" / "library").is_dir():
+        sys.exit("build_apk: the Rust toolchain has no rust-src, which the std build needs: "
+                 "rustup component add rust-src")
     run(
         "cargo", "ndk", "-t", abi, "--platform", MIN_SDK,
-        "build", "--profile", profile, "-p", "horizon-android",
+        # More packages than the game only for native mod libraries (tools/android_native_sdk.py `mods`), built
+        # beside it with the same features and flags, so the game's crates are the ones the APK ships.
+        "build", BUILD_STD, "--profile", profile, *(flag for p in packages for flag in ("-p", p)),
         cwd=ROOT, env=env,
     )
 
@@ -170,6 +224,67 @@ def build_launchers(ndk, out, abi=ABI):
     return libraries
 
 
+def build_adrenotools(ndk, out, abi=ABI):
+    """libadrenotools (third_party/libadrenotools): the Vulkan driver hook
+    (`adrenotools_open_libvulkan`) and its `hook_impl`, `main_hook` and
+    `file_redirect_hook` libraries, for custom GPU drivers. Upstream supports
+    arm64-v8a only, so other ABIs get none. An app runs libraries only from
+    its library folder, so they go in the APK as libraries (extractNativeLibs
+    extracts them to nativeLibraryDir, the hook's `hookLibDir`)."""
+    if abi != "arm64-v8a":
+        return {}
+    _, compiler, _ = TARGETS[abi]
+    cc = ndk_tool(ndk, f"{compiler}{MIN_SDK}-clang")
+    cxx = ndk_tool(ndk, f"{compiler}{MIN_SDK}-clang++")
+    src = ROOT / "third_party" / "libadrenotools"
+    inc = [
+        "-I", src / "include",
+        "-I", src / "src",
+        "-I", src / "src" / "hook",
+        "-I", src / "lib" / "linkernsbypass",
+    ]
+    page = ["-Wl,-z,max-page-size=16384"]
+    # Compiled into each shared library that needs it, as upstream's static
+    # liblinkernsbypass is.
+    ns = [
+        src / "lib" / "linkernsbypass" / "android_linker_ns.cpp",
+        src / "lib" / "linkernsbypass" / "elf_soname_patcher.cpp",
+    ]
+    libraries = {}
+    # hook_impl first: the hooks link against it by name, as upstream does.
+    hook_impl = out / "libhook_impl.so"
+    run(
+        cxx, "-O2", "-shared", "-fPIC", "-std=c++17", "-fvisibility=hidden",
+        "-Wall", "-Wextra", *inc, *page, "-o", hook_impl,
+        src / "src" / "hook" / "hook_impl.cpp", *ns,
+        "-llog", "-landroid", "-ldl",
+    )
+    libraries["libhook_impl.so"] = hook_impl
+    for name, source in (
+        ("libmain_hook.so", "main_hook.c"),
+        ("libfile_redirect_hook.so", "file_redirect_hook.c"),
+    ):
+        target = out / name
+        run(
+            cc, "-O2", "-shared", "-fPIC", "-fvisibility=hidden",
+            "-Wall", "-Wextra", *inc, *page, "-Wl,-z,global", "-o", target,
+            src / "src" / "hook" / source, f"-L{out}", "-l:libhook_impl.so", "-llog",
+        )
+        libraries[name] = target
+    adrenotools = out / "libadrenotools.so"
+    # No -fvisibility=hidden here (unlike the hooks, whose sources mark their entry
+    # points): driver.cpp exports adrenotools_open_libvulkan with default visibility,
+    # which the game finds with dlsym.
+    run(
+        cxx, "-O2", "-shared", "-fPIC", "-std=c++17",
+        "-Wall", "-Wextra", *inc, *page, "-o", adrenotools,
+        src / "src" / "driver.cpp", *ns,
+        "-llog", "-landroid", "-ldl",
+    )
+    libraries["libadrenotools.so"] = adrenotools
+    return libraries
+
+
 def zip_folder(folder, archive):
     """`folder`'s files in the zip `archive`, all dated alike: the same files make the same zip,
     which the app tells from the next by its bytes."""
@@ -180,102 +295,16 @@ def zip_folder(folder, archive):
             z.writestr(info, file.read_bytes())
 
 
-def native_bundle_allowed(relative):
-    parts = relative.split("/")
-    name = parts[-1]
-    in_data = len(parts) >= 2 and (
-        parts[0] == "data" or (len(parts) >= 3 and parts[1] == "data")
-    )
-    text = len(parts) <= 2 and (
-        name.startswith(("README", "LICENSE", "LICENCE", "COPYING", "NOTICE"))
-        or name == ".gitignore"
-    )
-    return relative.endswith((".rs", ".toml")) or in_data or text
-
-
-def bundle_native_mods(assets_folder):
-    destination = assets_folder / "native-mods"
-    destination.mkdir()
-    for mod_id in BUILTIN_NATIVE_MODS:
-        source = ROOT / "native-mods" / mod_id
-        metadata_path = source / "horizon-native.json"
-        mixin_root = source / "mixins" / mod_id
-        mixin_path = mixin_root / "horizon-mixin.toml"
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            mixin = tomllib.loads(mixin_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
-            raise RuntimeError(f"{mod_id}: unreadable native bundle metadata: {exc}") from exc
-        manifest = mixin.get("mod", {})
-        compatibility = mixin.get("compatibility", {})
-        revision = metadata.get("horizon")
-        if (
-            metadata.get("schema") != 1
-            or metadata.get("id") != mod_id
-            or not isinstance(metadata.get("version"), str)
-            or not metadata["version"]
-            or manifest.get("id") != mod_id
-            or manifest.get("version") != metadata.get("version")
-            or compatibility.get("horizon_revision") != revision
-            or not isinstance(revision, str)
-            or not re.fullmatch(r"[0-9a-f]{40}", revision)
-            or not re.fullmatch(r"[0-9a-f]{40}", str(metadata.get("mixins", "")))
-        ):
-            raise RuntimeError(f"{mod_id}: horizon-native.json and horizon-mixin.toml disagree")
-        if metadata_path.is_symlink() or mixin_root.is_symlink() or not metadata_path.is_file():
-            raise RuntimeError(f"{mod_id}: unsupported native bundle source")
-        files = [("horizon-native.json", metadata_path)]
-        expanded = metadata_path.stat().st_size
-        for path in sorted(mixin_root.rglob("*")):
-            if path.is_symlink():
-                raise RuntimeError(f"{mod_id}: unsupported bundle entry: {path}")
-            if path.is_dir():
-                continue
-            if not path.is_file():
-                raise RuntimeError(f"{mod_id}: unsupported bundle entry: {path}")
-            relative = path.relative_to(mixin_root).as_posix()
-            if (
-                "\\" in relative
-                or ":" in relative
-                or any(part in ("", ".", "..") for part in relative.split("/"))
-                or not native_bundle_allowed(relative)
-            ):
-                raise RuntimeError(f"{mod_id}: unsupported bundle entry: {relative}")
-            size = path.stat().st_size
-            expanded += size
-            files.append((f"mixins/{mod_id}/{relative}", path))
-        if len(files) > 512 or expanded > 64 << 20:
-            raise RuntimeError(f"{mod_id}: native bundle exceeds the size or entry limit")
-        names = {name for name, _ in files}
-        if f"mixins/{mod_id}/horizon-mixin.toml" not in names:
-            raise RuntimeError(f"{mod_id}: missing horizon-mixin.toml")
-        archive_path = destination / f"{mod_id}.hnmod"
-        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-            for name, path in sorted(files):
-                info = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
-
-    # Dev APKs built through native_build.sh carry the corresponding game library itself.
-    # This marker lets the Android runtime distinguish those APK-built mods from source-only
-    # bundles, without putting another copy of the libraries in the APK assets.
-    compiled_mods = os.environ.get("STARLING_APK_NATIVE_MODS", "").split()
-    if compiled_mods:
-        if len(compiled_mods) != len(set(compiled_mods)) or not set(compiled_mods).issubset(BUILTIN_NATIVE_MODS):
-            raise RuntimeError("STARLING_APK_NATIVE_MODS contains unknown or duplicate mod ids")
-        (destination / "compiled.txt").write_text(" ".join(sorted(compiled_mods)) + "\n", encoding="utf-8")
-
-
-def assets(out):
+def assets(out, abi=None):
     """The APK's assets/: prepare-kit.zip (PREPARE_KIT, with the paths horizon-prepare reads),
     lowbudget.zip, the skin the setup draws the menus with (packaging/lowbudget/pack, made by its
     make.py), and StarlingVisuals.zip, the shader pack the app puts in shaderpacks/ (also left in
-    `out` for the release page)."""
+    `out` for the release page). The same for every ABI: `abi` is kept for the callers, from when
+    the wasm mods' std went in too (Starling runs no wasm mods since 2026-11-20)."""
     run(sys.executable, ROOT / "tools/build_android_exporters.py")
     folder = out / "assets"
     shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir()
-    bundle_native_mods(folder)
     fonts = folder / "diagnostic-fonts"
     fonts.mkdir()
     for name in ("Geist-Regular.ttf", "Geist-SemiBold.ttf"):
@@ -302,7 +331,7 @@ def compile_java(build_tools, android_jar, out):
     for folder in (classes, dex):
         shutil.rmtree(folder, ignore_errors=True)
         folder.mkdir()
-    sources = sorted((HERE / "java" / "dev" / "horizon" / "android").rglob("*.java")) + [out / "generated" / "dev/horizon/android/R.java"]
+    sources = sorted((HERE / "java").rglob("*.java")) + [out / "generated" / "dev/horizon/android/R.java"]
     run("javac", "--release", "8", "-nowarn", "-classpath", android_jar, "-d", classes, *sources)
     # A single archive also avoids cmd.exe's command-line limit on Windows.
     archive = out / "classes.jar"
@@ -316,14 +345,29 @@ def compile_java(build_tools, android_jar, out):
     return dex / "classes.dex"
 
 
+def version_name(variant):
+    """The APK's versionName: the release's VERSION_NAME, and a test build's (Preview, Dev) with
+    its variant and commit after it. Compile asks the native-mod build service for the game of this
+    version, and the service has the released versions' code only: a test build numbered as the
+    release got that release's game in place of its own (NativeMods.chosen loaded it)."""
+    if not variant:
+        return VERSION_NAME
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short=10", "HEAD"], cwd=ROOT, text=True,
+            stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = ""
+    return f"{VERSION_NAME}-{variant}" + (f".{commit}" if commit else "")
+
+
 def link_resources(aapt2, android_jar, out, assets, variant, abi=ABI):
     """The manifest, the launcher icon, the themes and `assets`, compiled and linked into
     `out/base.apk`; `variant` is None (the release's app) or a key of VARIANTS."""
     manifest = (HERE / "AndroidManifest.xml").read_text(encoding="utf-8")
     suffix, label_suffix = VARIANTS[variant] if variant else ("", "")
     application_id = APPLICATION_ID + suffix
-    # The Dev build is a separate package, but its user-visible name stays Starling Extras.
-    label = LABEL if variant == "dev" else LABEL + label_suffix
+    label = LABEL + label_suffix
     manifest = manifest.replace("@APPLICATION_ID@", application_id).replace("@LABEL@", label)
     if abi != ABI:
         # Additional architectures may expose GLES only. Validate actual GPU limits.
@@ -365,7 +409,7 @@ def link_resources(aapt2, android_jar, out, assets, variant, abi=ABI):
         "--java", out / "generated", "--custom-package", "dev.horizon.android",
         "-I", android_jar,
         "--min-sdk-version", MIN_SDK, "--target-sdk-version", TARGET_SDK,
-        "--version-code", VERSION_CODE, "--version-name", VERSION_NAME,
+        "--version-code", VERSION_CODE, "--version-name", version_name(variant),
         *debug,
         "-A", assets,
         *sorted(compiled.glob("*.flat")),
@@ -384,26 +428,17 @@ def add_code(base, libraries, dex, unsigned, abi=ABI):
 
 def sign(build_tools, aligned, apk, out):
     keystore = os.environ.get("HORIZON_ANDROID_KEYSTORE")
-    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS")
+    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS", "horizon-debug")
     env = dict(os.environ)
     if not keystore:
-        previous = ROOT / ".local" / "android" / "debug.keystore"
-        if previous.is_file():
-            keystore = previous
-            alias = alias or "androiddebugkey"
-            env.setdefault("HORIZON_ANDROID_STORE_PASSWORD", "android")
-            env.setdefault("HORIZON_ANDROID_KEY_PASSWORD", "android")
-        else:
-            keystore = out / "debug.keystore"
-            alias = alias or "horizon-debug"
-            env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
-            if not keystore.exists():
-                run(
-                    "keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
-                    "-keypass", "android", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
-                    "-validity", "10000", "-dname", "CN=Horizon Android debug",
-                )
-    alias = alias or "horizon-debug"
+        keystore = out / "debug.keystore"
+        env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
+        if not keystore.exists():
+            run(
+                "keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
+                "-keypass", "android", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
+                "-validity", "10000", "-dname", "CN=Horizon Android debug",
+            )
     apksigner = tool(build_tools, "apksigner")
     run(
         apksigner, "sign", "--ks", keystore, "--ks-key-alias", alias,
@@ -412,6 +447,51 @@ def sign(build_tools, aligned, apk, out):
         "--out", apk, aligned, env=env,
     )
     run(apksigner, "verify", apk)
+
+
+def rust_dylibs(ndk, built, out):
+    """The game's Rust libraries the entry library needs, stripped into `out`: none in a usual build, every crate
+    being inside `built`. A build with `-C prefer-dynamic` after tools/android_native_sdk.py's `prepare` keeps the
+    game and the mod API in libraries of their own, which native mod libraries link against (and the std inside
+    the lowest of them): Cargo's deps folder holds them, and each may need more of them."""
+    if not rust_dylib_build():
+        return {}
+    readelf = ndk_tool(ndk, "llvm-readelf")
+    # Cargo's deps folder, and `emutls_shared`'s for the emulated TLS every one of them needs.
+    folders = (built.parent / "deps", built.parent.parent / "emutls")
+    found, pending = {}, [built]
+    while pending:
+        needs = subprocess.check_output([str(readelf), "-d", str(pending.pop())], text=True)
+        for name in re.findall(r"\(NEEDED\)\s+Shared library: \[(.+?)\]", needs):
+            source = next((folder / name for folder in folders if (folder / name).is_file()), None)
+            if name in found or source is None:
+                continue
+            target = out / name
+            run(ndk_tool(ndk, "llvm-strip"), "--strip-unneeded", "-o", target, source)
+            found[name] = target
+            pending.append(source)
+    print(f"build_apk: the game's Rust libraries: {', '.join(sorted(found)) or 'none'}")
+    return found
+
+
+def compiler_runtime_resolves(ndk, libraries):
+    """The compiler runtime's symbols (outline atomics, emulated TLS) every library of a several-library game leaves
+    undefined, each defined by one of `libraries`: the phone has them in no system library, and a missing one stopped
+    the game before its first line ("cannot locate symbol __aarch64_cas8_acq_rel", 2026-11-19)."""
+    nm = str(ndk_tool(ndk, "llvm-nm"))
+    runtime = re.compile(r"__(aarch64_|emutls_)\w+")
+    defined, wanted = set(), {}
+    for path in libraries:
+        defined.update(subprocess.check_output([nm, "-D", "--defined-only", "--format=just-symbols", str(path)],
+                                               text=True).split())
+        for name in subprocess.check_output([nm, "-D", "--undefined-only", "--format=just-symbols", str(path)],
+                                            text=True).split():
+            if runtime.fullmatch(name):
+                wanted.setdefault(name, []).append(Path(path).name)
+    missing = {name: users for name, users in wanted.items() if name not in defined}
+    if missing:
+        sys.exit("build_apk: compiler runtime symbols no library defines: "
+                 + "; ".join(f"{name} ({', '.join(users)})" for name, users in sorted(missing.items())))
 
 
 def main():
@@ -438,7 +518,7 @@ def main():
     )
     parser.add_argument(
         "--preview", action="store_true",
-        help=f"Starling Preview ({APPLICATION_ID}{VARIANTS['preview'][0]}), the organisation's CI build",
+        help=f"Starling Extras Preview ({APPLICATION_ID}{VARIANTS['preview'][0]}), this fork's CI build",
     )
     parser.add_argument("--abi", choices=TARGETS, default=ABI, help="Android ABI (default: arm64-v8a)")
     args = parser.parse_args()
@@ -458,6 +538,11 @@ def main():
     built = ROOT / "target" / triple / profile_dir / f"lib{LIBRARY}.so"
     if not built.is_file():
         sys.exit(f"build_apk: {built} not built")
+    # The check the phone's dynamic linker makes when it opens the library (`emutls_runtime`), made here first.
+    undefined = subprocess.check_output([str(ndk_tool(ndk, "llvm-nm")), "-D", "--undefined-only", str(built)], text=True)
+    # A build whose game is several Rust libraries takes it from libemutls.so (`emutls_shared`), checked below.
+    if "__emutls_get_address" in undefined.split() and not rust_dylib_build():
+        sys.exit(f"build_apk: {built} leaves __emutls_get_address undefined, and no phone defines it")
 
     out = ROOT / "target" / "android"
     out.mkdir(parents=True, exist_ok=True)
@@ -469,14 +554,24 @@ def main():
     if args.library_only:
         return
     if not args.keep_symbols:
-        # Keep the same library unstripped for CI crash-symbolication; never put it in the APK.
+        # The same library with its symbols, never shipped: CI keeps it to read crash frames. Native-mod
+        # builds (--library-only) don't need one.
         shutil.copyfile(built, out / f"lib{LIBRARY}-symbols.so")
 
     variant = "dev" if args.dev else "preview" if args.preview else None
-    link_resources(tool(build_tools, "aapt2"), android_jar, out, assets(out), variant, args.abi)
+    link_resources(
+        tool(build_tools, "aapt2"), android_jar, out, assets(out, args.abi), variant, args.abi
+    )
     dex = compile_java(build_tools, android_jar, out)
     libraries = build_launchers(ndk, out, args.abi)
+    # Custom GPU drivers (libadrenotools): arm64-v8a only, beside the launchers.
+    libraries.update(build_adrenotools(ndk, out, args.abi))
     libraries[library.name] = library
+    libraries.update(rust_dylibs(ndk, built, out))
+    if rust_dylib_build():
+        if "libemutls.so" not in libraries:
+            sys.exit("build_apk: no library of the game needs libemutls.so: its thread locals would have no runtime")
+        compiler_runtime_resolves(ndk, [library, *(libraries[name] for name in libraries if name.endswith(".so"))])
     add_code(out / "base.apk", libraries, dex, out / "unsigned.apk", args.abi)
     aligned = out / "aligned.apk"
     run(tool(build_tools, "zipalign"), "-P", "16", "-f", "4", out / "unsigned.apk", aligned)

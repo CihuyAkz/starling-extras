@@ -1,7 +1,7 @@
 // A mouse button let go over a screen.
 fn firstpersonmodel_release(
     game: &crate::game::Game<'_>,
-    screen: &horizon_client::mod_api::NativeScreenView<'_>,
+    screen: &horizon_client::starling_mod_api::NativeScreenView<'_>,
     button: i32,
     canceled: &mut bool,
 ) {

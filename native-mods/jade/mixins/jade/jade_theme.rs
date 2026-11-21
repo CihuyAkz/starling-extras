@@ -826,7 +826,7 @@ fn theme_name(game: &Game<'_>, main: &str) -> String {
             c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
         }
     };
-    game.translate(&format!("jade.theme.{ns}.{path}"), &fallback)
+    game.translate_or(&format!("jade.theme.{ns}.{path}"), &fallback)
 }
 
 /// The Theme button's label.
@@ -843,7 +843,7 @@ pub fn style_count(game: &Game<'_>) -> usize {
 /// The Theme Style button's label.
 pub fn style_label(game: &Game<'_>) -> String {
     if style_count(game) <= 1 {
-        return game.translate("jade.unavailable", "Unavailable");
+        return game.translate_or("jade.unavailable", "Unavailable");
     }
     let key = current(game).style_name.clone();
     let fallback = match key.as_str() {
@@ -851,7 +851,7 @@ pub fn style_label(game: &Game<'_>) -> String {
         "jade.slim" => "Slim",
         other => other,
     };
-    game.translate(&key, fallback)
+    game.translate_or(&key, fallback)
 }
 
 /// The Theme button (WailaConfigScreen's `overlay_theme` cycle): the next theme's default style, with its changeOpacity.

@@ -9,7 +9,7 @@ fn freelook_camera(
     partial: f32,
 ) -> std::ops::ControlFlow<Option<(glam::DVec3, f32, f32)>> {
     use crate::game::freelook as m;
-    use crate::game::perspective::CameraType;
+    use ::mod_api::CameraType;
     if !game.native_on(m::ID) || !game.native_window() || !m::begin() {
         return std::ops::ControlFlow::Continue(());
     }

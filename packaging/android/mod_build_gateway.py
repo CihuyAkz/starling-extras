@@ -6,15 +6,15 @@ once it has had nothing to do for a while. Finished libraries and known failures
 them again doesn't wake it. Behind Caddy, which holds the HTTPS. The machine's own identity may only start,
 stop and read that one VM. Python's standard library only.
 
-All native-mod compilation uses GitHub Actions (`via=github`) through this gateway.
-The gateway keeps each request's mods for the runner to fetch, dispatches the configured build repository's
-workflow, and returns the resulting library to the game.
+A player may ask for GitHub's machines instead (`via=github`): slower, with no machine of ours awake. The
+gateway keeps the request's mods for the runner to fetch, runs the mod-builds repository's workflow, and
+brings the library here when it ends, so it is served as any other.
 
     BUILD_BACKEND          http://host:8787
     BUILD_VM               the VM's Azure resource id; empty once there is none, and then only the
                            versions GitHub builds are compiled
-    GITHUB_VERSIONS        versions routed to GitHub Actions without a separate UI choice
-                           (comma-separated; * means every version)
+    GITHUB_VERSIONS        versions always built on GitHub's machines, Compile or Use GitHub alike
+                           (comma-separated, the ones mod-builds' versions.json has)
     GATEWAY_PORT           default 8788
     STATE_DIRECTORY        where results stay (systemd's StateDirectory); without it nothing stays
     STORE_BYTES            how much of them, default 10 GiB
@@ -75,11 +75,8 @@ JOB = re.compile(r"[0-9a-f]{24}")
 LIBRARY = "libhorizon_android.so"
 CHUNK = 256 * 1024
 GITHUB_API = os.environ.get("GITHUB_API", "https://api.github.com")
-GITHUB_REPO = os.environ.get("GITHUB_BUILDS_REPO", "CihuyAkz/mod-builds-extras")
-GITHUB_WORKFLOW = os.environ.get("GITHUB_BUILDS_WORKFLOW", "build.yml")
-GITHUB_BUILDS_REF = os.environ.get("GITHUB_BUILDS_REF", "main")
-GITHUB_SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "CihuyAkz/starling-extras")
-GITHUB_TOOLS_REF = os.environ.get("GITHUB_TOOLS_REF", "")
+GITHUB_REPO = os.environ.get("GITHUB_BUILDS_REPO", "starling-client/mod-builds")
+GITHUB_WORKFLOW = "build.yml"
 PUBLIC_URL = os.environ.get("GATEWAY_PUBLIC_URL", "")
 # Runs at once: the rest wait here, where their place in line can be told. A free organization runs
 # 20 jobs at once in all, its other repositories' CI included.
@@ -101,7 +98,7 @@ GITHUB_NO_RUN_SECONDS = 15 * 60
 GITHUB_SECONDS = 75 * 60
 # A failure that wasn't the mods' fault is told for this long; asking again builds again.
 GITHUB_FAILURE_SECONDS = 60 * 60
-# How often the build repository's versions.json is read again: the commit each version's builds are made from.
+# How often mod-builds' versions.json is read again: the commit each version's builds are made from.
 RELEASES_SECONDS = 5 * 60
 ASK = re.compile(r"[0-9a-f]{32}")
 
@@ -524,7 +521,7 @@ def github_download(url, path):
 
 
 def release_commits():
-    """Each version's commit in the configured build repository's versions.json, which its builds are made from, read at
+    """Each version's commit in mod-builds' versions.json, which its builds are made from, read at
     most every RELEASES_SECONDS; the last one read while GitHub doesn't answer, and none without it.
     """
     if not github_open():
@@ -535,8 +532,7 @@ def release_commits():
             return releases["commits"]
         releases["at"] = now
     try:
-        ref = urllib.parse.quote(GITHUB_BUILDS_REF, safe="")
-        answer = github_api("GET", f"/contents/versions.json?ref={ref}")
+        answer = github_api("GET", "/contents/versions.json")
         commits = json.loads(base64.b64decode(answer["content"]))
         if not isinstance(commits, dict):
             raise ValueError("versions.json is not a table")
@@ -554,8 +550,7 @@ def stale(status):
     built while a release candidate had the release's number is not the release (0.8.0's first
     builds were release-candidate-5's, without its controls and skins)."""
     build = (status or {}).get("build") or {}
-    versions = release_commits()
-    want = versions.get(build.get("version")) or versions.get("*")
+    want = release_commits().get(build.get("version"))
     return bool(want and build.get("commit") and build["commit"] != want)
 
 
@@ -578,21 +573,8 @@ def github_ask(address, request, version, body):
     """This request's job on GitHub, asked for before or now: (job, None), or (None, why not)."""
     if not github_open():
         return None, "Building on GitHub isn't available right now."
-    if not re.fullmatch(
-        r"\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
-        version,
-    ):
+    if not re.fullmatch(r"\d+(\.\d+){1,3}", version):
         return None, "That is not a version of the game."
-    if "-" in version:
-        versions = release_commits()
-    else:
-        versions = {}
-    if "-" in version and version not in versions and "*" not in versions:
-        return None, (
-            f"No source commit is registered for Starling {version[:32]}. "
-            f"Add this version or a universal '*' entry with the fork's commit to "
-            f"{GITHUB_REPO}/versions.json."
-        )
     job = request[:24]
     now = time.time()
     with lock:
@@ -748,13 +730,11 @@ def github_round():
                 "POST",
                 f"/actions/workflows/{GITHUB_WORKFLOW}/dispatches",
                 {
-                    "ref": GITHUB_BUILDS_REF,
+                    "ref": "main",
                     "inputs": {
                         "ask": entry["ask"],
                         "version": entry["version"],
                         "gateway": PUBLIC_URL,
-                        "source": GITHUB_SOURCE_REPO,
-                        "tools": GITHUB_TOOLS_REF,
                     },
                 },
             )
@@ -854,7 +834,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(size)
         query = urllib.parse.parse_qs(url.query)
         version = query.get("version", [""])[0]
-        github = query.get("via", [""])[0] == "github" or version in GITHUB_VERSIONS or "*" in GITHUB_VERSIONS
+        github = query.get("via", [""])[0] == "github" or version in GITHUB_VERSIONS
         # The same mods on the same game, whichever machine is asked: what one built, the other has.
         asked = f"{url.path}?version={version}" if github else self.path
         request = hashlib.sha256(asked.encode() + body).hexdigest()
@@ -929,8 +909,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
-        if path == "/healthz":
-            return self.answer(200, {"ok": True})
         parts = path.strip("/").split("/")
         if parts[:2] == ["v1", "github"] and len(parts) == 3:
             return self.serve_mods(parts[2])

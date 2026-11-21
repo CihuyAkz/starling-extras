@@ -6,7 +6,7 @@ fn cinematic_campfire_tick(game: &mut crate::game::Game<'_>) {
     use horizon_client::menu::Input;
     if let Some(shift) = ci::forge_due() {
         let input = if shift { Input::QuickMove } else { Input::Pickup };
-        game.menu_click(Some(650), 0, input);
+        game.menu_click_old(Some(650), 0, input);
     }
     if let Some(n) = ci::take_move_to() {
         let aim = game.forced_hit.take();

@@ -19,7 +19,7 @@ fn cinematic_press(game: &mut crate::game::Game<'_>, right: bool) -> ::core::ops
     if ci::controls() && ci::is_surface(kind)
         && let Some(size) = game.renderer.as_ref().map(|r| [r.config.width, r.config.height])
     {
-        let batch = HudBatch::new(size);
+        let batch = HudBatch::new_old(size);
         let (x, y) = game.cursor;
         // The anvil's floating name: a click opens the "New name" box with the name selected; a
         // click anywhere else closes it (the name typed stays).
@@ -117,7 +117,7 @@ fn cinematic_press(game: &mut crate::game::Game<'_>, right: bool) -> ::core::ops
     let Some(size) = game.renderer.as_ref().map(|r| [r.config.width, r.config.height]) else {
         return ::core::ops::ControlFlow::Continue(());
     };
-    let batch = HudBatch::new(size);
+    let batch = HudBatch::new_old(size);
     let (x, y) = game.cursor;
     let on_book = if ci::book_open() { ci::book_hit(x, y, ci::selected().is_some()).is_some() } else { ci::on_recipe(batch.height, x, y) };
     if game.recipe_book_click(right) || on_book {

@@ -1,15 +1,11 @@
-//! Where Starling's releases come out, and what of a release is Starling's: for the update prompt
-//! (game/update_offer.rs) and the native mod builds (game/native_builds.rs), on Android.
+//! Where Starling Extras publishes Android releases and native mod builds.
 //!
-//! Starling and Horizon Android are one project now, in the organisation's repository
-//! (starling-client/starling); Starling's own (JuanLuci/starling) is where its releases came out
-//! before, and still do until the merged one. Both are asked, the organisation's first, so an
-//! install follows the releases wherever they come out. The organisation's repository also holds
-//! Horizon Android's releases (its APKs are named after it) and preview builds of Starling
-//! (`starling-preview-...`): only an APK named `starling-<version>-...` is an update.
+//! Starling Extras is an independently maintained, unofficial fork of Starling. Its updater and
+//! native-build browser query this fork's GitHub releases only, not the official Starling project.
+//! APK assets retain the `starling-<version>-<abi>.apk` filename expected by the in-app parser.
 
-/// The repositories, as GitHub's API names them, the organisation's first.
-pub const REPOSITORIES: [&str; 2] = ["starling-client/starling", "JuanLuci/starling"];
+/// The GitHub repository owned by the Starling Extras fork.
+pub const REPOSITORIES: [&str; 1] = ["CihuyAkz/starling-extras"];
 
 /// A repository's latest release, as GitHub's API serves it.
 pub fn latest_url(repository: &str) -> String {
@@ -32,10 +28,10 @@ pub fn newer(latest: &str, current: &str) -> bool {
     numbers(latest) > numbers(current)
 }
 
-/// A Starling release's APK.
+/// A Starling Extras release's APK.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Update {
-    /// Without its `v`: `0.8.0`.
+    /// Without its `v`: `0.9.0`.
     pub version: String,
     /// The APK's file name, its download and its size.
     pub name: String,
@@ -98,7 +94,7 @@ fn update_for_abi(latest: &serde_json::Value, current: &str, abi: &str) -> Optio
     })
 }
 
-/// The newest of the updates the repositories offer; the first of two of one version.
+/// The newest update published by the Starling Extras fork.
 pub fn newest(updates: impl IntoIterator<Item = Update>) -> Option<Update> {
     updates
         .into_iter()
@@ -108,8 +104,8 @@ pub fn newest(updates: impl IntoIterator<Item = Update>) -> Option<Update> {
         })
 }
 
-pub const BUILD_SERVER_URL: &str =
-    "https://raw.githubusercontent.com/CihuyAkz/starling-extras/starling/packaging/android/build-server.txt";
+/// The build-server address file published by the Starling Extras fork.
+pub const BUILD_SERVER_URL: &str = "https://raw.githubusercontent.com/CihuyAkz/starling-extras/starling/packaging/android/build-server.txt";
 
 /// `text` as a build server's address, when it is one: HTTPS to a host, maybe with a port, and
 /// nothing else (no account, path or query to hide where it really goes).
@@ -126,10 +122,6 @@ pub fn build_server_address(text: &str) -> Option<String> {
         && !host.ends_with(['.', '-']);
     let port_is_plain = rest.len() == host.len() || port.parse::<u16>().is_ok_and(|port| port != 0);
     (host_is_plain && port_is_plain).then_some(address)
-}
-
-pub fn default_build_server() -> Option<String> {
-    build_server_address(include_str!("../../../packaging/android/build-server.txt"))
 }
 
 /// A checked build server address as a player reads it: without `https://`.
@@ -304,7 +296,6 @@ mod tests {
     fn the_published_build_server_is_a_good_address() {
         let published = include_str!("../../../packaging/android/build-server.txt");
         assert!(build_server_address(published).is_some());
-        assert!(default_build_server().is_some());
     }
 
     #[test]
@@ -324,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn only_starlings_own_apk_is_an_update() {
+    fn only_starling_extras_apks_are_updates() {
         // Horizon Android's last release, the organisation's latest today: not Starling's.
         let horizon =
             json!({"tag_name": "v0.7.8", "assets": [asset("Horizon-Android-0.7.8-arm64-v8a.apk")]});

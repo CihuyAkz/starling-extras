@@ -8,9 +8,9 @@ fn freecam_tick(game: &mut crate::game::Game<'_>) {
     if !game.native_on(freecam::ID) {
         if let Some(freecam::Command::Exit) = freecam::disable() {
             game.camera_type = match freecam::camera_kind() {
-                1 => crate::game::perspective::CameraType::ThirdPersonBack,
-                2 => crate::game::perspective::CameraType::ThirdPersonFront,
-                _ => crate::game::perspective::CameraType::FirstPerson,
+                1 => ::mod_api::CameraType::ThirdPersonBack,
+                2 => ::mod_api::CameraType::ThirdPersonFront,
+                _ => ::mod_api::CameraType::FirstPerson,
             };
         }
         horizon_client::motion::freecam_gate::set_freeze(false);
@@ -20,9 +20,9 @@ fn freecam_tick(game: &mut crate::game::Game<'_>) {
     let health = game.player.as_ref().map(|p| p.health.health());
     if let Some(freecam::Command::Exit) = freecam::tick(world_open, health) {
         game.camera_type = match freecam::camera_kind() {
-            1 => crate::game::perspective::CameraType::ThirdPersonBack,
-            2 => crate::game::perspective::CameraType::ThirdPersonFront,
-            _ => crate::game::perspective::CameraType::FirstPerson,
+            1 => ::mod_api::CameraType::ThirdPersonBack,
+            2 => ::mod_api::CameraType::ThirdPersonFront,
+            _ => ::mod_api::CameraType::FirstPerson,
         };
     }
     // The player freezes inside the motion tick, which runs after this.

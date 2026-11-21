@@ -1,0 +1,8 @@
+Starling Extras 0.9.0 port workspace
+Base: supplied Starling 0.9.0 source archive.
+Extras add-only files copied from the supplied 0.8.0 overlay: 382.
+Missing overlay-listed files: 2.
+Overlay path collisions skipped: 0.
+Native mod bundles prepared for 0.9 adapter: appleskin, armorhud, basic_hud, carryblock, cinematic_interactions, connected_textures, customhud, eatinganimation, firstpersonmodel, freecam_plus, freelook, jade, kotost_roulette, liteminer, punchy, recipes, rightharvest, smartf3, veinminer, visuality_horizon, zoom.
+The old wrench bundle was not imported because the 0.9 source already includes wrench.
+Core 0.8 modified source files were not overwritten: the 0.9 source has a reworked client/crate architecture.

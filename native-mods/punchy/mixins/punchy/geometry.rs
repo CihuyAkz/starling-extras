@@ -6,7 +6,7 @@ pub(super) fn render(game: &mut crate::game::Game<'_>, alpha: f64) -> Vec<Vertex
     if game.spectator()
         || game.ui.hide_gui
         || game.sleeping.is_some()
-        || !game.camera_type.first_person()
+        || !game.camera_type.is_first_person()
         || game
             .player
             .as_ref()

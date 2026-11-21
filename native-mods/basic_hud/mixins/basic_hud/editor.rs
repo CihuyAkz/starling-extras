@@ -133,8 +133,8 @@ pub(super) fn open(game: &mut Game<'_>) {
     } else { true };
     GUIDE_OPENED.with(|seen| seen.set(true));
     let size = game.gui_size();
-    let return_to_game = game.options_to_game;
-    game.options_to_game = true;
+    let return_to_game = false;
+    let _ = true;
     game.capture(false);
     EDITOR.with(|e| {
         let mut editor = Editor::new(initial, [size.0, size.1], return_to_game);
@@ -191,9 +191,9 @@ pub(super) fn close(game: &mut Game<'_>) {
         game.screen = super::Screen::Playing;
         game.keys.clear();
         game.capture(true);
-        game.options_to_game = false;
+        let _ = false;
     } else {
-        game.options_to_game = false;
+        let _ = false;
         if game.screen == super::Screen::Options {
             if let horizon_client::options_ui::Page::NativeMod(i) = game.ui.options.page() {
                 game.native_settings_refresh(i);
@@ -218,7 +218,7 @@ fn draw_btn(
     game.native_fill(batch, [x, y, 1.0, h], border_color);
     game.native_fill(batch, [x + w - 1.0, y, 1.0, h], border_color);
 
-    let tw = game.native_text_width(text);
+    let tw = game.native_text_width_old(text);
     let max_tw = (w - 4.0).max(1.0);
     let scale = if tw > max_tw { max_tw / tw } else { 1.0 };
     let start = batch.vertices.len();
@@ -237,7 +237,7 @@ fn in_rect(point: [f32; 2], rect: [f32; 4]) -> bool {
 }
 
 fn help_line(game: &Game<'_>, batch: &mut HudBatch, text: &str, at: [f32; 2], width: f32, color: u32) {
-    let scale = (width / game.native_text_width(text).max(1.0)).min(1.0);
+    let scale = (width / game.native_text_width_old(text).max(1.0)).min(1.0);
     let start = batch.vertices.len();
     game.native_text(batch, text, at, color, true);
     batch.scale_since(start, at[0], at[1], scale, scale);
@@ -272,7 +272,7 @@ fn tab_bounds(viewport: [f32; 2]) -> [f32; 4] {
 
 fn hint_bounds(game: &Game<'_>, viewport: [f32; 2], hitboxes: &[(m::Widget, m::Rect)], language: &str) -> [f32; 4] {
     let text = i18n::tr(&language, "[Tab] Show controls");
-    let w = (game.native_text_width(text) + 8.0).min(viewport[0]);
+    let w = (game.native_text_width_old(text) + 8.0).min(viewport[0]);
     let h = 13.0f32.min(viewport[1]);
     let bottom = (viewport[1] - h - 4.0).max(0.0);
     let right = (viewport[0] - w - 4.0).max(0.0);
@@ -339,7 +339,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
 
             let scale = draft_clone.widget(sel).scale;
             let info = format!("{} ({:.1}x)", i18n::tr(&language, sel.title(false)), scale);
-            let info_w = game.native_text_width(&info);
+            let info_w = game.native_text_width_old(&info);
             let badge_y = (r.y - 11.0).max(0.0);
             game.native_fill(batch, [r.x, badge_y, info_w + 4.0, 10.0], 0xEE11_1620);
             game.native_text(batch, &info, [r.x + 2.0, badge_y + 1.0], 0x00FF_FFFF, true);
@@ -533,7 +533,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
                 help_line(game, batch, sc_text, [drawer_x + 5.0, y + 3.0], (drawer_w - 66.0).max(1.0), 0xDD_DDDD);
                 draw_btn(game, batch, [drawer_x + drawer_w - 56.0, y, 12.0, 13.0], "-", 0xCC2B_3444, 0xFF_FFFF);
                 let val = format!("{:.1}x", draft_clone.tab.scale);
-                let tw = game.native_text_width(&val);
+                let tw = game.native_text_width_old(&val);
                 game.native_text(batch, &val, [drawer_x + drawer_w - 42.0 + (26.0 - tw) * 0.5, y + 3.0], 0xFF_FFFF, true);
                 draw_btn(game, batch, [drawer_x + drawer_w - 16.0, y, 12.0, 13.0], "+", 0xCC2B_3444, 0xFF_FFFF);
             }
@@ -545,7 +545,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
                 help_line(game, batch, op_text, [drawer_x + 5.0, y + 3.0], (drawer_w - 66.0).max(1.0), 0xDD_DDDD);
                 draw_btn(game, batch, [drawer_x + drawer_w - 56.0, y, 12.0, 13.0], "-", 0xCC2B_3444, 0xFF_FFFF);
                 let val = format!("{}%", draft_clone.tab.opacity);
-                let tw = game.native_text_width(&val);
+                let tw = game.native_text_width_old(&val);
                 game.native_text(batch, &val, [drawer_x + drawer_w - 42.0 + (26.0 - tw) * 0.5, y + 3.0], 0xFF_FFFF, true);
                 draw_btn(game, batch, [drawer_x + drawer_w - 16.0, y, 12.0, 13.0], "+", 0xCC2B_3444, 0xFF_FFFF);
             }
@@ -576,7 +576,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
                 help_line(game, batch, sc_text, [drawer_x + 5.0, y + 3.0], (drawer_w - 66.0).max(1.0), 0xDD_DDDD);
                 draw_btn(game, batch, [drawer_x + drawer_w - 56.0, y, 12.0, 13.0], "-", 0xCC2B_3444, 0xFF_FFFF);
                 let val = format!("{:.1}x", wcfg.scale);
-                let tw = game.native_text_width(&val);
+                let tw = game.native_text_width_old(&val);
                 game.native_text(batch, &val, [drawer_x + drawer_w - 42.0 + (26.0 - tw) * 0.5, y + 3.0], 0xFF_FFFF, true);
                 draw_btn(game, batch, [drawer_x + drawer_w - 16.0, y, 12.0, 13.0], "+", 0xCC2B_3444, 0xFF_FFFF);
             }
@@ -588,7 +588,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
                 help_line(game, batch, op_text, [drawer_x + 5.0, y + 3.0], (drawer_w - 66.0).max(1.0), 0xDD_DDDD);
                 draw_btn(game, batch, [drawer_x + drawer_w - 56.0, y, 12.0, 13.0], "-", 0xCC2B_3444, 0xFF_FFFF);
                 let val = format!("{}%", wcfg.opacity);
-                let tw = game.native_text_width(&val);
+                let tw = game.native_text_width_old(&val);
                 game.native_text(batch, &val, [drawer_x + drawer_w - 42.0 + (26.0 - tw) * 0.5, y + 3.0], 0xFF_FFFF, true);
                 draw_btn(game, batch, [drawer_x + drawer_w - 16.0, y, 12.0, 13.0], "+", 0xCC2B_3444, 0xFF_FFFF);
             }
@@ -600,7 +600,7 @@ pub(super) fn draw(game: &mut Game<'_>, batch: &mut HudBatch) -> bool {
                 help_line(game, batch, pd_text, [drawer_x + 5.0, y + 3.0], (drawer_w - 66.0).max(1.0), 0xDD_DDDD);
                 draw_btn(game, batch, [drawer_x + drawer_w - 56.0, y, 12.0, 13.0], "-", 0xCC2B_3444, 0xFF_FFFF);
                 let val = format!("{:.0}px", wcfg.padding);
-                let tw = game.native_text_width(&val);
+                let tw = game.native_text_width_old(&val);
                 game.native_text(batch, &val, [drawer_x + drawer_w - 42.0 + (26.0 - tw) * 0.5, y + 3.0], 0xFF_FFFF, true);
                 draw_btn(game, batch, [drawer_x + drawer_w - 16.0, y, 12.0, 13.0], "+", 0xCC2B_3444, 0xFF_FFFF);
             }

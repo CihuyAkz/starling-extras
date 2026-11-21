@@ -5,7 +5,7 @@ use super::firstpersonmodel as fpm;
 use super::Game;
 use fpm::{Hands, Settings};
 use horizon_client::mobs::anim::firstpersonmodel_pose as pose;
-use horizon_client::mod_api::NativeMod;
+use horizon_client::starling_mod_api::NativeMod;
 use horizon_client::pose::Pose;
 use std::cell::Cell;
 use std::time::{Duration, Instant};
@@ -153,7 +153,7 @@ pub(super) fn frame(game: &mut Game<'_>) {
     }
     let settings = fpm::settings();
     let active = game.native_on(fpm::ID)
-        && game.camera_type.first_person()
+        && game.camera_type.is_first_person()
         && game.camera_mob().is_none()
         && game.player.as_ref().is_some_and(|p| !p.health.dead_or_dying())
         && should_apply(game, &settings, Instant::now());
@@ -188,7 +188,7 @@ pub(super) fn key(game: &Game<'_>, key: &str, pressed: bool) {
 /// the game draws it in the world view (not only into a shader's shadow), and
 /// its fire and companions with it, as the original's extracted entity has.
 pub(super) fn own_body_in_view(game: &Game<'_>, value: bool) -> bool {
-    value || (ACTIVE.with(Cell::get) && game.camera_type.first_person())
+    value || (ACTIVE.with(Cell::get) && game.camera_type.is_first_person())
 }
 
 /// `LogicHandler.updatePositionOffset`: how far the body moves from the
@@ -243,7 +243,7 @@ pub(super) fn player_geometry(
     alpha: f64,
     out: &mut Vec<horizon_client::mesher::Vertex>,
 ) -> bool {
-    if DRAWING.with(Cell::get) || !ACTIVE.with(Cell::get) || !game.camera_type.first_person() {
+    if DRAWING.with(Cell::get) || !ACTIVE.with(Cell::get) || !game.camera_type.is_first_person() {
         return false;
     }
     let settings = fpm::settings();
@@ -314,8 +314,8 @@ pub(super) fn stuck_in_body(
     }
     let sprites = &game.gui.atlas.sprites;
     let layers = [
-        (arrows, m.extra.arrow_count, false, game.arrow_model.as_ref(), "entity/projectiles/arrow"),
-        (stingers, m.extra.stinger_count, true, game.bee_stinger_model.as_ref(), "entity/bee/bee_stinger"),
+        (arrows, m.extra.stuck.arrows, false, game.arrow_model.as_ref(), "entity/projectiles/arrow"),
+        (stingers, m.extra.stuck.stingers, true, game.bee_stinger_model.as_ref(), "entity/bee/bee_stinger"),
     ];
     for (shown, count, on_surface, model, texture) in layers {
         let (true, true, Some(model), Some(rect)) = (shown, count > 0, model, sprites.get(texture)) else {
@@ -385,7 +385,7 @@ pub(super) fn off_hand_arm(game: &Game<'_>, partial: f32, out: &mut Vec<horizon_
     if game.spectator()
         || game.ui.hide_gui
         || game.sleeping.is_some()
-        || !game.camera_type.first_person()
+        || !game.camera_type.is_first_person()
         || game.player.as_ref().is_none_or(|p| p.health.dead_or_dying())
         || game.screen == super::Screen::Dead
         || !game.hands_to_render()[1]
@@ -402,7 +402,7 @@ pub(super) fn off_hand_arm(game: &Game<'_>, partial: f32, out: &mut Vec<horizon_
     let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
     let left = !game.settings.main_hand_left;
     let m = to_world * horizon_client::first_person::player_arm_pose(left, inverse_height, attack);
-    game.first_person_arm(left, m, packed, out);
+    game.first_person_arm(left, m, packed, 1.0, out);
 }
 
 /// Once a frame: the vanilla hands follow the view while the mod is on, the
@@ -419,7 +419,7 @@ fn arm_pitch(game: &Game<'_>, settings: &Settings) {
 fn fishing_correct(game: &Game<'_>) -> bool {
     game.native_on(fpm::ID)
         && fpm::state().enabled
-        && game.camera_type.first_person()
+        && game.camera_type.is_first_person()
         && !fpm::settings().hide_arms_and_items(hands(game))
 }
 

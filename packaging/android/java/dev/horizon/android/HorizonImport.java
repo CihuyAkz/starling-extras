@@ -45,9 +45,6 @@ final class HorizonImport {
 
     /** Whether Horizon Android is on the phone (its package is declared in the manifest's queries). */
     static boolean installed(Context context) {
-        if (context.getPackageName().equals(PACKAGE)) {
-            return false;
-        }
         try {
             context.getPackageManager().getPackageInfo(PACKAGE, 0);
             return true;

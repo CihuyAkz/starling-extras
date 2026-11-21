@@ -7,7 +7,7 @@
 use crate::game::Game;
 use crate::game::native_hooks::{
     NativeItem, NativePanelEvent, NativeRecipe, NativeRecipeKind, NativeRecipeLayout,
-    NativeRecipeStack, NativeRecipeView, NativeStack,
+    NativeRecipeStack, NativeRecipeViewOld, NativeStack,
 };
 use crate::game::official_recipes as m;
 
@@ -71,8 +71,8 @@ fn stack(s: &NativeStack) -> m::Stack {
     }
 }
 
-fn view(v: &m::View) -> NativeRecipeView {
-    NativeRecipeView {
+fn view(v: &m::View) -> NativeRecipeViewOld {
+    NativeRecipeViewOld {
         layout: match v.layout {
             m::Layout::Grid => NativeRecipeLayout::Grid,
             m::Layout::Cooking => NativeRecipeLayout::Cooking,
@@ -112,7 +112,7 @@ pub(super) fn frame(game: &mut Game<'_>) {
         }
         (None, true) => {
             m::set_viewer(None);
-            game.native_panel_recipes(m::ID, "", Vec::new(), 0, Vec::new());
+            game.native_panel_recipes_old(m::ID, "", Vec::new(), 0, Vec::new());
             game.native_panel_items(m::ID, Vec::new());
         }
         _ => {}
@@ -138,13 +138,13 @@ pub(super) fn event(game: &mut Game<'_>, event: &NativePanelEvent) {
             };
             m::Event::Key {
                 uses,
-                stack: stack(s),
+                stack: stack(&horizon_client::starling_mod_api::native_stack_old(s)),
             }
         }
         NativePanelEvent::SlotClicked {
             stack: s, right, ..
         } => m::Event::SlotClicked {
-            stack: stack(s),
+            stack: stack(&horizon_client::starling_mod_api::native_stack_old(s)),
             right: *right,
         },
         NativePanelEvent::Tab(i) => m::Event::Tab(*i as usize),
@@ -178,7 +178,7 @@ fn apply(game: &mut Game<'_>, out: m::Out) {
             tabs,
             tab,
             views,
-        } => game.native_panel_recipes(
+        } => game.native_panel_recipes_old(
             m::ID,
             &title,
             tabs.iter().map(native).collect(),

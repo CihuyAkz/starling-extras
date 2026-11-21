@@ -1182,7 +1182,7 @@ pub(super) fn arms(game: &mut Game<'_>, alpha: f64, out: &mut Vec<Vertex>) {
         || game.spectator()
         || game.ui.hide_gui
         || game.sleeping.is_some()
-        || !game.camera_type.first_person()
+        || !game.camera_type.is_first_person()
         || game.own_invisible()
         || game
             .player
@@ -1227,7 +1227,7 @@ pub(super) fn arms(game: &mut Game<'_>, alpha: f64, out: &mut Vec<Vertex>) {
             }
             let left = game.settings.main_hand_left != (i == 1);
             let m = world * arm_pose(left, 0., 0.);
-            game.first_person_arm(left, m, packed, out);
+            game.first_person_arm(left, m, packed, 1.0, out);
         }
     });
 }

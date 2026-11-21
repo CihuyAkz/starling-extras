@@ -22,7 +22,7 @@ dependent = "horizon-client-render"
 
 [[module]]
 id = "render_glue"
-file = "crates/horizon-client-render/src/gfx/native_render.rs"
+file = "crates/horizon-client-render/src/render_slots.rs"
 name = "visuality_horizon"
 source = "render_glue.rs"
 visibility = "pub"
@@ -143,7 +143,7 @@ bindings = []
 [[injection]]
 id = "ambient"
 kind = "HEAD"
-target = "horizon_client::animate_tick::block_animate_tick"
+target = "horizon_client_lib::animate_tick::block_animate_tick"
 helper = "ambient.rs"
 bindings = [
   { name = "ctx", ty = "&AnimateContext<'_>", value = "ctx" },
@@ -156,6 +156,6 @@ bindings = [
 id = "slime"
 kind = "HEAD"
 cancellable = true
-target = "horizon_client::mobs::cube::client_tick"
+target = "horizon_client_lib::mobs::cube::client_tick"
 helper = "slime.rs"
 bindings = [{ name = "m", ty = "&mut Mob", value = "&mut *m" }]

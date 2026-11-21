@@ -12,7 +12,7 @@ use super::Game;
 use super::native_inventories::NativeInventoryKind;
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
-use horizon_client::mod_api::{Compound, NativeCommand, NativeScreenView, NativeServerPlayer, Tag};
+use horizon_client::starling_mod_api::{Compound, NativeCommand, NativeScreenView, NativeServerPlayer, Tag};
 use horizon_client::text::Text;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -459,7 +459,7 @@ fn server_tick(game: &mut Game<'_>) {
     };
     let mut guard = lock(&SERVER);
     let s = guard.get_or_insert_with(Server::default);
-    let players = game.native_server_players();
+    let players = game.native_server_players_old();
     for (uuid, data) in asks {
         if let Some(ask) = decode_ask(&data) {
             if players.iter().any(|p| p.uuid == uuid) {
@@ -695,7 +695,7 @@ fn origin(w: f32, h: f32) -> (f32, f32) {
 
 fn gui_origin(game: &Game<'_>) -> Option<(f32, f32)> {
     let r = game.renderer.as_ref()?;
-    let b = HudBatch::new([r.config.width, r.config.height]);
+    let b = HudBatch::new_old([r.config.width, r.config.height]);
     Some(origin(b.width, b.height))
 }
 
@@ -933,7 +933,7 @@ fn text(game: &Game<'_>, b: &mut HudBatch, s: &str, x: f32, y: f32, rgb: u32) {
 }
 
 fn centered(game: &Game<'_>, b: &mut HudBatch, s: &str, cx: f32, y: f32, rgb: u32) {
-    let w = game.native_text_width(s);
+    let w = game.native_text_width_old(s);
     text(game, b, s, (cx - w / 2.0).round(), y, rgb);
 }
 
@@ -949,7 +949,7 @@ fn icon(game: &Game<'_>, b: &mut HudBatch, id: &str, n: u32, x: f32, y: f32) {
     let _ = game.native_item(b, id, [x, y], 16.0);
     if n > 1 {
         let s = n.to_string();
-        let w = game.native_text_width(&s);
+        let w = game.native_text_width_old(&s);
         text(game, b, &s, x + 17.0 - w, y + 9.0, 0xFFFFFF);
     }
 }
@@ -959,7 +959,7 @@ fn wrap(game: &Game<'_>, s: &str, w: f32) -> Vec<String> {
     let mut cur = String::new();
     for word in s.split(' ') {
         let t = if cur.is_empty() { word.to_owned() } else { format!("{cur} {word}") };
-        if cur.is_empty() || game.native_text_width(&t) <= w {
+        if cur.is_empty() || game.native_text_width_old(&t) <= w {
             cur = t;
         } else {
             out.push(std::mem::replace(&mut cur, word.to_owned()));
@@ -1226,7 +1226,7 @@ pub fn render(game: &Game<'_>, b: &mut HudBatch, screen: &NativeScreenView<'_>) 
                 let _ = game.native_item_stack(b, s, [ox + r[0] + 1.0, oy + r[1] + 1.0], 16.0);
                 if s.count > 1 {
                     let n = s.count.to_string();
-                    let w = game.native_text_width(&n);
+                    let w = game.native_text_width_old(&n);
                     text(game, b, &n, ox + r[0] + 18.0 - w, oy + r[1] + 10.0, 0xFFFFFF);
                 }
             }
@@ -1270,12 +1270,12 @@ pub fn render(game: &Game<'_>, b: &mut HudBatch, screen: &NativeScreenView<'_>) 
             }
             let _ = game.native_item(b, &p.id, [row[0] + 1.0, y + 1.0], 16.0);
             let mut name = p.shown(ru());
-            while game.native_text_width(&name) > r[2] - 62.0 && name.chars().count() > 3 {
+            while game.native_text_width_old(&name) > r[2] - 62.0 && name.chars().count() > 3 {
                 name.pop();
             }
             text(game, b, &name, row[0] + 20.0, y + 5.0, if dear { 0xFFFFFF } else { 0x6F7A90 });
             let pts = points(p.pts);
-            let w = game.native_text_width(&pts);
+            let w = game.native_text_width_old(&pts);
             text(game, b, &pts, row[0] + row[2] - w - 2.0, y + 5.0, 0xFFE082);
         }
         if list.is_empty() {

@@ -84,7 +84,7 @@ fn speed_value() -> f64 {
 pub(super) fn durability(game: &Game<'_>, stack: &ItemStack) -> Option<(u32, u32)> {
     let base = game.res.items().get(&stack.item).map_or(0, |item| item.max_damage);
     let max = match stack.extra.as_ref().and_then(|e| e.other("minecraft:max_damage")) {
-        Some(horizon_world::nbt::Tag::Int(value)) => (*value).max(0) as u32,
+        Some(horizon_core::nbt::Tag::Int(value)) => (*value).max(0) as u32,
         _ => base,
     };
     (max > 0).then_some((max.saturating_sub(stack.damage), max))

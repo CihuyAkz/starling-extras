@@ -2,7 +2,7 @@
 // "Have materials" filter, every crafting recipe that fits the table (sorted by its result's name,
 // 16 a page), the pages and the chosen recipe with "Lay out". Each frame it also takes the steps of
 // laying a recipe out that the hands have reached.
-fn cinematic_book_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -> ::core::ops::ControlFlow<()> {
+fn cinematic_book_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -> ::core::ops::ControlFlow<Option<Vec<(Text, u32)>>> {
     use horizon_client_lib::native_cinematic_interactions_scene as ci;
     use std::hash::{Hash, Hasher};
     if !ci::controls() || !ci::table_scene() {
@@ -35,7 +35,7 @@ fn cinematic_book_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -
     let open = game.book_open(BookType::Crafting);
     ci::set_book_open(open);
     if !open || ci::walking(std::time::Instant::now()) {
-        return ::core::ops::ControlFlow::Break(());
+        return ::core::ops::ControlFlow::Break(None);
     }
     game.ensure_book();
     let (x, y) = game.cursor;
@@ -179,5 +179,5 @@ fn cinematic_book_draw(game: &mut crate::game::Game<'_>, batch: &mut HudBatch) -
         let lines: Vec<(Text, u32)> = lines.into_iter().map(|l| (Text::literal(l), u32::MAX)).collect();
         game.draw_tooltip_lines(batch, &lines, x, y);
     }
-    ::core::ops::ControlFlow::Break(())
+    ::core::ops::ControlFlow::Break(None)
 }

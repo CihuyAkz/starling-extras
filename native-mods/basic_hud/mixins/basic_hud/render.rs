@@ -22,7 +22,7 @@ fn draw_values(game: &mut Game<'_>, batch: &mut HudBatch, config: &m::Config, wi
     let max_width = (if widget == m::Widget::ArmorMini { 180.0 } else { GRID_MAX_WIDTH }).min(batch.width / scale);
     let available_text = (max_width - padding * 2.0 - icon_size - 3.0).max(1.0);
     let text_metrics: Vec<_> = rows.iter().map(|row| {
-        let width = game.native_text_width(&row.value);
+        let width = game.native_text_width_old(&row.value);
         let font_scale = (available_text / width.max(1.0)).min(1.0);
         (width * font_scale, font_scale)
     }).collect();
@@ -41,7 +41,7 @@ fn draw_values(game: &mut Game<'_>, batch: &mut HudBatch, config: &m::Config, wi
         match &row.icon {
             data::Icon::Effect(sprite) => {
                 if let Some([sw, sh]) = game.native_sprite_size(sprite) {
-                    game.native_sprite(batch, sprite, [0.0, 0.0, sw, sh], [x, y, icon_size, icon_size]);
+                    game.native_sprite_old(batch, sprite, [0.0, 0.0, sw, sh], [x, y, icon_size, icon_size]);
                 }
             }
             data::Icon::Item(stack) => {
@@ -61,7 +61,7 @@ fn draw_values(game: &mut Game<'_>, batch: &mut HudBatch, config: &m::Config, wi
     }
     if preview && rows.iter().any(|row| row.sample) {
         let label = format!("[{}]", i18n::tr(config.language(&game.settings.language), "Sample"));
-        let font_scale = ((base[0] - 2.0).max(1.0) / game.native_text_width(&label).max(1.0)).min(1.0);
+        let font_scale = ((base[0] - 2.0).max(1.0) / game.native_text_width_old(&label).max(1.0)).min(1.0);
         let y = (rect.y - 10.0).max(0.0);
         let first = batch.vertices.len();
         game.native_text(batch, &label, [rect.x + 1.0, y], style.accent & 0xFF_FFFF, style.shadow);
@@ -138,8 +138,8 @@ fn draw_mini(game: &mut Game<'_>, batch: &mut HudBatch, config: &m::Config, prev
                 game.native_fill(batch, [x, y + 13.0, 12.0 * fraction, 1.0], 0xFF00_0000 | (color & 0xFF_FFFF));
                 if config.mini_numbers {
                     let text = left.to_string();
-                    let scale = (12.0 / game.native_text_width(&text).max(1.0)).min(0.6);
-                    let tx = x + (12.0 - game.native_text_width(&text) * scale) * 0.5;
+                    let scale = (12.0 / game.native_text_width_old(&text).max(1.0)).min(0.6);
+                    let tx = x + (12.0 - game.native_text_width_old(&text) * scale) * 0.5;
                     let ty = y + 16.0;
                     let text_start = batch.vertices.len();
                     game.native_text(batch, &text, [tx, ty], logic::widget_text_color(style.text, status), style.shadow);
@@ -199,10 +199,10 @@ pub(super) fn draw(
 
         let (base_w, base_h) = if rows.is_empty() {
             let sample_title = format!("[{}] {}", i18n::tr(lang, "Sample"), i18n::tr(lang, widget.title(false)));
-            let text_w = game.native_text_width(&sample_title);
+            let text_w = game.native_text_width_old(&sample_title);
             (padding * 2.0 + text_w + icon_col_width + 4.0, padding * 2.0 + row_height)
         } else {
-            let max_text_width = rows.iter().map(|r| game.native_text_width(&r.text)).fold(0.0, f32::max);
+            let max_text_width = rows.iter().map(|r| game.native_text_width_old(&r.text)).fold(0.0, f32::max);
             (
                 padding * 2.0 + max_text_width + icon_col_width + 4.0,
                 padding * 2.0 + row_height * rows.len() as f32,
@@ -243,7 +243,7 @@ pub(super) fn draw(
                     match &row.icon {
                         data::Icon::Effect(sprite) => {
                             if let Some([sw, sh]) = game.native_sprite_size(sprite) {
-                                game.native_sprite(batch, sprite, [0.0, 0.0, sw, sh], [icon_x, icon_y, icon_size, icon_size]);
+                                game.native_sprite_old(batch, sprite, [0.0, 0.0, sw, sh], [icon_x, icon_y, icon_size, icon_size]);
                             }
                         }
                         data::Icon::Item(stack) => {
@@ -261,7 +261,7 @@ pub(super) fn draw(
 
                 if let Some((label, val)) = row.text.split_once(": ") {
                     let label_str = format!("{label}: ");
-                    let label_w = game.native_text_width(&label_str);
+                    let label_w = game.native_text_width_old(&label_str);
                     let accent = if wcfg.accent != m::WidgetConfig::DEFAULT_ACCENT {
                         wcfg.accent
                     } else {

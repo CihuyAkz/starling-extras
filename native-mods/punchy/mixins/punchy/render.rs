@@ -1,7 +1,7 @@
 fn render_punchy(
     game: &mut crate::game::Game<'_>,
     alpha: f64,
-) -> std::ops::ControlFlow<Vec<Vertex>> {
+) -> std::ops::ControlFlow<(Vec<Vertex>, Vec<(u32, i32)>)> {
     crate::game::punchy::begin(game, alpha);
     if crate::game::punchy::ready(game) {
         let mut out = crate::game::punchy_geometry::render(game, alpha);

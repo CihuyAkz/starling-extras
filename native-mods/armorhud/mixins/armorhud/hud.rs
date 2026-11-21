@@ -15,7 +15,7 @@ fn armorhud_hud(
 
     // The notification above the hotbar: full for a second, then fading out.
     if let Some((text, alpha)) = m::current_notice() {
-        let x = (width as f32 - game.native_text_width(&text)) / 2.0;
+        let x = (width as f32 - game.native_text_width_old(&text)) / 2.0;
         let y = (height - 68) as f32;
         let color = horizon_client::hud::rgba(0xFF, 0xFF, 0xFF, alpha);
         let line = horizon_client::text::Text::literal(&text);
@@ -76,7 +76,7 @@ fn armorhud_hud(
         }
         if flags.numbers {
             let text = d.numbers();
-            let tw = game.native_text_width(&text).ceil() as i32;
+            let tw = game.native_text_width_old(&text).ceil() as i32;
             let x = m::layout::number_x(border.x, cx, tw) as f32;
             game.native_text(batch, &text, [x, (cy + 6) as f32], d.color(), true);
         }

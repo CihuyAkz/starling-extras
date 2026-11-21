@@ -39,7 +39,7 @@ use horizon_core::geometry::{Direction, Vec3};
 use horizon_core::position::BlockPos;
 use horizon_protocol::packets::play::{self, Clientbound as C};
 use horizon_world::level::{LevelEvent, PlaceContext, flags};
-use horizon_world::nbt::{Compound, JavaString, Tag};
+use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -695,7 +695,7 @@ impl Game<'_> {
     /// Picks up the mob aimed at, with all its data: true when it did. A
     /// player who may not build (`pick`) only hears so.
     fn ca_pick_mob(&mut self, config: &Config, pick: PickUp) -> bool {
-        let Some((index, distance)) = self.mob_hit() else {
+        let Some((index, distance, _)) = self.mob_hit() else {
             return false;
         };
         // In-frame, a block in front of the mob takes the click.
@@ -730,8 +730,8 @@ impl Game<'_> {
             ridden: m.extra.rider.is_some() || m.rider.is_some() || m.extra.jockey,
             leashed: m.extra.leash.is_some() || m.extra.leash_pending.is_some(),
             inventory: m.extra.chested
-                || m.extra.saddled
-                || m.extra.saddle_stack.is_some()
+                || m.extra.saddled()
+                || m.extra.equipment[horizon_items::equipment::SADDLE].is_some()
                 || !m.extra.inventory.is_empty(),
             owned_by_other: m.extra.owner.is_some()
                 && !horizon_client::mobs::tame::owned_by(m.extra.owner, me),
@@ -1175,8 +1175,8 @@ impl Game<'_> {
         };
         let [first, second] = ca::hud_lines(&summary);
         let width = self
-            .native_text_width(&first)
-            .max(self.native_text_width(&second))
+            .native_text_width_old(&first)
+            .max(self.native_text_width_old(&second))
             + 6.0;
         let height = 22.0;
         let (x, y) = if ca::hud_crosses_hotbar(hud, batch.width, width) {

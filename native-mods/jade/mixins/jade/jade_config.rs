@@ -31,7 +31,7 @@ use std::cell::RefCell;
 fn draw_fitted_text(game: &Game<'_>, batch: &mut HudBatch, text: &Text, left: f32, right: f32, y: f32, color: u32) {
     let original = text.plain();
     let width = (right - left).max(0.0);
-    let shown = if game.native_text_width(&original) <= width {
+    let shown = if game.native_text_width_old(&original) <= width {
         original
     } else {
         let mut prefix = String::new();
@@ -39,7 +39,7 @@ fn draw_fitted_text(game: &Game<'_>, batch: &mut HudBatch, text: &Text, left: f3
             let mut candidate = prefix.clone();
             candidate.push(ch);
             candidate.push_str("...");
-            if game.native_text_width(&candidate) > width {
+            if game.native_text_width_old(&candidate) > width {
                 break;
             }
             prefix.push(ch);
@@ -605,7 +605,7 @@ pub fn frame(game: &mut Game<'_>) {
     // Options draws no hud: with a world behind it, the preview's box is built here (the batch goes unused: `hud` keeps
     // the box for `draw_preview` while a page wants it).
     if host == Host::Options && game.player.is_some() && wants_box() {
-        let mut unused = HudBatch::new([1, 1]);
+        let mut unused = HudBatch::new_old([1, 1]);
         jade::hud(game, &mut unused);
     }
 }
@@ -830,7 +830,7 @@ fn wrap(game: &Game<'_>, text: &str, most: f32) -> Vec<String> {
     let mut line = String::new();
     for word in text.split(' ') {
         let longer = if line.is_empty() { word.to_owned() } else { format!("{line} {word}") };
-        if game.native_text_width(&longer) > most && !line.is_empty() {
+        if game.native_text_width_old(&longer) > most && !line.is_empty() {
             lines.push(std::mem::replace(&mut line, word.to_owned()));
         } else {
             line = longer;
@@ -1633,7 +1633,7 @@ impl Ui {
             // PreviewOptionsScreen.extractRenderState.
             game.native_fill(batch, [0.0, 0.0, w, h], 0x8080_8080);
             let text = tr("config.jade.overlay_pos.exit", "Press ESC or click the center to exit");
-            let tw = game.native_text_width(&text);
+            let tw = game.native_text_width_old(&text);
             let (tx, ty) = (((w - tw) / 2.0).floor(), (h / 2.0).floor() - 7.0);
             game.native_fill(batch, [tx - 4.0, ty - 4.0, tw + 8.0, 17.0], 0x8800_0000);
             game.native_text(batch, &text, [tx, ty], 0xFFFFFF, false);
@@ -1691,10 +1691,10 @@ impl Ui {
             ),
         };
         let cy = (h / 2.0).floor();
-        let tw = game.native_text_width(&title);
+        let tw = game.native_text_width_old(&title);
         game.native_text(batch, &title, [((w - tw) / 2.0).floor(), cy - 44.0], 0xFFFFFF, true);
         for (i, line) in wrap(game, &message, w.min(320.0) - 20.0).iter().enumerate() {
-            let lw = game.native_text_width(line);
+            let lw = game.native_text_width_old(line);
             game.native_text(batch, line, [((w - lw) / 2.0).floor(), cy - 24.0 + 10.0 * i as f32], 0xFFFFFF, true);
         }
         let (yes_rect, no_rect) = confirm_rects(self.size);
@@ -1708,7 +1708,7 @@ impl Ui {
         let [w, h] = self.size;
         let atlas = &game.gui.atlas;
         let center = |game: &Game<'_>, batch: &mut HudBatch, text: &str, y: f32| {
-            let tw = game.native_text_width(&jade::plain(text));
+            let tw = game.native_text_width_old(&jade::plain(text));
             batch.text_styled(&game.gui.atlas, &jade::rich(text), ((w - tw) / 2.0).floor(), y, rgba(0xE0, 0xE0, 0xE0, 255), true);
         };
         let mid = (h / 2.0).floor();
@@ -1765,7 +1765,7 @@ impl Ui {
         }
         if self.shown.is_empty() {
             let text = tr("gui.jade.no_results", "No results :(");
-            let tw = game.native_text_width(&text);
+            let tw = game.native_text_width_old(&text);
             game.native_text(batch, &text, [list[0] + ((list[2] - tw) / 2.0).floor(), list[1] + 10.0], 0xAAAAAA, true);
         }
         batch.clip_since(start, list[0], list[1], list[0] + list[2], list[1] + list[3]);
@@ -1830,7 +1830,7 @@ impl Ui {
             let row = &self.rows[*row_index];
             if row.kind == Kind::Title {
                 let label = if row.danger { Text::colored(row.label.as_str(), 0xFF5555) } else { Text::literal(row.label.as_str()) };
-                let tw = game.native_text_width(&row.label);
+                let tw = game.native_text_width_old(&row.label);
                 batch.text_styled(atlas, &label, x + ((w - tw) / 2.0).floor(), y + 9.0, rgba(255, 255, 255, 255), true);
                 continue;
             }
@@ -1838,7 +1838,7 @@ impl Ui {
             let hovered = if self.keyboard { focused == Some(*row_index) } else { over };
             self.draw_card(game, batch, row, *row_index, rect, hovered, m);
             let title_x = x + 2.0 + if row.icon.is_some() { 26.0 } else { 6.0 };
-            if over && !self.keyboard && m[0] >= title_x && m[0] < title_x + game.native_text_width(&row.label) && m[1] < y + h - 10.0 {
+            if over && !self.keyboard && m[0] >= title_x && m[0] < title_x + game.native_text_width_old(&row.label) && m[1] < y + h - 10.0 {
                 tooltip = Some((row, m));
             }
         }
@@ -2036,7 +2036,7 @@ impl Ui {
             game.native_text(batch, hint, [x + text_x, y + text_y], 0x808080, true);
         } else {
             let before: String = field.text.chars().take(field.caret).collect();
-            let caret = game.native_text_width(&before);
+            let caret = game.native_text_width_old(&before);
             let shift = (caret - (w - text_x - 2.0)).max(0.0);
             game.native_text(batch, &field.text, [x + text_x - shift, y + text_y], color, true);
             if focused && self.opened.elapsed().as_millis() / 300 % 2 == 0 {
@@ -2056,7 +2056,7 @@ impl Ui {
             // OptionsList.Title: centred.
             Kind::Title => {
                 let label = if row.danger { Text::colored(row.label.as_str(), 0xFF5555) } else { Text::literal(row.label.as_str()) };
-                let tw = game.native_text_width(&row.label);
+                let tw = game.native_text_width_old(&row.label);
                 batch.text_styled(atlas, &label, left + ((width - tw) / 2.0).floor(), y + 9.0, white, true);
                 return;
             }

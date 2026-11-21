@@ -9,7 +9,7 @@ fn cinematic_book_click(game: &mut crate::game::Game<'_>, right: bool) -> ::core
     let Some(size) = game.renderer.as_ref().map(|r| [r.config.width, r.config.height]) else {
         return ::core::ops::ControlFlow::Break(false);
     };
-    let batch = HudBatch::new(size);
+    let batch = HudBatch::new_old(size);
     ci::set_gui(batch.width, batch.height);
     let (x, y) = game.cursor;
     let book = BookType::Crafting;

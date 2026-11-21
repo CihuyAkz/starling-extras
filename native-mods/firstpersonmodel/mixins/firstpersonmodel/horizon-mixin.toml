@@ -136,7 +136,7 @@ bindings = [
 # HumanoidModelMixin: the parts the body hides, the arms' tilt.
 [[injection]]
 id = "parts"
-target = "horizon_client::mobs::anim::player_model_visibility"
+target = "horizon_client_lib::mobs::anim::player_model_visibility"
 kind = "RETURN"
 helper = "parts.rs"
 bindings = [
@@ -257,7 +257,7 @@ bindings = [
 # Mode): the equip displacement of FirstPersonHandsAndItemsRenderer.
 [[injection]]
 id = "arm_height"
-target = "horizon_client::first_person::equip_displacement"
+target = "horizon_client_lib::first_person::equip_displacement"
 kind = "RETURN"
 helper = "arm_height.rs"
 bindings = [
@@ -299,7 +299,7 @@ helper = "render.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
 ]
 
 [[injection]]
@@ -320,7 +320,7 @@ kind = "HEAD"
 helper = "press.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "button", ty = "i32", value = "button" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
@@ -333,7 +333,7 @@ kind = "HEAD"
 helper = "release.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "button", ty = "i32", value = "button" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
@@ -346,7 +346,7 @@ kind = "HEAD"
 helper = "drag.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
 
@@ -358,7 +358,7 @@ kind = "HEAD"
 helper = "wheel.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "scroll", ty = "[f64; 2]", value = "scroll" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
@@ -371,7 +371,7 @@ kind = "HEAD"
 helper = "key_pressed.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "key", ty = "&str", value = "key" },
   { name = "modifiers", ty = "u32", value = "modifiers" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
@@ -385,7 +385,7 @@ kind = "HEAD"
 helper = "key_released.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
 
@@ -397,7 +397,7 @@ kind = "HEAD"
 helper = "char.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "c", ty = "char", value = "c" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]

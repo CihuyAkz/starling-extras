@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 /// A one-thread HTTP/1.1 server answering GETs from `files` (path → body); it counts requests,
 /// and closes the next `drops` connections unanswered, as a network that drops.
@@ -154,13 +155,13 @@ fn the_official_layout_is_checked_and_resumable() {
     let f = fake();
     let root = std::env::temp_dir().join(format!("starling-files-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    let last = Mutex::new(Progress::default());
+    let progress = Mutex::new(Vec::new());
     let got = download(
         &sources(&f),
         &f.pins,
         &root,
         ALL,
-        &|p| *last.lock().unwrap() = p,
+        &|p| progress.lock().unwrap().push(p),
         &|| false,
     )
     .unwrap();
@@ -185,12 +186,31 @@ fn the_official_layout_is_checked_and_resumable() {
             .join(&h1)
             .is_file()
     );
-    let p = *last.lock().unwrap();
+    let samples = progress.into_inner().unwrap();
+    let p = samples.last().unwrap();
     assert_eq!((p.files, p.files_total), (5, 5));
+    assert_eq!((p.bytes, p.downloaded_bytes), (65, 65));
+    assert!(
+        samples
+            .windows(2)
+            .all(|pair| pair[0].files <= pair[1].files && pair[0].bytes <= pair[1].bytes)
+    );
     // Again: everything is there with its hash, so only nothing is fetched.
     let before = f.hits.load(Ordering::Relaxed);
-    download(&sources(&f), &f.pins, &root, ALL, &|_| {}, &|| false).unwrap();
+    let resumed = Mutex::new(Progress::default());
+    download(
+        &sources(&f),
+        &f.pins,
+        &root,
+        ALL,
+        &|p| *resumed.lock().unwrap() = p,
+        &|| false,
+    )
+    .unwrap();
     assert_eq!(f.hits.load(Ordering::Relaxed), before);
+    let p = resumed.into_inner().unwrap();
+    assert_eq!((p.files, p.bytes, p.downloaded_bytes), (5, 65, 0));
+    assert!(p.transfer_started.is_none());
     // A damaged file is fetched again; no `.part` file stays behind.
     std::fs::write(root.join("libraries/a/a/1/a.jar"), b"damaged").unwrap();
     download(&sources(&f), &f.pins, &root, ALL, &|_| {}, &|| false).unwrap();
@@ -199,68 +219,6 @@ fn the_official_layout_is_checked_and_resumable() {
         b"library a"
     );
     assert!(!root.join("libraries/a/a/1/a.jar.part").exists());
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn completed_horizon_assets_are_reused_without_downloading_or_copying_them() {
-    let f = fake();
-    let root = std::env::temp_dir().join(format!("starling-files-reuse-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let legacy = root.join("old/.local/horizon-client/T");
-    std::fs::create_dir_all(legacy.join("assets")).unwrap();
-    std::fs::write(legacy.join("horizon-resources.json"), b"{}").unwrap();
-    std::fs::write(legacy.join("android-downloads-v2.json"), b"{}").unwrap();
-
-    let index = f.files.lock().unwrap().get("/index.json").unwrap().clone();
-    std::fs::write(legacy.join("asset-index.json"), &index).unwrap();
-    let parsed: Value = serde_json::from_slice(&index).unwrap();
-    for (name, object) in parsed["objects"].as_object().unwrap() {
-        let Some(hash) = object["hash"].as_str().filter(|h| h.len() == 40) else {
-            continue;
-        };
-        let Some(bytes) = f
-            .files
-            .lock()
-            .unwrap()
-            .get(&format!("/res/{}/{hash}", &hash[..2]))
-            .cloned()
-        else {
-            continue;
-        };
-        let file = legacy.join("assets").join(name);
-        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(file, bytes).unwrap();
-    }
-
-    let game = root.join("starling");
-    let got = download_with_legacy_assets(
-        &sources(&f),
-        &f.pins,
-        &game,
-        ALL,
-        Some(&legacy),
-        &|_| {},
-        &|| false,
-    )
-    .unwrap();
-    assert!(got.client_jar.is_file());
-    assert_eq!(f.hits.load(Ordering::Relaxed), 5); // manifest, index, client, server and library only
-
-    for (name, object) in parsed["objects"].as_object().unwrap() {
-        let Some(hash) = object["hash"].as_str().filter(|h| h.len() == 40) else {
-            continue;
-        };
-        let source = legacy.join("assets").join(name);
-        let target = game.join("assets/objects").join(&hash[..2]).join(hash);
-        assert!(target.is_file());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            assert_eq!(source.metadata().unwrap().ino(), target.metadata().unwrap().ino());
-        }
-    }
-    assert!(game.join("assets/indexes/9.json").is_file());
     let _ = std::fs::remove_dir_all(&root);
 }
 

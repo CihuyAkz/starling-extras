@@ -19,7 +19,7 @@ kind = "HEAD"
 target = "horizon_client::game::native_hooks::Game<'_>::native_mods"
 helper = "h_list.rs"
 bindings = [
-  { name = "mods", ty = "&mut Vec<horizon_client::mod_api::NativeMod>", value = "&mut *mods" },
+  { name = "mods", ty = "&mut Vec<horizon_client::starling_mod_api::NativeMod>", value = "&mut *mods" },
 ]
 
 [[injection]]
@@ -92,7 +92,7 @@ target = "horizon_client::game::native_hooks::Game<'_>::native_visuals"
 helper = "h_visuals.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
-  { name = "rims", ty = "&mut Vec<horizon_client::mod_api::NativeBlockRim>", value = "&mut *rims" },
+  { name = "rims", ty = "&mut Vec<horizon_client::starling_mod_api::NativeBlockRim>", value = "&mut *rims" },
 ]
 
 [[injection]]
@@ -203,7 +203,7 @@ helper = "h_screen_draw.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
 ]
 
 [[injection]]
@@ -213,7 +213,7 @@ target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_butt
 helper = "h_screen_click.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "button", ty = "i32", value = "button" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
@@ -225,7 +225,7 @@ target = "horizon_client::game::native_hooks::Game<'_>::native_screen_mouse_drag
 helper = "h_screen_drag.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "self" },
-  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "screen", ty = "&horizon_client::starling_mod_api::NativeScreenView<'_>", value = "screen" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
 

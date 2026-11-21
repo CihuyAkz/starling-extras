@@ -14,7 +14,7 @@ fn basic_hud_key(game: &mut crate::game::Game<'_>, key: &str, pressed: bool) {
     }
 
     game.open_options_at(false, horizon_client::options_ui::Page::Mods);
-    game.options_to_game = true;
+    let _ = true;
     game.capture(false);
     editor::open(game);
 }

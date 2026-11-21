@@ -50,9 +50,22 @@ public final class GameFolderChecks {
         ids(new File(work, "ids"));
         opening(new File(work, "opening"));
         ownFiles(new File(work, "own"));
+        wardrobeImages(new File(work, "wardrobe"));
         sharedFolder(new File(work, "shared"));
         links(new File(work, "links"));
         System.out.println("ok");
+    }
+
+    private static void wardrobeImages(File root) throws IOException {
+        File image = write(new File(root, "game-wardrobe/images/local.png"), "image");
+        write(new File(root, "game-wardrobe/cloud/cached.png"), "cache");
+        write(new File(root, "game-wardrobe/wardrobe.json"), "index");
+        GameFolder folder = new GameFolder(root, true);
+        check("starling/game-wardrobe/images/local.png".equals(folder.idOf(image)),
+                "the wardrobe images have document IDs");
+        check(folder.children("starling/game-wardrobe").equals(
+                Arrays.asList("starling/game-wardrobe/images")), "only local images are exposed");
+        check(folder.idOf(new File(root, "skins")) != null, "the separate skins folder can open");
     }
 
     /** Follows android.rs game_folder, and never makes the shared folder itself. */
@@ -139,9 +152,8 @@ public final class GameFolderChecks {
                 "shared storage is all the player's");
         check(new GameFolder(root, true).idOf(new File(root, "accounts")) == null,
                 "the app's own sign-ins are not shown");
-        check("starling/horizon-native-mods".equals(
-                new GameFolder(root, true).idOf(new File(root, "horizon-native-mods"))),
-                "the native mods folder is part of the game files");
+        check(new GameFolder(root, true).idOf(new File(root, "horizon-native-mods")) == null,
+                "nor its native mods' folder: the game offers the Starling folder for it");
     }
 
     /** The app's own files: their sign-ins and builds out of reach, the top's names fixed. */
@@ -165,7 +177,7 @@ public final class GameFolderChecks {
         }
         List<String> top = folder.children("starling");
         check(top.contains("starling/options.txt") && top.contains("starling/saves"), "listed");
-        for (String made : new String[] {"resourcepacks", "shaderpacks", "horizon-mods", "horizon-native-mods"}) {
+        for (String made : new String[] {"resourcepacks", "shaderpacks", "horizon-mods"}) {
             check(top.contains("starling/" + made), made + " is made to copy into");
         }
         check(!top.contains("starling/accounts") && !top.contains("starling/native")

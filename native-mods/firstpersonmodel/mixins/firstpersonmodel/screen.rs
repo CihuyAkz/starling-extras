@@ -11,7 +11,7 @@ use super::firstpersonmodel_gui::{Action, Gui};
 use super::{Game, Screen};
 use horizon_client::clipboard::Clipboard as _;
 use horizon_client::hud::HudBatch;
-use horizon_client::mod_api::NativeScreenView;
+use horizon_client::starling_mod_api::NativeScreenView;
 use horizon_client::options_ui::Page;
 use std::cell::{Cell, RefCell};
 
