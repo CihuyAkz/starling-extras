@@ -12,7 +12,6 @@ EXTRAS_MODS = (
     "connected_textures",
     "armorhud",
     "jade",
-    "basic_hud",
     "visuality_horizon",
     "punchy",
     "freelook",

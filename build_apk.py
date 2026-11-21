@@ -83,7 +83,6 @@ BUILTIN_NATIVE_MODS = (
     "connected_textures",
     "armorhud",
     "jade",
-    "basic_hud",
     "appleskin",
     "visuality_horizon",
     "punchy",

@@ -1,4 +1,4 @@
 # The existing Starling 0.9 wrench build.
 wrench
 # Starling Extras native mod set migrated from the supplied 0.8.0 source.
-zoom recipes smartf3 freecam_plus connected_textures armorhud jade basic_hud visuality_horizon punchy freelook cinematic_interactions firstpersonmodel eatinganimation veinminer liteminer appleskin rightharvest customhud carryblock
+zoom recipes smartf3 freecam_plus connected_textures armorhud jade visuality_horizon punchy freelook cinematic_interactions firstpersonmodel eatinganimation veinminer liteminer appleskin rightharvest customhud carryblock
