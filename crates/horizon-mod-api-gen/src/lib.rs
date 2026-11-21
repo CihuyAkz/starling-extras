@@ -506,15 +506,49 @@ struct Sources {
 /// The hand-written sources, in deterministic order; `fire.rs` includes generated dispatch.
 fn native_hook_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let dir = root.join("crates/horizon-client/src/game/native_hooks");
-    let mut paths = fs::read_dir(&dir)
-        .map_err(|e| e.to_string())?
-        .map(|entry| entry.map(|entry| entry.path()).map_err(|e| e.to_string()))
-        .collect::<Result<Vec<_>, _>>()?;
-    paths.retain(|path| {
-        path.extension().is_some_and(|ext| ext == "rs")
-            && path.file_name().is_some_and(|name| name != "fire.rs")
-    });
+    let index = dir.join("mod.rs");
+    let source = fs::read_to_string(&index).map_err(|e| format!("{}: {e}", index.display()))?;
+    let syntax = syn::parse_file(&source).map_err(|e| format!("{}: {e}", index.display()))?;
+    let mut paths = vec![index.clone()];
+    for item in syntax.items {
+        let Item::Mod(module) = item else {
+            continue;
+        };
+        if module.content.is_some() || module.ident == "fire" {
+            continue;
+        }
+        let declared = module.attrs.iter().find_map(|attribute| {
+            if !attribute.path().is_ident("path") {
+                return None;
+            }
+            let syn::Meta::NameValue(value) = &attribute.meta else {
+                return None;
+            };
+            let syn::Expr::Lit(expression) = &value.value else {
+                return None;
+            };
+            let syn::Lit::Str(path) = &expression.lit else {
+                return None;
+            };
+            Some(path.value())
+        });
+        let relative = declared.unwrap_or_else(|| format!("{}.rs", module.ident));
+        let relative = Path::new(&relative);
+        if relative.is_absolute() || relative.components().count() != 1 {
+            continue;
+        }
+        let path = dir.join(relative);
+        if !path.is_file() {
+            return Err(format!(
+                "{} declares missing native hook source {}",
+                index.display(),
+                path.display()
+            ));
+        }
+        paths.push(path);
+    }
     paths.sort();
+    paths.dedup();
     Ok(paths)
 }
 
@@ -750,6 +784,20 @@ mod tests {
             .hooks;
         assert!(generated.contains("fn recipes_received("));
         assert!(generated.contains("/// Side: client."));
+    }
+
+    #[test]
+    fn native_hook_files_follow_the_module_index() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let files = super::native_hook_files(&root).unwrap();
+        let names: std::collections::HashSet<_> = files
+            .iter()
+            .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+            .collect();
+        assert!(names.contains("mod.rs"));
+        assert!(names.contains("input_key.rs"));
+        assert!(!names.contains("fire.rs"));
+        assert!(!names.contains("shared.rs"));
     }
 
     #[test]
