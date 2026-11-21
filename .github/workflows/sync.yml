@@ -23,7 +23,7 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.REPO_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -33,7 +33,7 @@ jobs:
       - name: Fetch Upstream Release
         id: upstream
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
         run: |
           RELEASE_TAG=$(gh release view --repo starling-client/starling --json tagName --jq '.tagName')
 
