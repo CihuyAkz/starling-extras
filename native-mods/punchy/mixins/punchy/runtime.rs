@@ -53,7 +53,6 @@ struct State {
     resource_source: String,
     editor: HandEditor,
     hand_editor_open: bool,
-    last_slider: Option<String>,
 }
 #[derive(Clone, Debug)]
 struct HandEditor {
@@ -718,6 +717,7 @@ pub(super) fn settings(game: &Game<'_>, buttons: &mut Vec<String>) {
         state.editor = HandEditor::parse(game.native_setting(ID,"hand_editor.json"));
         let hand = state.editor.selected_hand;
         let item = held_item_id(game, hand);
+        let left = editor_left(game, hand);
         let choices = selector_choices(game, &state, &item);
         if !choices.iter().any(|choice| choice == &state.editor.selected_selector) {
             state.editor.selected_selector = choices.first().cloned().unwrap_or_default();
@@ -762,62 +762,18 @@ pub(super) fn settings(game: &Game<'_>, buttons: &mut Vec<String>) {
                 buttons.push(format!("{marker} {choice}"));
             }
         }
-    });
-}
-
-
-pub(super) fn settings_sliders(
-    game: &Game<'_>,
-    sliders: &mut Vec<horizon_client_render::mod_list::NativeSlider>,
-) {
-    let editor_open = STATE.with(|cell| cell.borrow().hand_editor_open);
-    if !editor_open {
-        return;
-    }
-    STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        load(game, &mut state);
-        state.editor = HandEditor::parse(game.native_setting(ID, "hand_editor.json"));
-        let hand = state.editor.selected_hand;
-        let item = held_item_id(game, hand);
-        let left = editor_left(game, hand);
-        let choices = selector_choices(game, &state, &item);
-        if !choices.iter().any(|choice| choice == &state.editor.selected_selector) {
-            state.editor.selected_selector = choices.first().cloned().unwrap_or_default();
-        }
-        if state.editor.selected_target == "line" && item != "minecraft:fishing_rod" {
-            state.editor.selected_target = "item".into();
-            state.editor.selected_scope = "item".into();
-            state.editor.selected_selector = item.clone();
-        }
-        if state.editor.selected_target == "line" && state.editor.selected_scope != "item" {
-            state.editor.selected_scope = "item".into();
-            state.editor.selected_selector = item.clone();
-        }
-        let target = state.editor.selected_target.clone();
-        let scope = state.editor.selected_scope.clone();
-        let selector = if scope == "item" {
-            item.as_str()
-        } else {
-            state.editor.selected_selector.as_str()
-        };
-        if (scope == "tag" || scope == "group") && selector.is_empty() {
-            return;
-        }
-        let transform = editor_scope_transform(&state, &item, left, &target, &scope, selector);
-        for field in editor_fields(&target, &scope) {
-            let current = transform_component(&transform, field.key)
-                .clamp(field.minimum, field.maximum);
-            let value = ((current - field.minimum) / (field.maximum - field.minimum))
-                .clamp(0.0, 1.0);
-            sliders.push(horizon_client_render::mod_list::NativeSlider {
-                section: field.section.to_owned(),
-                label: format!("{} · {:.*}", field.label, field.precision, current),
-                value,
-            });
+        if !((scope == "tag" || scope == "group") && selector.is_empty()) {
+            let transform = editor_scope_transform(&state, &item, left, &target, &scope, selector);
+            for field in editor_fields(&target, &scope) {
+                let value = transform_component(&transform, field.key)
+                    .clamp(field.minimum, field.maximum);
+                buttons.push(format!("Decrease {} · {:.*}", field.label, field.precision, value));
+                buttons.push(format!("Increase {} · {:.*}", field.label, field.precision, value));
+            }
         }
     });
 }
+
 
 pub(super) fn click(game: &Game<'_>, button: usize) {
     let editor_open = STATE.with(|cell| cell.borrow().hand_editor_open);
@@ -847,13 +803,40 @@ pub(super) fn click(game: &Game<'_>, button: usize) {
             let mut state = cell.borrow_mut();
             load(game,&mut state);
             state.editor = HandEditor::parse(game.native_setting(ID,"hand_editor.json"));
-            state.last_slider = None;
             let hand = state.editor.selected_hand;
             let item = held_item_id(game,hand);
             let left = editor_left(game,hand);
             let mut choices = selector_choices(game,&state,&item);
             if !choices.iter().any(|choice|choice==&state.editor.selected_selector) {
                 state.editor.selected_selector = choices.first().cloned().unwrap_or_default();
+            }
+            let target = state.editor.selected_target.clone();
+            let scope = state.editor.selected_scope.clone();
+            let choice_count = if scope == "tag" || scope == "group" { choices.len() } else { 0 };
+            let controls_start = 44 + choice_count;
+            if button >= controls_start {
+                let offset = button - controls_start;
+                let field_index = offset / 2;
+                let fields = editor_fields(&target, &scope);
+                if let Some(field) = fields.get(field_index).copied() {
+                    let selector = if scope == "item" { item.as_str() } else { state.editor.selected_selector.as_str() };
+                    if !((scope == "tag" || scope == "group") && selector.is_empty()) {
+                        let transform = editor_scope_transform(&state, &item, left, &target, &scope, selector);
+                        let current = transform_component(&transform, field.key);
+                        let direction = if offset % 2 == 0 { -1.0 } else { 1.0 };
+                        let next = (current + field.step * direction).clamp(field.minimum, field.maximum);
+                        if (next - current).abs() > 0.00001 {
+                            state.editor.remember();
+                            let values = state.editor.transform_mut(&item, left, &target, &scope, selector);
+                            values.as_object_mut().expect("editor transform is an object").insert(
+                                field.key.into(),
+                                serde_json::json!(next),
+                            );
+                        }
+                    }
+                }
+                state.editor.save(game);
+                return;
             }
             match button {
                 3 => { state.editor.selected_hand = 1-state.editor.selected_hand; }
@@ -1059,51 +1042,6 @@ fn editor_fields(target: &str, scope: &str) -> Vec<EditorField> {
         return fields;
     }
     position.into_iter().chain(rotation).chain([scale]).chain(pivot).collect()
-}
-
-pub(super) fn slider(game: &Game<'_>, slider: usize, normalized: f32, finished: bool) {
-    STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        load(game, &mut state);
-        state.editor = HandEditor::parse(game.native_setting(ID, "hand_editor.json"));
-        let hand = state.editor.selected_hand;
-        let item = held_item_id(game, hand);
-        let left = editor_left(game, hand);
-        let target = state.editor.selected_target.clone();
-        let scope = state.editor.selected_scope.clone();
-        if target == "line" && (item != "minecraft:fishing_rod" || scope != "item") {
-            if finished { state.last_slider = None; }
-            return;
-        }
-        let fields = editor_fields(&target, &scope);
-        let Some(field) = fields.get(slider).copied() else {
-            if finished { state.last_slider = None; }
-            return;
-        };
-        let selector = if scope == "item" { item.clone() } else { state.editor.selected_selector.clone() };
-        if (scope == "tag" || scope == "group") && selector.is_empty() {
-            if finished { state.last_slider = None; }
-            return;
-        }
-        let current_transform = editor_scope_transform(&state, &item, left, &target, &scope, &selector);
-        let current = transform_component(&current_transform, field.key);
-        let raw = field.minimum + normalized.clamp(0.0, 1.0) * (field.maximum - field.minimum);
-        let next = (field.minimum + ((raw - field.minimum) / field.step).round() * field.step)
-            .clamp(field.minimum, field.maximum);
-        if (next - current).abs() > 0.00001 {
-            let context = format!("{item}|{hand}|{target}|{scope}|{selector}|{}", field.key);
-            if state.last_slider.as_deref() != Some(context.as_str()) {
-                state.editor.remember();
-                state.last_slider = Some(context);
-            }
-            let values = state.editor.transform_mut(&item, left, &target, &scope, &selector);
-            values.as_object_mut().expect("editor transform is an object").insert(field.key.into(), serde_json::json!(next));
-            state.editor.save(game);
-        }
-        if finished {
-            state.last_slider = None;
-        }
-    });
 }
 
 pub(super) fn fishing_line_transform(game: &Game<'_>, left: bool) -> Option<punchy_engine::tuning::Transform> {

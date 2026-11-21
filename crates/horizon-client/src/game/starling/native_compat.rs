@@ -766,6 +766,18 @@ impl Game<'_> {
     ) {
         let _ = (player, command, ran);
     }
+    pub(in crate::game) fn native_perform_console_command(
+        &mut self,
+        command: &str,
+        ran: &mut bool,
+    ) {
+        let _ = (command, ran);
+    }
+    pub(in crate::game) fn old_perform_console_command(&mut self, command: &str) -> bool {
+        let mut ran = false;
+        self.native_perform_console_command(command, &mut ran);
+        ran
+    }
     /// The old command hook for the line being run by `uuid` at `permission`: whether a mod made
     /// for it ran it.
     pub(in crate::game) fn old_perform_command(&mut self, uuid: u128, permission: u8) -> bool {

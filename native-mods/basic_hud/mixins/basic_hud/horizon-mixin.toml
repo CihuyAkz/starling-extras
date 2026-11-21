@@ -23,7 +23,7 @@ source = "pickup_data.rs"
 [[injection]]
 id = "pickup_before"
 kind = "HEAD"
-target = "horizon_client::game::native_hooks::Game<'_>::native_pickup_refused"
+target = "horizon_client::game::native_hooks::item_picked_up::Game<'_>::native_pickup_insert"
 helper = "pickup_before.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },

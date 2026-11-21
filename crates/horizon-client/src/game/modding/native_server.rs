@@ -2238,6 +2238,9 @@ impl Game<'_> {
         if Self::native_command_level(host, line).is_none() {
             return false;
         }
+        if self.as_console_in_overworld(|game| game.old_perform_console_command(line)) {
+            return true;
+        }
         self.as_console_in_overworld(|game| {
             let previous = game
                 .command_source

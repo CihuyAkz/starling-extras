@@ -57,6 +57,9 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/source"
 git -C "$source" archive --format=tar HEAD | tar -x -C "$work/source"
 find "$work/source" -type l -delete
+[ -s "$source/packaging/android/native-hooks-0.8.json" ] || fail "missing Starling 0.8 hook compatibility catalog"
+rm -f "$work/source/native-hooks.json"
+rm -rf "$work/source/tools/native-hook-fragments"
 echo "$commit" > "$work/source/.horizon-revision"
 
 # The game module is compiled by two crates (horizon-client's binary, and horizon-android from
@@ -85,6 +88,7 @@ cargo fetch --locked --manifest-path "$work/source/Cargo.toml" > /dev/null
 CARGO_TARGET_DIR=$cache/materialize-target cargo run --quiet --locked --offline \
   --manifest-path "$work/source/Cargo.toml" -p horizon-mod-api-gen --bin horizon-materialize \
   -- "$work/source"
+[ -s "$work/source/native-hooks.json" ] || fail "horizon-materialize did not generate native-hooks.json"
 # What horizon-mixins refuses in the fork's source, made readable in this copy (native_mixins_source.py): modules
 # named through a parent folder (`#[path = "../x.rs"]`) move next to their module, and the prebuilt game's
 # `#[replaceable]` markers (an attribute macro that changes nothing) go.
@@ -102,6 +106,7 @@ for bundle in "$@"; do
     "$copy/horizon-mixin.toml"
 done
 python3 "$source/packaging/android/native_mod_adapt.py" "$work/source" "$work/mods"
+python3 "$source/tools/check_android_native_mods.py" "$work/source" "$work/mods"
 
 # What went in names the build: the commit, the profile, horizon-mixins, every bundle file.
 key=$(

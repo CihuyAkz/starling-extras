@@ -443,6 +443,10 @@ def module_items(text):
             continue
         if line.startswith("#["):
             attributes.append(line)
+            if m := DECLARED.search(line):
+                path = next((p[1] for a in attributes if (p := ATTRIBUTE.search(a))), None)
+                declared.append((m[1], path))
+                attributes = []
             continue
         if line.startswith("impl") and line.rstrip().endswith("{") and (m := IMPL.match(line)):
             # A trait's methods are named `<Type as Trait>::name`.
@@ -474,7 +478,7 @@ def module_tree(source):
         folder = file.parent if owns_folder else file.parent / file.stem
         for name, attribute in declared:
             if attribute:
-                child = file.parent / attribute
+                child = folder / attribute
                 walk(child, f"{path}::{name}", child.name == "mod.rs")
             elif (folder / f"{name}.rs").is_file():
                 walk(folder / f"{name}.rs", f"{path}::{name}", False)

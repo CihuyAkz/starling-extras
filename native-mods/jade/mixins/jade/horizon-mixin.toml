@@ -297,7 +297,7 @@ visibility = "pub"
 id = "gamerule-lookup"
 kind = "HEAD"
 cancellable = true
-target = "horizon_client_core::gamerules::rule"
+target = "horizon_client_core::gamerules::RuleRegistry::rule"
 helper = "rule_lookup.rs"
 bindings = [
   { name = "name", ty = "&str", value = "name" },

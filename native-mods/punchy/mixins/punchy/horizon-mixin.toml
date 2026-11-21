@@ -38,20 +38,6 @@ helper = "click.rs"
 bindings = [{ name="game", ty="&crate::game::Game<'_>", value="&*self" },{ name="mod_id", ty="&str", value="mod_id" },{ name="button", ty="usize", value="button" }]
 
 [[injection]]
-id = "sliders"
-kind = "HEAD"
-target = "horizon_client::game::native_hooks::Game<'_>::native_settings_sliders"
-helper = "sliders.rs"
-bindings = [{ name="game", ty="&crate::game::Game<'_>", value="&*self" },{ name="mod_id", ty="&str", value="mod_id" },{ name="sliders", ty="&mut Vec<horizon_client_render::mod_list::NativeSlider>", value="&mut *sliders" }]
-
-[[injection]]
-id = "slider"
-kind = "HEAD"
-target = "horizon_client::game::native_hooks::Game<'_>::native_settings_slider"
-helper = "slider.rs"
-bindings = [{ name="game", ty="&crate::game::Game<'_>", value="&*self" },{ name="mod_id", ty="&str", value="mod_id" },{ name="slider", ty="usize", value="slider" },{ name="value", ty="f32", value="value" },{ name="finished", ty="bool", value="finished" }]
-
-[[injection]]
 id = "tick"
 kind = "HEAD"
 target = "horizon_client::game::native_hooks::Game<'_>::native_tick"

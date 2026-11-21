@@ -48,6 +48,9 @@ rm -rf "$work/source"
 mkdir -p "$work/source"
 git -C "$source" archive --format=tar HEAD | tar -x -C "$work/source"
 find "$work/source" -type l -delete
+[ -s "$source/packaging/android/native-hooks-0.8.json" ] || fail "missing Starling 0.8 hook compatibility catalog"
+rm -f "$work/source/native-hooks.json"
+rm -rf "$work/source/tools/native-hook-fragments"
 echo "$commit" > "$work/source/.horizon-revision"
 lib_line='path = "../horizon-client/src/android_lib.rs"'
 grep -qxF "$lib_line" "$work/source/$manifest" || fail "$manifest no longer has: $lib_line"
@@ -64,6 +67,7 @@ CARGO_TARGET_DIR=$work/materialize-target cargo run --quiet --locked --offline \
   --manifest-path "$work/source/Cargo.toml" -p horizon-mod-api-gen --bin horizon-materialize \
   -- "$work/source" > "$out/logs/_materialize.log" 2>&1 \
   || { tail -20 "$out/logs/_materialize.log"; fail "horizon-materialize failed"; }
+[ -s "$work/source/native-hooks.json" ] || fail "horizon-materialize did not generate native-hooks.json"
 python3 "$work/source/packaging/android/native_mixins_source.py" "$work/source" > "$out/logs/_mixins_source.log" 2>&1 \
   || { cat "$out/logs/_mixins_source.log"; fail "native_mixins_source.py failed"; }
 
@@ -122,6 +126,12 @@ for mod in "$@"; do
     sed -i -E "s|^horizon_revision = \"[0-9a-f]*\"|horizon_revision = \"$commit\"|" {} +
   python3 "$work/source/packaging/android/native_mod_adapt.py" "$work/source" "$work/mods" \
     > "$out/logs/$mod.adapt.log" 2>&1
+  python3 "$work/source/tools/check_android_native_mods.py" "$work/source" "$work/mods" \
+    > "$out/logs/$mod.preflight.log" 2>&1 || {
+      cat "$out/logs/$mod.preflight.log"
+      printf '%s\tapply-fail\t\t\t%s\n' "$mod" "native mod preflight failed" >> "$out/check.tsv"
+      continue
+    }
   if ! "$tools/bin/horizon-mixins" apply --workspace "$work/source" --mods "$work/mods" --out "$work/stage" \
       > "$out/logs/$mod.apply.log" 2>&1; then
     printf '%s\tapply-fail\t\t\t%s\n' "$mod" "$(why "$out/logs/$mod.apply.log")" >> "$out/check.tsv"
