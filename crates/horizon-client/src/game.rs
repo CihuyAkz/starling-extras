@@ -1877,6 +1877,7 @@ pub mod points {
     }
 }
 mod host;
+#[path = "native_hooks/mod.rs"]
 mod native_hooks;
 use event_loop::EventLoopCtl;
 use hand::interact_location;
