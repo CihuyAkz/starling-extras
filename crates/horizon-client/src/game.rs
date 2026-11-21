@@ -67,1765 +67,1765 @@ fn pack_files(world_tables: &Option<WorldTables>) -> horizon_world::loot::PackOv
         None => horizon_world::loot::PackOverlay::NONE,
     }
 }
-#[path = "administration/clone_dimensions_tests.rs"]
+#[path = "game/administration/clone_dimensions_tests.rs"]
 mod clone_dimensions_tests;
-#[path = "administration/command_blocks.rs"]
+#[path = "game/administration/command_blocks.rs"]
 mod command_blocks;
-#[path = "administration/command_harness.rs"]
+#[path = "game/administration/command_harness.rs"]
 mod command_harness;
-#[path = "administration/command_minecarts.rs"]
+#[path = "game/administration/command_minecarts.rs"]
 mod command_minecarts;
-#[path = "administration/commands/mod.rs"]
+#[path = "game/administration/commands/mod.rs"]
 mod commands;
-#[path = "administration/functions.rs"]
+#[path = "game/administration/functions.rs"]
 mod functions;
-#[path = "administration/game_tests.rs"]
+#[path = "game/administration/game_tests.rs"]
 mod game_tests;
-#[path = "administration/inline_feature_parse_tests.rs"]
+#[path = "game/administration/inline_feature_parse_tests.rs"]
 mod inline_feature_parse_tests;
-#[path = "administration/inline_loot_reference_tests.rs"]
+#[path = "game/administration/inline_loot_reference_tests.rs"]
 mod inline_loot_reference_tests;
-#[path = "administration/jigsaw_blocks.rs"]
+#[path = "game/administration/jigsaw_blocks.rs"]
 mod jigsaw_blocks;
-#[path = "administration/jigsaw_edit.rs"]
+#[path = "game/administration/jigsaw_edit.rs"]
 mod jigsaw_edit;
-#[path = "administration/lan_op.rs"]
+#[path = "game/administration/lan_op.rs"]
 mod lan_op;
-#[path = "administration/loot_kill_guest_tests.rs"]
+#[path = "game/administration/loot_kill_guest_tests.rs"]
 mod loot_kill_guest_tests;
-#[path = "administration/setblock_order_tests.rs"]
+#[path = "game/administration/setblock_order_tests.rs"]
 mod setblock_order_tests;
-#[path = "administration/structure_blocks.rs"]
+#[path = "game/administration/structure_blocks.rs"]
 mod structure_blocks;
-#[path = "administration/structure_edit.rs"]
+#[path = "game/administration/structure_edit.rs"]
 mod structure_edit;
-#[path = "administration/structures.rs"]
+#[path = "game/administration/structures.rs"]
 mod structures;
-#[path = "administration/tempban.rs"]
+#[path = "game/administration/tempban.rs"]
 mod tempban;
-#[path = "administration/test_block_edit.rs"]
+#[path = "game/administration/test_block_edit.rs"]
 mod test_block_edit;
-#[path = "administration/test_blocks.rs"]
+#[path = "game/administration/test_blocks.rs"]
 mod test_blocks;
-#[path = "administration/test_entities.rs"]
+#[path = "game/administration/test_entities.rs"]
 mod test_entities;
-#[path = "administration/test_environments.rs"]
+#[path = "game/administration/test_environments.rs"]
 mod test_environments;
-#[path = "administration/test_instance_edit.rs"]
+#[path = "game/administration/test_instance_edit.rs"]
 mod test_instance_edit;
-#[path = "administration/test_instances.rs"]
+#[path = "game/administration/test_instances.rs"]
 mod test_instances;
-#[path = "blocks/banners.rs"]
+#[path = "game/blocks/banners.rs"]
 mod banners;
-#[path = "blocks/beacon.rs"]
+#[path = "game/blocks/beacon.rs"]
 mod beacon;
-#[path = "blocks/beds.rs"]
+#[path = "game/blocks/beds.rs"]
 mod beds;
-#[path = "blocks/block_breaking.rs"]
+#[path = "game/blocks/block_breaking.rs"]
 mod block_breaking;
-#[path = "blocks/block_drops_pops_tests.rs"]
+#[path = "game/blocks/block_drops_pops_tests.rs"]
 mod block_drops_pops_tests;
-#[path = "blocks/block_edits.rs"]
+#[path = "game/blocks/block_edits.rs"]
 mod block_edits;
-#[path = "blocks/block_entity_anims.rs"]
+#[path = "game/blocks/block_entity_anims.rs"]
 mod block_entity_anims;
-#[path = "blocks/block_entity_ticks.rs"]
+#[path = "game/blocks/block_entity_ticks.rs"]
 mod block_entity_ticks;
-#[path = "blocks/block_items.rs"]
+#[path = "game/blocks/block_items.rs"]
 mod block_items;
-#[path = "blocks/block_part_tool_tests.rs"]
+#[path = "game/blocks/block_part_tool_tests.rs"]
 mod block_part_tool_tests;
-#[path = "blocks/block_particles.rs"]
+#[path = "game/blocks/block_particles.rs"]
 mod block_particles;
-#[path = "blocks/block_ticks.rs"]
+#[path = "game/blocks/block_ticks.rs"]
 mod block_ticks;
-#[path = "blocks/bookshelves.rs"]
+#[path = "game/blocks/bookshelves.rs"]
 mod bookshelves;
-#[path = "blocks/brewing_remainder.rs"]
+#[path = "game/blocks/brewing_remainder.rs"]
 mod brewing_remainder;
-#[path = "blocks/brush.rs"]
+#[path = "game/blocks/brush.rs"]
 mod brush;
-#[path = "blocks/campfire.rs"]
+#[path = "game/blocks/campfire.rs"]
 mod campfire;
-#[path = "blocks/campfire_douse.rs"]
+#[path = "game/blocks/campfire_douse.rs"]
 mod campfire_douse;
-#[path = "blocks/cartography.rs"]
+#[path = "game/blocks/cartography.rs"]
 mod cartography;
-#[path = "blocks/cauldron_interactions.rs"]
+#[path = "game/blocks/cauldron_interactions.rs"]
 mod cauldron_interactions;
-#[path = "blocks/cauldron_underwater_tests.rs"]
+#[path = "game/blocks/cauldron_underwater_tests.rs"]
 mod cauldron_underwater_tests;
-#[path = "blocks/cauldrons.rs"]
+#[path = "game/blocks/cauldrons.rs"]
 mod cauldrons;
-#[path = "blocks/chiseled_bookshelf.rs"]
+#[path = "game/blocks/chiseled_bookshelf.rs"]
 mod chiseled_bookshelf;
-#[path = "blocks/clone_block_ticks_tests.rs"]
+#[path = "game/blocks/clone_block_ticks_tests.rs"]
 mod clone_block_ticks_tests;
-#[path = "blocks/composter.rs"]
+#[path = "game/blocks/composter.rs"]
 mod composter;
-#[path = "blocks/debug_stick.rs"]
+#[path = "game/blocks/debug_stick.rs"]
 mod debug_stick;
-#[path = "blocks/decorated_pot.rs"]
+#[path = "game/blocks/decorated_pot.rs"]
 mod decorated_pot;
-#[path = "blocks/dispense_bucket.rs"]
+#[path = "game/blocks/dispense_bucket.rs"]
 mod dispense_bucket;
-#[path = "blocks/dispenser.rs"]
+#[path = "game/blocks/dispenser.rs"]
 mod dispenser;
-#[path = "blocks/empty_contents_tests.rs"]
+#[path = "game/blocks/empty_contents_tests.rs"]
 mod empty_contents_tests;
-#[path = "blocks/enchant_power_beam_tests.rs"]
+#[path = "game/blocks/enchant_power_beam_tests.rs"]
 mod enchant_power_beam_tests;
-#[path = "blocks/falling_blocks.rs"]
+#[path = "game/blocks/falling_blocks.rs"]
 mod falling_blocks;
-#[path = "blocks/fertile_part_tests.rs"]
+#[path = "game/blocks/fertile_part_tests.rs"]
 mod fertile_part_tests;
-#[path = "blocks/first_tick_registration_tests.rs"]
+#[path = "game/blocks/first_tick_registration_tests.rs"]
 mod first_tick_registration_tests;
-#[path = "blocks/growth.rs"]
+#[path = "game/blocks/growth.rs"]
 mod growth;
-#[path = "blocks/jukebox.rs"]
+#[path = "game/blocks/jukebox.rs"]
 mod jukebox;
-#[path = "blocks/level_access.rs"]
+#[path = "game/blocks/level_access.rs"]
 mod level_access;
-#[path = "blocks/loom.rs"]
+#[path = "game/blocks/loom.rs"]
 mod loom;
-#[path = "blocks/machines/mod.rs"]
+#[path = "game/blocks/machines/mod.rs"]
 mod machines;
-#[path = "blocks/maps/mod.rs"]
+#[path = "game/blocks/maps/mod.rs"]
 mod maps;
-#[path = "blocks/motion_ids.rs"]
+#[path = "game/blocks/motion_ids.rs"]
 mod motion_ids;
-#[path = "blocks/moving_pistons.rs"]
+#[path = "game/blocks/moving_pistons.rs"]
 mod moving_pistons;
-#[path = "blocks/nether_portal.rs"]
+#[path = "game/blocks/nether_portal.rs"]
 mod nether_portal;
-#[path = "blocks/piston_carry.rs"]
+#[path = "game/blocks/piston_carry.rs"]
 mod piston_carry;
-#[path = "blocks/piston_carry_state.rs"]
+#[path = "game/blocks/piston_carry_state.rs"]
 mod piston_carry_state;
-#[path = "blocks/piston_push.rs"]
+#[path = "game/blocks/piston_push.rs"]
 mod piston_push;
-#[path = "blocks/place_feature_tests.rs"]
+#[path = "game/blocks/place_feature_tests.rs"]
 mod place_feature_tests;
-#[path = "blocks/player_destroy.rs"]
+#[path = "game/blocks/player_destroy.rs"]
 mod player_destroy;
-#[path = "blocks/player_destroy_tests.rs"]
+#[path = "game/blocks/player_destroy_tests.rs"]
 mod player_destroy_tests;
-#[path = "blocks/potent_sulfur.rs"]
+#[path = "game/blocks/potent_sulfur.rs"]
 mod potent_sulfur;
-#[path = "blocks/powder_snow.rs"]
+#[path = "game/blocks/powder_snow.rs"]
 mod powder_snow;
-#[path = "blocks/pumpkin.rs"]
+#[path = "game/blocks/pumpkin.rs"]
 mod pumpkin;
-#[path = "blocks/random_order_tests.rs"]
+#[path = "game/blocks/random_order_tests.rs"]
 mod random_order_tests;
-#[path = "blocks/respawn_anchor.rs"]
+#[path = "game/blocks/respawn_anchor.rs"]
 mod respawn_anchor;
-#[path = "blocks/respawn_position_tests.rs"]
+#[path = "game/blocks/respawn_position_tests.rs"]
 mod respawn_position_tests;
-#[path = "blocks/sculk.rs"]
+#[path = "game/blocks/sculk.rs"]
 mod sculk;
-#[path = "blocks/sculk_fixture.rs"]
+#[path = "game/blocks/sculk_fixture.rs"]
 mod sculk_fixture;
-#[path = "blocks/shelf.rs"]
+#[path = "game/blocks/shelf.rs"]
 mod shelf;
-#[path = "blocks/spill.rs"]
+#[path = "game/blocks/spill.rs"]
 mod spill;
-#[path = "blocks/splash_water.rs"]
+#[path = "game/blocks/splash_water.rs"]
 mod splash_water;
-#[path = "blocks/stations.rs"]
+#[path = "game/blocks/stations.rs"]
 mod stations;
-#[path = "blocks/sulfur_bucket_tests.rs"]
+#[path = "game/blocks/sulfur_bucket_tests.rs"]
 mod sulfur_bucket_tests;
-#[path = "blocks/tool_modification.rs"]
+#[path = "game/blocks/tool_modification.rs"]
 mod tool_modification;
-#[path = "blocks/transient_blocks.rs"]
+#[path = "game/blocks/transient_blocks.rs"]
 mod transient_blocks;
-#[path = "blocks/trial_visuals.rs"]
+#[path = "game/blocks/trial_visuals.rs"]
 mod trial_visuals;
-#[path = "blocks/vault.rs"]
+#[path = "game/blocks/vault.rs"]
 mod vault;
-#[path = "blocks/vibration_source_tests.rs"]
+#[path = "game/blocks/vibration_source_tests.rs"]
 mod vibration_source_tests;
-#[path = "blocks/vibration_tests.rs"]
+#[path = "game/blocks/vibration_tests.rs"]
 mod vibration_tests;
-#[path = "blocks/waxing.rs"]
+#[path = "game/blocks/waxing.rs"]
 mod waxing;
-#[path = "blocks/waxing_tests.rs"]
+#[path = "game/blocks/waxing_tests.rs"]
 mod waxing_tests;
-#[path = "blocks/world_fluids.rs"]
+#[path = "game/blocks/world_fluids.rs"]
 mod world_fluids;
-#[path = "blocks/world_fluids_tests.rs"]
+#[path = "game/blocks/world_fluids_tests.rs"]
 mod world_fluids_tests;
-#[path = "blocks/world_test_def_tests.rs"]
+#[path = "game/blocks/world_test_def_tests.rs"]
 mod world_test_def_tests;
-#[path = "entities/ahead.rs"]
+#[path = "game/entities/ahead.rs"]
 mod ahead;
-#[path = "entities/armor_stands.rs"]
+#[path = "game/entities/armor_stands.rs"]
 mod armor_stands;
-#[path = "entities/boarding.rs"]
+#[path = "game/entities/boarding.rs"]
 mod boarding;
-#[path = "entities/boat_authority_fixture.rs"]
+#[path = "game/entities/boat_authority_fixture.rs"]
 mod boat_authority_fixture;
-#[path = "entities/boat_leads.rs"]
+#[path = "game/entities/boat_leads.rs"]
 mod boat_leads;
-#[path = "entities/boat_passengers.rs"]
+#[path = "game/entities/boat_passengers.rs"]
 mod boat_passengers;
-#[path = "entities/boat_rider_fixture.rs"]
+#[path = "game/entities/boat_rider_fixture.rs"]
 mod boat_rider_fixture;
-#[path = "entities/boats/mod.rs"]
+#[path = "game/entities/boats/mod.rs"]
 mod boats;
-#[path = "entities/cart_rails.rs"]
+#[path = "game/entities/cart_rails.rs"]
 mod cart_rails;
-#[path = "entities/closest_space.rs"]
+#[path = "game/entities/closest_space.rs"]
 mod closest_space;
-#[path = "entities/cushions.rs"]
+#[path = "game/entities/cushions.rs"]
 pub(crate) mod cushions;
-#[path = "entities/entity.rs"]
+#[path = "game/entities/entity.rs"]
 mod entity;
-#[path = "entities/entity_die_tests.rs"]
+#[path = "game/entities/entity_die_tests.rs"]
 mod entity_die_tests;
-#[path = "entities/entity_inside_tests.rs"]
+#[path = "game/entities/entity_inside_tests.rs"]
 mod entity_inside_tests;
-#[path = "entities/entity_residency.rs"]
+#[path = "game/entities/entity_residency.rs"]
 mod entity_residency;
-#[path = "entities/entity_sounds.rs"]
+#[path = "game/entities/entity_sounds.rs"]
 mod entity_sounds;
-#[path = "entities/explosion.rs"]
+#[path = "game/entities/explosion.rs"]
 mod explosion;
-#[path = "entities/explosion_detonate.rs"]
+#[path = "game/entities/explosion_detonate.rs"]
 mod explosion_detonate;
-#[path = "entities/explosion_settings.rs"]
+#[path = "game/entities/explosion_settings.rs"]
 mod explosion_settings;
-#[path = "entities/extinguish.rs"]
+#[path = "game/entities/extinguish.rs"]
 mod extinguish;
-#[path = "entities/falling_damage.rs"]
+#[path = "game/entities/falling_damage.rs"]
 mod falling_damage;
-#[path = "entities/falling_save.rs"]
+#[path = "game/entities/falling_save.rs"]
 mod falling_save;
-#[path = "entities/falling_tick.rs"]
+#[path = "game/entities/falling_tick.rs"]
 mod falling_tick;
-#[path = "entities/falling_tick_tests.rs"]
+#[path = "game/entities/falling_tick_tests.rs"]
 mod falling_tick_tests;
-#[path = "entities/fireworks.rs"]
+#[path = "game/entities/fireworks.rs"]
 mod fireworks;
-#[path = "entities/frames.rs"]
+#[path = "game/entities/frames.rs"]
 mod frames;
-#[path = "entities/general.rs"]
+#[path = "game/entities/general.rs"]
 mod general;
-#[path = "entities/glowing.rs"]
+#[path = "game/entities/glowing.rs"]
 mod glowing;
-#[path = "entities/interaction_data_tests.rs"]
+#[path = "game/entities/interaction_data_tests.rs"]
 mod interaction_data_tests;
-#[path = "entities/item_contact_tests.rs"]
+#[path = "game/entities/item_contact_tests.rs"]
 mod item_contact_tests;
-#[path = "entities/item_hurt.rs"]
+#[path = "game/entities/item_hurt.rs"]
 mod item_hurt;
-#[path = "entities/item_void_tests.rs"]
+#[path = "game/entities/item_void_tests.rs"]
 mod item_void_tests;
-#[path = "entities/kill_die_cancel_tests.rs"]
+#[path = "game/entities/kill_die_cancel_tests.rs"]
 mod kill_die_cancel_tests;
-#[path = "entities/kill_die_vibration_tests.rs"]
+#[path = "game/entities/kill_die_vibration_tests.rs"]
 mod kill_die_vibration_tests;
-#[path = "entities/knot_residency_tests.rs"]
+#[path = "game/entities/knot_residency_tests.rs"]
 mod knot_residency_tests;
-#[path = "entities/leads.rs"]
+#[path = "game/entities/leads.rs"]
 mod leads;
-#[path = "entities/lightning.rs"]
+#[path = "game/entities/lightning.rs"]
 mod lightning;
-#[path = "entities/lightning_item_tests.rs"]
+#[path = "game/entities/lightning_item_tests.rs"]
 mod lightning_item_tests;
-#[path = "entities/mannequin_save_tests.rs"]
+#[path = "game/entities/mannequin_save_tests.rs"]
 mod mannequin_save_tests;
-#[path = "entities/melee.rs"]
+#[path = "game/entities/melee.rs"]
 mod melee;
-#[path = "entities/minecart_moves.rs"]
+#[path = "game/entities/minecart_moves.rs"]
 mod minecart_moves;
-#[path = "entities/minecarts.rs"]
+#[path = "game/entities/minecarts.rs"]
 mod minecarts;
-#[path = "entities/move_gate.rs"]
+#[path = "game/entities/move_gate.rs"]
 mod move_gate;
-#[path = "entities/orb_data_tests.rs"]
+#[path = "game/entities/orb_data_tests.rs"]
 mod orb_data_tests;
-#[path = "entities/orb_score_store_tests.rs"]
+#[path = "game/entities/orb_score_store_tests.rs"]
 mod orb_score_store_tests;
-#[path = "entities/paintings.rs"]
+#[path = "game/entities/paintings.rs"]
 mod paintings;
-#[path = "entities/passengers.rs"]
+#[path = "game/entities/passengers.rs"]
 mod passengers;
-#[path = "entities/pick_entity.rs"]
+#[path = "game/entities/pick_entity.rs"]
 mod pick_entity;
-#[path = "entities/pickups.rs"]
+#[path = "game/entities/pickups.rs"]
 mod pickups;
-#[path = "entities/player_equip.rs"]
+#[path = "game/entities/player_equip.rs"]
 mod player_equip;
-#[path = "entities/player_residency.rs"]
+#[path = "game/entities/player_residency.rs"]
 mod player_residency;
-#[path = "entities/player_residency_tests.rs"]
+#[path = "game/entities/player_residency_tests.rs"]
 mod player_residency_tests;
-#[path = "entities/pvp.rs"]
+#[path = "game/entities/pvp.rs"]
 mod pvp;
-#[path = "entities/rail_parts_tests.rs"]
+#[path = "game/entities/rail_parts_tests.rs"]
 mod rail_parts_tests;
-#[path = "entities/residency_tick.rs"]
+#[path = "game/entities/residency_tick.rs"]
 mod residency_tick;
-#[path = "entities/resident_state.rs"]
+#[path = "game/entities/resident_state.rs"]
 mod resident_state;
-#[path = "entities/seats.rs"]
+#[path = "game/entities/seats.rs"]
 mod seats;
-#[path = "entities/stand_break_loot_tests.rs"]
+#[path = "game/entities/stand_break_loot_tests.rs"]
 mod stand_break_loot_tests;
-#[path = "entities/stand_command_hurt_tests.rs"]
+#[path = "game/entities/stand_command_hurt_tests.rs"]
 mod stand_command_hurt_tests;
-#[path = "entities/text_displays.rs"]
+#[path = "game/entities/text_displays.rs"]
 mod text_displays;
-#[path = "entities/tnt.rs"]
+#[path = "game/entities/tnt.rs"]
 mod tnt;
-#[path = "entities/vehicle_teleport.rs"]
+#[path = "game/entities/vehicle_teleport.rs"]
 mod vehicle_teleport;
-#[path = "interface/advancements/mod.rs"]
+#[path = "game/interface/advancements/mod.rs"]
 mod advancements;
-#[path = "interface/advancements_screen.rs"]
+#[path = "game/interface/advancements_screen.rs"]
 mod advancements_screen;
-#[path = "interface/atlas_slots.rs"]
+#[path = "game/interface/atlas_slots.rs"]
 mod atlas_slots;
-#[path = "interface/block_editor.rs"]
+#[path = "game/interface/block_editor.rs"]
 mod block_editor;
-#[path = "interface/block_screen_effect_draw_tests.rs"]
+#[path = "game/interface/block_screen_effect_draw_tests.rs"]
 mod block_screen_effect_draw_tests;
-#[path = "interface/books.rs"]
+#[path = "game/interface/books.rs"]
 mod books;
-#[path = "interface/bossbars.rs"]
+#[path = "game/interface/bossbars.rs"]
 mod bossbars;
-#[path = "interface/building_players.rs"]
+#[path = "game/interface/building_players.rs"]
 mod building_players;
-#[path = "interface/chat.rs"]
+#[path = "game/interface/chat.rs"]
 mod chat;
-#[path = "interface/chat_filter.rs"]
+#[path = "game/interface/chat_filter.rs"]
 mod chat_filter;
-#[path = "interface/client_ambient.rs"]
+#[path = "game/interface/client_ambient.rs"]
 mod client_ambient;
-#[path = "interface/client_reload/mod.rs"]
+#[path = "game/interface/client_reload/mod.rs"]
 mod client_reload;
-#[path = "interface/clipboard.rs"]
+#[path = "game/interface/clipboard.rs"]
 mod clipboard;
-#[path = "interface/code_of_conduct.rs"]
+#[path = "game/interface/code_of_conduct.rs"]
 mod code_of_conduct;
-#[path = "interface/command_registries.rs"]
+#[path = "game/interface/command_registries.rs"]
 mod command_registries;
-#[path = "interface/contained_fluid_tests.rs"]
+#[path = "game/interface/contained_fluid_tests.rs"]
 mod contained_fluid_tests;
-#[path = "interface/container_layout.rs"]
+#[path = "game/interface/container_layout.rs"]
 mod container_layout;
-#[path = "interface/cosmetics/mod.rs"]
+#[path = "game/interface/cosmetics/mod.rs"]
 mod cosmetics;
-#[path = "interface/create_fluid_source_tests.rs"]
+#[path = "game/interface/create_fluid_source_tests.rs"]
 mod create_fluid_source_tests;
-#[path = "interface/creative_screen.rs"]
+#[path = "game/interface/creative_screen.rs"]
 mod creative_screen;
-#[path = "interface/crop_grow_tests.rs"]
+#[path = "game/interface/crop_grow_tests.rs"]
 mod crop_grow_tests;
-#[path = "interface/custom_arm_pose.rs"]
+#[path = "game/interface/custom_arm_pose.rs"]
 mod custom_arm_pose;
-#[path = "interface/custom_sky.rs"]
+#[path = "game/interface/custom_sky.rs"]
 mod custom_sky;
-#[path = "interface/debug_keys.rs"]
+#[path = "game/interface/debug_keys.rs"]
 mod debug_keys;
-#[path = "interface/debug_lines.rs"]
+#[path = "game/interface/debug_lines.rs"]
 mod debug_lines;
-#[path = "interface/debug_options.rs"]
+#[path = "game/interface/debug_options.rs"]
 mod debug_options;
-#[path = "interface/debug_renderers.rs"]
+#[path = "game/interface/debug_renderers.rs"]
 mod debug_renderers;
-#[path = "interface/dedicated/mod.rs"]
+#[path = "game/interface/dedicated/mod.rs"]
 pub(crate) mod dedicated;
-#[path = "interface/developer_launch.rs"]
+#[path = "game/interface/developer_launch.rs"]
 mod developer_launch;
-#[path = "interface/dialogs.rs"]
+#[path = "game/interface/dialogs.rs"]
 mod dialogs;
-#[path = "interface/dispense_fixture.rs"]
+#[path = "game/interface/dispense_fixture.rs"]
 mod dispense_fixture;
-#[path = "interface/dynamic_lights.rs"]
+#[path = "game/interface/dynamic_lights.rs"]
 mod dynamic_lights;
-#[path = "interface/enderman_placement_tests.rs"]
+#[path = "game/interface/enderman_placement_tests.rs"]
 mod enderman_placement_tests;
-#[path = "interface/entity_culling/mod.rs"]
+#[path = "game/interface/entity_culling/mod.rs"]
 mod entity_culling;
-#[path = "interface/entity_model_loading_tests.rs"]
+#[path = "game/interface/entity_model_loading_tests.rs"]
 mod entity_model_loading_tests;
-#[path = "interface/experience_points_tests.rs"]
+#[path = "game/interface/experience_points_tests.rs"]
 mod experience_points_tests;
-#[path = "interface/extras.rs"]
+#[path = "game/interface/extras.rs"]
 mod extras;
-#[path = "interface/focused_text_field.rs"]
+#[path = "game/interface/focused_text_field.rs"]
 mod focused_text_field;
-#[path = "interface/fov.rs"]
+#[path = "game/interface/fov.rs"]
 mod fov;
-#[path = "interface/frame_geometry.rs"]
+#[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
-#[path = "interface/game_mode.rs"]
+#[path = "game/interface/game_mode.rs"]
 mod game_mode;
-#[path = "interface/gamemode_switcher.rs"]
+#[path = "game/interface/gamemode_switcher.rs"]
 mod gamemode_switcher;
-#[path = "interface/highlight_tip_tests.rs"]
+#[path = "game/interface/highlight_tip_tests.rs"]
 mod highlight_tip_tests;
-#[path = "interface/hud_editor.rs"]
+#[path = "game/interface/hud_editor.rs"]
 mod hud_editor;
-#[path = "interface/hud_render.rs"]
+#[path = "game/interface/hud_render.rs"]
 mod hud_render;
-#[path = "interface/hud_room.rs"]
+#[path = "game/interface/hud_room.rs"]
 mod hud_room;
-#[path = "interface/ime.rs"]
+#[path = "game/interface/ime.rs"]
 mod ime;
-#[path = "interface/inventory_input.rs"]
+#[path = "game/interface/inventory_input.rs"]
 mod inventory_input;
-#[path = "interface/inventory_slots.rs"]
+#[path = "game/interface/inventory_slots.rs"]
 mod inventory_slots;
-#[path = "interface/item_draw.rs"]
+#[path = "game/interface/item_draw.rs"]
 mod item_draw;
-#[path = "interface/item_slot_command_tests.rs"]
+#[path = "game/interface/item_slot_command_tests.rs"]
 mod item_slot_command_tests;
-#[path = "interface/key_codes.rs"]
+#[path = "game/interface/key_codes.rs"]
 mod key_codes;
-#[path = "interface/key_focus.rs"]
+#[path = "game/interface/key_focus.rs"]
 mod key_focus;
-#[path = "interface/keymap_tests.rs"]
+#[path = "game/interface/keymap_tests.rs"]
 mod keymap_tests;
-#[path = "interface/level_particles.rs"]
+#[path = "game/interface/level_particles.rs"]
 mod level_particles;
-#[path = "interface/level_sounds.rs"]
+#[path = "game/interface/level_sounds.rs"]
 mod level_sounds;
-#[path = "interface/locator_bar.rs"]
+#[path = "game/interface/locator_bar.rs"]
 mod locator_bar;
-#[path = "interface/menu_clicks.rs"]
+#[path = "game/interface/menu_clicks.rs"]
 mod menu_clicks;
-#[path = "interface/mod_browser.rs"]
+#[path = "game/interface/mod_browser.rs"]
 mod mod_browser;
-#[path = "interface/mod_recipe_property_tests.rs"]
+#[path = "game/interface/mod_recipe_property_tests.rs"]
 mod mod_recipe_property_tests;
-#[path = "interface/mount_menu.rs"]
+#[path = "game/interface/mount_menu.rs"]
 mod mount_menu;
-#[path = "interface/music.rs"]
+#[path = "game/interface/music.rs"]
 mod music;
-#[path = "interface/names.rs"]
+#[path = "game/interface/names.rs"]
 mod names;
-#[path = "interface/narrator.rs"]
+#[path = "game/interface/narrator.rs"]
 mod narrator;
-#[path = "interface/native_client_screens.rs"]
+#[path = "game/interface/native_client_screens.rs"]
 mod native_client_screens;
-#[path = "interface/neighbor_notify_tests.rs"]
+#[path = "game/interface/neighbor_notify_tests.rs"]
 mod neighbor_notify_tests;
-#[path = "interface/occlusion_culling/mod.rs"]
+#[path = "game/interface/occlusion_culling/mod.rs"]
 mod occlusion_culling;
-#[path = "interface/options.rs"]
+#[path = "game/interface/options.rs"]
 mod options;
-#[path = "interface/pad/mod.rs"]
+#[path = "game/interface/pad/mod.rs"]
 mod pad;
-#[path = "interface/pad_actions.rs"]
+#[path = "game/interface/pad_actions.rs"]
 mod pad_actions;
-#[path = "interface/pad_craft.rs"]
+#[path = "game/interface/pad_craft.rs"]
 mod pad_craft;
-#[path = "interface/pad_menu.rs"]
+#[path = "game/interface/pad_menu.rs"]
 mod pad_menu;
-#[path = "interface/particle_culling.rs"]
+#[path = "game/interface/particle_culling.rs"]
 mod particle_culling;
-#[path = "interface/perf_link.rs"]
+#[path = "game/interface/perf_link.rs"]
 mod perf_link;
-#[path = "interface/perf_remote.rs"]
+#[path = "game/interface/perf_remote.rs"]
 mod perf_remote;
-#[path = "interface/perspective.rs"]
+#[path = "game/interface/perspective.rs"]
 mod perspective;
-#[path = "interface/play_input.rs"]
+#[path = "game/interface/play_input.rs"]
 mod play_input;
-#[path = "interface/play_keys.rs"]
+#[path = "game/interface/play_keys.rs"]
 mod play_keys;
-#[path = "interface/play_ping_tests.rs"]
+#[path = "game/interface/play_ping_tests.rs"]
 mod play_ping_tests;
-#[path = "interface/player_hooks.rs"]
+#[path = "game/interface/player_hooks.rs"]
 pub(crate) mod player_hooks;
-#[path = "interface/pointer_capture.rs"]
+#[path = "game/interface/pointer_capture.rs"]
 mod pointer_capture;
-#[path = "interface/profile_capture.rs"]
+#[path = "game/interface/profile_capture.rs"]
 mod profile_capture;
-#[path = "interface/profile_lines.rs"]
+#[path = "game/interface/profile_lines.rs"]
 mod profile_lines;
-#[path = "interface/quick_actions.rs"]
+#[path = "game/interface/quick_actions.rs"]
 mod quick_actions;
-#[path = "interface/random_textures.rs"]
+#[path = "game/interface/random_textures.rs"]
 mod random_textures;
-#[path = "interface/recipe_book_variants_tests.rs"]
+#[path = "game/interface/recipe_book_variants_tests.rs"]
 mod recipe_book_variants_tests;
-#[path = "interface/recipe_properties_tests.rs"]
+#[path = "game/interface/recipe_properties_tests.rs"]
 mod recipe_properties_tests;
-#[path = "interface/render_control.rs"]
+#[path = "game/interface/render_control.rs"]
 mod render_control;
-#[path = "interface/render_settings.rs"]
+#[path = "game/interface/render_settings.rs"]
 mod render_settings;
-#[path = "interface/render_tick.rs"]
+#[path = "game/interface/render_tick.rs"]
 mod render_tick;
-#[path = "interface/scoreboard/mod.rs"]
+#[path = "game/interface/scoreboard/mod.rs"]
 mod scoreboard;
-#[path = "interface/screen_backgrounds.rs"]
+#[path = "game/interface/screen_backgrounds.rs"]
 mod screen_backgrounds;
-#[path = "interface/screen_build.rs"]
+#[path = "game/interface/screen_build.rs"]
 mod screen_build;
-#[path = "interface/screen_build_fixture.rs"]
+#[path = "game/interface/screen_build_fixture.rs"]
 mod screen_build_fixture;
-#[path = "interface/screen_info.rs"]
+#[path = "game/interface/screen_info.rs"]
 mod screen_info;
-#[path = "interface/screen_render_phase_tests.rs"]
+#[path = "game/interface/screen_render_phase_tests.rs"]
 mod screen_render_phase_tests;
-#[path = "interface/screens.rs"]
+#[path = "game/interface/screens.rs"]
 mod screens;
-#[path = "interface/screenshot_writer.rs"]
+#[path = "game/interface/screenshot_writer.rs"]
 mod screenshot_writer;
-#[path = "interface/shader_packs.rs"]
+#[path = "game/interface/shader_packs.rs"]
 mod shader_packs;
-#[path = "interface/sign_edit.rs"]
+#[path = "game/interface/sign_edit.rs"]
 mod sign_edit;
-#[path = "interface/skin_models.rs"]
+#[path = "game/interface/skin_models.rs"]
 mod skin_models;
-#[path = "interface/smithing_icons.rs"]
+#[path = "game/interface/smithing_icons.rs"]
 mod smithing_icons;
-#[path = "interface/spectator.rs"]
+#[path = "game/interface/spectator.rs"]
 mod spectator;
-#[path = "interface/stand_equipment_change_tests.rs"]
+#[path = "game/interface/stand_equipment_change_tests.rs"]
 mod stand_equipment_change_tests;
-#[path = "interface/startup_menu.rs"]
+#[path = "game/interface/startup_menu.rs"]
 mod startup_menu;
-#[path = "interface/startup_options.rs"]
+#[path = "game/interface/startup_options.rs"]
 mod startup_options;
-#[path = "interface/state_at_viewpoint_tests.rs"]
+#[path = "game/interface/state_at_viewpoint_tests.rs"]
 mod state_at_viewpoint_tests;
-#[path = "interface/stats.rs"]
+#[path = "game/interface/stats.rs"]
 mod stats;
-#[path = "interface/stats_screen.rs"]
+#[path = "game/interface/stats_screen.rs"]
 mod stats_screen;
-#[path = "interface/studio.rs"]
+#[path = "game/interface/studio.rs"]
 mod studio;
-#[path = "interface/subtitle_hud.rs"]
+#[path = "game/interface/subtitle_hud.rs"]
 mod subtitle_hud;
-#[path = "interface/subtitles.rs"]
+#[path = "game/interface/subtitles.rs"]
 mod subtitles;
-#[path = "interface/sync_background_tests.rs"]
+#[path = "game/interface/sync_background_tests.rs"]
 mod sync_background_tests;
-#[path = "interface/titles.rs"]
+#[path = "game/interface/titles.rs"]
 mod titles;
-#[path = "interface/tutorial.rs"]
+#[path = "game/interface/tutorial.rs"]
 mod tutorial;
-#[path = "interface/upload_pace.rs"]
+#[path = "game/interface/upload_pace.rs"]
 mod upload_pace;
-#[path = "interface/win.rs"]
+#[path = "game/interface/win.rs"]
 mod win;
-#[path = "interface/wind.rs"]
+#[path = "game/interface/wind.rs"]
 mod wind;
-#[path = "interface/world_fluid_tests.rs"]
+#[path = "game/interface/world_fluid_tests.rs"]
 mod world_fluid_tests;
-#[path = "items/bucket_empty.rs"]
+#[path = "game/items/bucket_empty.rs"]
 mod bucket_empty;
-#[path = "items/buckets.rs"]
+#[path = "game/items/buckets.rs"]
 mod buckets;
-#[path = "items/bundle_use_tests.rs"]
+#[path = "game/items/bundle_use_tests.rs"]
 mod bundle_use_tests;
-#[path = "items/bundles.rs"]
+#[path = "game/items/bundles.rs"]
 mod bundles;
-#[path = "items/cake_eligibility.rs"]
+#[path = "game/items/cake_eligibility.rs"]
 mod cake_eligibility;
-#[path = "items/client_targeting.rs"]
+#[path = "game/items/client_targeting.rs"]
 mod client_targeting;
-#[path = "items/clip_ray.rs"]
+#[path = "game/items/clip_ray.rs"]
 mod clip_ray;
-#[path = "items/combat.rs"]
+#[path = "game/items/combat.rs"]
 mod combat;
-#[path = "items/consume.rs"]
+#[path = "game/items/consume.rs"]
 mod consume;
-#[path = "items/creative_hotbar.rs"]
+#[path = "game/items/creative_hotbar.rs"]
 mod creative_hotbar;
-#[path = "items/creator_mod_id_tests.rs"]
+#[path = "game/items/creator_mod_id_tests.rs"]
 mod creator_mod_id_tests;
-#[path = "items/crossbow.rs"]
+#[path = "game/items/crossbow.rs"]
 mod crossbow;
-#[path = "items/damage_item_tests.rs"]
+#[path = "game/items/damage_item_tests.rs"]
 mod damage_item_tests;
-#[path = "items/damage_resistant_tests.rs"]
+#[path = "game/items/damage_resistant_tests.rs"]
 mod damage_resistant_tests;
-#[path = "items/deflect.rs"]
+#[path = "game/items/deflect.rs"]
 mod deflect;
-#[path = "items/dropped_by_player_tests.rs"]
+#[path = "game/items/dropped_by_player_tests.rs"]
 mod dropped_by_player_tests;
-#[path = "items/durability.rs"]
+#[path = "game/items/durability.rs"]
 mod durability;
-#[path = "items/enchant_effects.rs"]
+#[path = "game/items/enchant_effects.rs"]
 mod enchant_effects;
-#[path = "items/equip_answers.rs"]
+#[path = "game/items/equip_answers.rs"]
 mod equip_answers;
-#[path = "items/fishing.rs"]
+#[path = "game/items/fishing.rs"]
 mod fishing;
-#[path = "items/glide_wear.rs"]
+#[path = "game/items/glide_wear.rs"]
 mod glide_wear;
-#[path = "items/glide_wear_tests.rs"]
+#[path = "game/items/glide_wear_tests.rs"]
 mod glide_wear_tests;
-#[path = "items/hand.rs"]
+#[path = "game/items/hand.rs"]
 mod hand;
-#[path = "items/hand_part_tests.rs"]
+#[path = "game/items/hand_part_tests.rs"]
 mod hand_part_tests;
-#[path = "items/held_items.rs"]
+#[path = "game/items/held_items.rs"]
 mod held_items;
-#[path = "items/interaction_shapes.rs"]
+#[path = "game/items/interaction_shapes.rs"]
 mod interaction_shapes;
-#[path = "items/interactions.rs"]
+#[path = "game/items/interactions.rs"]
 mod interactions;
-#[path = "items/inventory_tick.rs"]
+#[path = "game/items/inventory_tick.rs"]
 mod inventory_tick;
-#[path = "items/item_abilities.rs"]
+#[path = "game/items/item_abilities.rs"]
 mod item_abilities;
-#[path = "items/item_abilities_tests.rs"]
+#[path = "game/items/item_abilities_tests.rs"]
 mod item_abilities_tests;
-#[path = "items/item_actions.rs"]
+#[path = "game/items/item_actions.rs"]
 mod item_actions;
-#[path = "items/item_areas.rs"]
+#[path = "game/items/item_areas.rs"]
 mod item_areas;
-#[path = "items/item_attack_tests.rs"]
+#[path = "game/items/item_attack_tests.rs"]
 mod item_attack_tests;
-#[path = "items/item_durability.rs"]
+#[path = "game/items/item_durability.rs"]
 mod item_durability;
-#[path = "items/item_entities.rs"]
+#[path = "game/items/item_entities.rs"]
 mod item_entities;
-#[path = "items/item_entity_spawn.rs"]
+#[path = "game/items/item_entity_spawn.rs"]
 mod item_entity_spawn;
-#[path = "items/item_interact_mob_tests.rs"]
+#[path = "game/items/item_interact_mob_tests.rs"]
 mod item_interact_mob_tests;
-#[path = "items/item_particles.rs"]
+#[path = "game/items/item_particles.rs"]
 mod item_particles;
-#[path = "items/item_pickup_shape_tests.rs"]
+#[path = "game/items/item_pickup_shape_tests.rs"]
 mod item_pickup_shape_tests;
-#[path = "items/item_use.rs"]
+#[path = "game/items/item_use.rs"]
 mod item_use;
-#[path = "items/mace.rs"]
+#[path = "game/items/mace.rs"]
 mod mace;
-#[path = "items/mending_pick_tests.rs"]
+#[path = "game/items/mending_pick_tests.rs"]
 mod mending_pick_tests;
-#[path = "items/player_hit_sources.rs"]
+#[path = "game/items/player_hit_sources.rs"]
 mod player_hit_sources;
-#[path = "items/potions.rs"]
+#[path = "game/items/potions.rs"]
 mod potions;
-#[path = "items/projectile_spawned.rs"]
+#[path = "game/items/projectile_spawned.rs"]
 mod projectile_spawned;
-#[path = "items/projectile_spawned_tests.rs"]
+#[path = "game/items/projectile_spawned_tests.rs"]
 mod projectile_spawned_tests;
-#[path = "items/projectile_spawned_validation.rs"]
+#[path = "game/items/projectile_spawned_validation.rs"]
 mod projectile_spawned_validation;
-#[path = "items/recipe_book.rs"]
+#[path = "game/items/recipe_book.rs"]
 mod recipe_book;
-#[path = "items/shield.rs"]
+#[path = "game/items/shield.rs"]
 mod shield;
-#[path = "items/spear.rs"]
+#[path = "game/items/spear.rs"]
 mod spear;
-#[path = "items/spear_players.rs"]
+#[path = "game/items/spear_players.rs"]
 mod spear_players;
-#[path = "items/special_attack_fixture.rs"]
+#[path = "game/items/special_attack_fixture.rs"]
 mod special_attack_fixture;
-#[path = "items/special_attacks.rs"]
+#[path = "game/items/special_attacks.rs"]
 mod special_attacks;
-#[path = "items/stack_attribute_tooltip.rs"]
+#[path = "game/items/stack_attribute_tooltip.rs"]
 mod stack_attribute_tooltip;
-#[path = "items/totem.rs"]
+#[path = "game/items/totem.rs"]
 mod totem;
-#[path = "items/trading.rs"]
+#[path = "game/items/trading.rs"]
 mod trading;
-#[path = "items/trident.rs"]
+#[path = "game/items/trident.rs"]
 mod trident;
-#[path = "items/use_hand.rs"]
+#[path = "game/items/use_hand.rs"]
 mod use_hand;
-#[path = "items/use_same_item_tests.rs"]
+#[path = "game/items/use_same_item_tests.rs"]
 mod use_same_item_tests;
-#[path = "items/use_stop_tests.rs"]
+#[path = "game/items/use_stop_tests.rs"]
 mod use_stop_tests;
-#[path = "items/using_item.rs"]
+#[path = "game/items/using_item.rs"]
 mod using_item;
-#[path = "items/worn_boots.rs"]
+#[path = "game/items/worn_boots.rs"]
 mod worn_boots;
-#[path = "items/xp_repair_ratio_tests.rs"]
+#[path = "game/items/xp_repair_ratio_tests.rs"]
 mod xp_repair_ratio_tests;
-#[path = "mobs/allay_jukebox_source_tests.rs"]
+#[path = "game/mobs/allay_jukebox_source_tests.rs"]
 mod allay_jukebox_source_tests;
-#[path = "mobs/allay_pickup_cooldown_tests.rs"]
+#[path = "game/mobs/allay_pickup_cooldown_tests.rs"]
 mod allay_pickup_cooldown_tests;
-#[path = "mobs/allays.rs"]
+#[path = "game/mobs/allays.rs"]
 mod allays;
-#[path = "mobs/beehives.rs"]
+#[path = "game/mobs/beehives.rs"]
 mod beehives;
-#[path = "mobs/breezes.rs"]
+#[path = "game/mobs/breezes.rs"]
 mod breezes;
-#[path = "mobs/cat_spawner.rs"]
+#[path = "game/mobs/cat_spawner.rs"]
 mod cat_spawner;
-#[path = "mobs/copper_golems.rs"]
+#[path = "game/mobs/copper_golems.rs"]
 mod copper_golems;
 #[path = "mobs/creaking.rs"]
 mod creaking;
-#[path = "mobs/creatures/mod.rs"]
+#[path = "game/mobs/creatures/mod.rs"]
 mod creatures;
-#[path = "mobs/custom_spawners.rs"]
+#[path = "game/mobs/custom_spawners.rs"]
 mod custom_spawners;
-#[path = "mobs/dragon.rs"]
+#[path = "game/mobs/dragon.rs"]
 mod dragon;
-#[path = "mobs/dragon_fireball_motion_tests.rs"]
+#[path = "game/mobs/dragon_fireball_motion_tests.rs"]
 mod dragon_fireball_motion_tests;
 #[path = "mobs/enderman.rs"]
 mod enderman;
-#[path = "mobs/enderman_hurt_teleport_tests.rs"]
+#[path = "game/mobs/enderman_hurt_teleport_tests.rs"]
 mod enderman_hurt_teleport_tests;
-#[path = "mobs/equipment_tick_tests.rs"]
+#[path = "game/mobs/equipment_tick_tests.rs"]
 mod equipment_tick_tests;
-#[path = "mobs/fangs.rs"]
+#[path = "game/mobs/fangs.rs"]
 mod fangs;
-#[path = "mobs/fence_leash_force_tests.rs"]
+#[path = "game/mobs/fence_leash_force_tests.rs"]
 mod fence_leash_force_tests;
-#[path = "mobs/finalize_spawn.rs"]
+#[path = "game/mobs/finalize_spawn.rs"]
 mod finalize_spawn;
-#[path = "mobs/foxes.rs"]
+#[path = "game/mobs/foxes.rs"]
 mod foxes;
-#[path = "mobs/ghasts.rs"]
+#[path = "game/mobs/ghasts.rs"]
 mod ghasts;
-#[path = "mobs/golem_defense_tests.rs"]
+#[path = "game/mobs/golem_defense_tests.rs"]
 mod golem_defense_tests;
-#[path = "mobs/golems.rs"]
+#[path = "game/mobs/golems.rs"]
 mod golems;
-#[path = "mobs/hoglin_repeat_attack_tests.rs"]
+#[path = "game/mobs/hoglin_repeat_attack_tests.rs"]
 mod hoglin_repeat_attack_tests;
-#[path = "mobs/invulnerable_time_tests.rs"]
+#[path = "game/mobs/invulnerable_time_tests.rs"]
 mod invulnerable_time_tests;
-#[path = "mobs/last_hurt_by_mob_tests.rs"]
+#[path = "game/mobs/last_hurt_by_mob_tests.rs"]
 mod last_hurt_by_mob_tests;
-#[path = "mobs/living_attributes.rs"]
+#[path = "game/mobs/living_attributes.rs"]
 mod living_attributes;
-#[path = "mobs/llamas.rs"]
+#[path = "game/mobs/llamas.rs"]
 mod llamas;
-#[path = "mobs/loot_rolls.rs"]
+#[path = "game/mobs/loot_rolls.rs"]
 mod loot_rolls;
-#[path = "mobs/mob_blocks.rs"]
+#[path = "game/mobs/mob_blocks.rs"]
 mod mob_blocks;
-#[path = "mobs/mob_discard_tests.rs"]
+#[path = "game/mobs/mob_discard_tests.rs"]
 mod mob_discard_tests;
-#[path = "mobs/mob_gear.rs"]
+#[path = "game/mobs/mob_gear.rs"]
 mod mob_gear;
-#[path = "mobs/mob_index.rs"]
+#[path = "game/mobs/mob_index.rs"]
 mod mob_index;
-#[path = "mobs/mob_landing_support_tests.rs"]
+#[path = "game/mobs/mob_landing_support_tests.rs"]
 mod mob_landing_support_tests;
-#[path = "mobs/mob_light.rs"]
+#[path = "game/mobs/mob_light.rs"]
 mod mob_light;
-#[path = "mobs/mob_looting.rs"]
+#[path = "game/mobs/mob_looting.rs"]
 mod mob_looting;
-#[path = "mobs/mob_sounds.rs"]
+#[path = "game/mobs/mob_sounds.rs"]
 mod mob_sounds;
-#[path = "mobs/mounts.rs"]
+#[path = "game/mobs/mounts.rs"]
 mod mounts;
-#[path = "mobs/natural_spawning.rs"]
+#[path = "game/mobs/natural_spawning.rs"]
 mod natural_spawning;
-#[path = "mobs/nautili.rs"]
+#[path = "game/mobs/nautili.rs"]
 mod nautili;
-#[path = "mobs/ominous_item_spawner/mod.rs"]
+#[path = "game/mobs/ominous_item_spawner/mod.rs"]
 mod ominous_item_spawner;
-#[path = "mobs/pandas.rs"]
+#[path = "game/mobs/pandas.rs"]
 mod pandas;
-#[path = "mobs/part_shearing.rs"]
+#[path = "game/mobs/part_shearing.rs"]
 mod part_shearing;
-#[path = "mobs/piglin_admire_tests.rs"]
+#[path = "game/mobs/piglin_admire_tests.rs"]
 mod piglin_admire_tests;
-#[path = "mobs/piglins.rs"]
+#[path = "game/mobs/piglins.rs"]
 mod piglins;
-#[path = "mobs/projectile_block_impacts.rs"]
+#[path = "game/mobs/projectile_block_impacts.rs"]
 mod projectile_block_impacts;
-#[path = "mobs/raids/mod.rs"]
+#[path = "game/mobs/raids/mod.rs"]
 mod raids;
 #[path = "mobs/sheep_dye.rs"]
 mod sheep_dye;
-#[path = "mobs/shoulders.rs"]
+#[path = "game/mobs/shoulders.rs"]
 mod shoulders;
-#[path = "mobs/sniffers.rs"]
+#[path = "game/mobs/sniffers.rs"]
 mod sniffers;
-#[path = "mobs/spawn_yaw_tests.rs"]
+#[path = "game/mobs/spawn_yaw_tests.rs"]
 mod spawn_yaw_tests;
 #[path = "mobs/spawner.rs"]
 mod spawner;
-#[path = "mobs/sulfur_cubes.rs"]
+#[path = "game/mobs/sulfur_cubes.rs"]
 mod sulfur_cubes;
-#[path = "mobs/sulfur_prime_phase_tests.rs"]
+#[path = "game/mobs/sulfur_prime_phase_tests.rs"]
 mod sulfur_prime_phase_tests;
-#[path = "mobs/thrown_item_draw.rs"]
+#[path = "game/mobs/thrown_item_draw.rs"]
 mod thrown_item_draw;
 #[path = "mobs/trial_spawner.rs"]
 mod trial_spawner;
-#[path = "mobs/villagers.rs"]
+#[path = "game/mobs/villagers.rs"]
 mod villagers;
-#[path = "mobs/wandering_trader.rs"]
+#[path = "game/mobs/wandering_trader.rs"]
 mod wandering_trader;
 #[path = "mobs/wither.rs"]
 mod wither;
-#[path = "mobs/wither_star_tests.rs"]
+#[path = "game/mobs/wither_star_tests.rs"]
 mod wither_star_tests;
-#[path = "mobs/xp_orb_targeting.rs"]
+#[path = "game/mobs/xp_orb_targeting.rs"]
 mod xp_orb_targeting;
-#[path = "mobs/zombie_reinforcements.rs"]
+#[path = "game/mobs/zombie_reinforcements.rs"]
 mod zombie_reinforcements;
-#[path = "mobs/zombie_villagers.rs"]
+#[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
-#[path = "modding/api_values.rs"]
+#[path = "game/modding/api_values.rs"]
 pub(crate) mod api_values;
-#[path = "modding/attachment_index/mod.rs"]
+#[path = "game/modding/attachment_index/mod.rs"]
 mod attachment_index;
 #[cfg(test)]
-#[path = "modding/attachment_instruction_bench.rs"]
+#[path = "game/modding/attachment_instruction_bench.rs"]
 mod attachment_instruction_bench;
-#[path = "modding/attachment_sync.rs"]
+#[path = "game/modding/attachment_sync.rs"]
 mod attachment_sync;
-#[path = "modding/bare_declaration_names_tests.rs"]
+#[path = "game/modding/bare_declaration_names_tests.rs"]
 mod bare_declaration_names_tests;
-#[path = "modding/block_entity_part_state_tests.rs"]
+#[path = "game/modding/block_entity_part_state_tests.rs"]
 mod block_entity_part_state_tests;
-#[path = "modding/block_entity_tick_item_preconditions_tests.rs"]
+#[path = "game/modding/block_entity_tick_item_preconditions_tests.rs"]
 mod block_entity_tick_item_preconditions_tests;
-#[path = "modding/block_entity_tick_items.rs"]
+#[path = "game/modding/block_entity_tick_items.rs"]
 mod block_entity_tick_items;
-#[path = "modding/block_entity_tick_items_bench_tests.rs"]
+#[path = "game/modding/block_entity_tick_items_bench_tests.rs"]
 mod block_entity_tick_items_bench_tests;
-#[path = "modding/block_entity_tick_items_tests.rs"]
+#[path = "game/modding/block_entity_tick_items_tests.rs"]
 mod block_entity_tick_items_tests;
-#[path = "modding/block_entity_tick_reply.rs"]
+#[path = "game/modding/block_entity_tick_reply.rs"]
 mod block_entity_tick_reply;
-#[path = "modding/block_entity_tick_reply_tests.rs"]
+#[path = "game/modding/block_entity_tick_reply_tests.rs"]
 mod block_entity_tick_reply_tests;
-#[path = "modding/block_entity_tick_wasm_tests.rs"]
+#[path = "game/modding/block_entity_tick_wasm_tests.rs"]
 mod block_entity_tick_wasm_tests;
-#[path = "modding/block_notifications.rs"]
+#[path = "game/modding/block_notifications.rs"]
 mod block_notifications;
-#[path = "modding/block_use_completion.rs"]
+#[path = "game/modding/block_use_completion.rs"]
 mod block_use_completion;
-#[path = "modding/block_use_completion_tests.rs"]
+#[path = "game/modding/block_use_completion_tests.rs"]
 mod block_use_completion_tests;
-#[path = "modding/client_cracks.rs"]
+#[path = "game/modding/client_cracks.rs"]
 mod client_cracks;
-#[path = "modding/consume_effect_dispatch.rs"]
+#[path = "game/modding/consume_effect_dispatch.rs"]
 mod consume_effect_dispatch;
-#[path = "modding/consume_effect_dispatch_tests.rs"]
+#[path = "game/modding/consume_effect_dispatch_tests.rs"]
 mod consume_effect_dispatch_tests;
-#[path = "modding/crafting_recipe_kind_tests.rs"]
+#[path = "game/modding/crafting_recipe_kind_tests.rs"]
 mod crafting_recipe_kind_tests;
-#[path = "modding/data_map_files.rs"]
+#[path = "game/modding/data_map_files.rs"]
 mod data_map_files;
-#[path = "modding/data_map_json.rs"]
+#[path = "game/modding/data_map_json.rs"]
 mod data_map_json;
-#[path = "modding/debug_renderer_tests.rs"]
+#[path = "game/modding/debug_renderer_tests.rs"]
 mod debug_renderer_tests;
-#[path = "modding/draw_boundary.rs"]
+#[path = "game/modding/draw_boundary.rs"]
 mod draw_boundary;
-#[path = "modding/dropped_item_setter.rs"]
+#[path = "game/modding/dropped_item_setter.rs"]
 mod dropped_item_setter;
-#[path = "modding/entity_initialization.rs"]
+#[path = "game/modding/entity_initialization.rs"]
 mod entity_initialization;
-#[path = "modding/entity_sections.rs"]
+#[path = "game/modding/entity_sections.rs"]
 mod entity_sections;
-#[path = "modding/entity_sizes.rs"]
+#[path = "game/modding/entity_sizes.rs"]
 mod entity_sizes;
-#[path = "modding/entity_type_rows.rs"]
+#[path = "game/modding/entity_type_rows.rs"]
 mod entity_type_rows;
-#[path = "modding/equip_host.rs"]
+#[path = "game/modding/equip_host.rs"]
 mod equip_host;
-#[path = "modding/gui_layer_tests.rs"]
+#[path = "game/modding/gui_layer_tests.rs"]
 mod gui_layer_tests;
-#[path = "modding/initial_client_models.rs"]
+#[path = "game/modding/initial_client_models.rs"]
 mod initial_client_models;
-#[path = "modding/item_drop_state_tests.rs"]
+#[path = "game/modding/item_drop_state_tests.rs"]
 mod item_drop_state_tests;
-#[path = "modding/item_model_context.rs"]
+#[path = "game/modding/item_model_context.rs"]
 mod item_model_context;
-#[path = "modding/item_particle_send.rs"]
+#[path = "game/modding/item_particle_send.rs"]
 mod item_particle_send;
-#[path = "modding/item_particle_send_tests.rs"]
+#[path = "game/modding/item_particle_send_tests.rs"]
 mod item_particle_send_tests;
-#[path = "modding/level_control_hooks.rs"]
+#[path = "game/modding/level_control_hooks.rs"]
 mod level_control_hooks;
-#[path = "modding/load_conditions.rs"]
+#[path = "game/modding/load_conditions.rs"]
 mod load_conditions;
-#[path = "modding/loot_tags.rs"]
+#[path = "game/modding/loot_tags.rs"]
 mod loot_tags;
-#[path = "modding/mod_api_host.rs"]
+#[path = "game/modding/mod_api_host.rs"]
 mod mod_api_host;
-#[path = "modding/mod_block_entity_lost_contents.rs"]
+#[path = "game/modding/mod_block_entity_lost_contents.rs"]
 mod mod_block_entity_lost_contents;
-#[path = "modding/mod_crafting_commands.rs"]
+#[path = "game/modding/mod_crafting_commands.rs"]
 mod mod_crafting_commands;
-#[path = "modding/model_baking_completed_tests.rs"]
+#[path = "game/modding/model_baking_completed_tests.rs"]
 mod model_baking_completed_tests;
-#[path = "modding/mods/mod.rs"]
+#[path = "game/modding/mods/mod.rs"]
 pub(crate) mod mods;
-#[path = "modding/native_biome_colors.rs"]
+#[path = "game/modding/native_biome_colors.rs"]
 mod native_biome_colors;
-#[path = "modding/native_biome_source.rs"]
+#[path = "game/modding/native_biome_source.rs"]
 mod native_biome_source;
-#[path = "modding/native_biome_tag_tests.rs"]
+#[path = "game/modding/native_biome_tag_tests.rs"]
 mod native_biome_tag_tests;
-#[path = "modding/native_block_entity_draw.rs"]
+#[path = "game/modding/native_block_entity_draw.rs"]
 pub mod native_block_entity_draw;
-#[path = "modding/native_block_entity_item_tests.rs"]
+#[path = "game/modding/native_block_entity_item_tests.rs"]
 mod native_block_entity_item_tests;
-#[path = "modding/native_block_entity_refs.rs"]
+#[path = "game/modding/native_block_entity_refs.rs"]
 mod native_block_entity_refs;
-#[path = "modding/native_block_entity_transform.rs"]
+#[path = "game/modding/native_block_entity_transform.rs"]
 mod native_block_entity_transform;
-#[path = "modding/native_block_entity_transform_tests.rs"]
+#[path = "game/modding/native_block_entity_transform_tests.rs"]
 mod native_block_entity_transform_tests;
-#[path = "modding/native_block_sounds.rs"]
+#[path = "game/modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
-#[path = "modding/native_block_sprites.rs"]
+#[path = "game/modding/native_block_sprites.rs"]
 mod native_block_sprites;
-#[path = "modding/native_block_states.rs"]
+#[path = "game/modding/native_block_states.rs"]
 mod native_block_states;
-#[path = "modding/native_block_use_criteria_tests.rs"]
+#[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
-#[path = "modding/native_book_apply.rs"]
+#[path = "game/modding/native_book_apply.rs"]
 mod native_book_apply;
-#[path = "modding/native_book_backings.rs"]
+#[path = "game/modding/native_book_backings.rs"]
 mod native_book_backings;
-#[path = "modding/native_book_catalogue.rs"]
+#[path = "game/modding/native_book_catalogue.rs"]
 mod native_book_catalogue;
-#[path = "modding/native_book_displays.rs"]
+#[path = "game/modding/native_book_displays.rs"]
 mod native_book_displays;
-#[path = "modding/native_book_invalidation.rs"]
+#[path = "game/modding/native_book_invalidation.rs"]
 mod native_book_invalidation;
-#[path = "modding/native_book_net.rs"]
+#[path = "game/modding/native_book_net.rs"]
 mod native_book_net;
-#[path = "modding/native_book_placement.rs"]
+#[path = "game/modding/native_book_placement.rs"]
 mod native_book_placement;
-#[path = "modding/native_book_receive.rs"]
+#[path = "game/modding/native_book_receive.rs"]
 mod native_book_receive;
-#[path = "modding/native_book_scope.rs"]
+#[path = "game/modding/native_book_scope.rs"]
 mod native_book_scope;
-#[path = "modding/native_book_settings.rs"]
+#[path = "game/modding/native_book_settings.rs"]
 mod native_book_settings;
-#[path = "modding/native_book_transport.rs"]
+#[path = "game/modding/native_book_transport.rs"]
 mod native_book_transport;
-#[path = "modding/native_boss_bar_refs.rs"]
+#[path = "game/modding/native_boss_bar_refs.rs"]
 mod native_boss_bar_refs;
-#[path = "modding/native_bots.rs"]
+#[path = "game/modding/native_bots.rs"]
 mod native_bots;
-#[path = "modding/native_capability_cache_tests.rs"]
+#[path = "game/modding/native_capability_cache_tests.rs"]
 mod native_capability_cache_tests;
-#[path = "modding/native_cauldron_contents.rs"]
+#[path = "game/modding/native_cauldron_contents.rs"]
 mod native_cauldron_contents;
-#[path = "modding/native_chunk_areas.rs"]
+#[path = "game/modding/native_chunk_areas.rs"]
 mod native_chunk_areas;
-#[path = "modding/native_chunk_generator.rs"]
+#[path = "game/modding/native_chunk_generator.rs"]
 mod native_chunk_generator;
-#[path = "modding/native_chunk_queries.rs"]
+#[path = "game/modding/native_chunk_queries.rs"]
 mod native_chunk_queries;
-#[path = "modding/native_chunk_save.rs"]
+#[path = "game/modding/native_chunk_save.rs"]
 mod native_chunk_save;
-#[path = "modding/native_claimed_items.rs"]
+#[path = "game/modding/native_claimed_items.rs"]
 mod native_claimed_items;
-#[path = "modding/native_client_particles.rs"]
+#[path = "game/modding/native_client_particles.rs"]
 mod native_client_particles;
-#[path = "modding/native_client_particles_fixture.rs"]
+#[path = "game/modding/native_client_particles_fixture.rs"]
 mod native_client_particles_fixture;
-#[path = "modding/native_client_services.rs"]
+#[path = "game/modding/native_client_services.rs"]
 pub mod native_client_services;
-#[path = "modding/native_client_session.rs"]
+#[path = "game/modding/native_client_session.rs"]
 mod native_client_session;
-#[path = "modding/native_collision_exclusions.rs"]
+#[path = "game/modding/native_collision_exclusions.rs"]
 mod native_collision_exclusions;
-#[path = "modding/native_command_reads.rs"]
+#[path = "game/modding/native_command_reads.rs"]
 mod native_command_reads;
-#[path = "modding/native_components.rs"]
+#[path = "game/modding/native_components.rs"]
 mod native_components;
-#[path = "modding/native_config_files.rs"]
+#[path = "game/modding/native_config_files.rs"]
 mod native_config_files;
-#[path = "modding/native_configs.rs"]
+#[path = "game/modding/native_configs.rs"]
 mod native_configs;
-#[path = "modding/native_console.rs"]
+#[path = "game/modding/native_console.rs"]
 mod native_console;
-#[path = "modding/native_console_tests.rs"]
+#[path = "game/modding/native_console_tests.rs"]
 mod native_console_tests;
-#[path = "modding/native_content_items.rs"]
+#[path = "game/modding/native_content_items.rs"]
 mod native_content_items;
-#[path = "modding/native_criteria.rs"]
+#[path = "game/modding/native_criteria.rs"]
 mod native_criteria;
-#[path = "modding/native_custom_geometry.rs"]
+#[path = "game/modding/native_custom_geometry.rs"]
 mod native_custom_geometry;
-#[path = "modding/native_custom_stats.rs"]
+#[path = "game/modding/native_custom_stats.rs"]
 mod native_custom_stats;
-#[path = "modding/native_damage_tests.rs"]
+#[path = "game/modding/native_damage_tests.rs"]
 mod native_damage_tests;
-#[path = "modding/native_data_bound.rs"]
+#[path = "game/modding/native_data_bound.rs"]
 mod native_data_bound;
-#[path = "modding/native_data_maps.rs"]
+#[path = "game/modding/native_data_maps.rs"]
 mod native_data_maps;
-#[path = "modding/native_datafix.rs"]
+#[path = "game/modding/native_datafix.rs"]
 mod native_datafix;
-#[path = "modding/native_datafix_tests.rs"]
+#[path = "game/modding/native_datafix_tests.rs"]
 mod native_datafix_tests;
-#[path = "modding/native_datapack_refs.rs"]
+#[path = "game/modding/native_datapack_refs.rs"]
 mod native_datapack_refs;
-#[path = "modding/native_death_weapon.rs"]
+#[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
-#[path = "modding/native_dimensions.rs"]
+#[path = "game/modding/native_dimensions.rs"]
 mod native_dimensions;
-#[path = "modding/native_disconnect.rs"]
+#[path = "game/modding/native_disconnect.rs"]
 mod native_disconnect;
-#[path = "modding/native_disconnect_tests.rs"]
+#[path = "game/modding/native_disconnect_tests.rs"]
 mod native_disconnect_tests;
-#[path = "modding/native_display_refs.rs"]
+#[path = "game/modding/native_display_refs.rs"]
 mod native_display_refs;
-#[path = "modding/native_dragon_refs.rs"]
+#[path = "game/modding/native_dragon_refs.rs"]
 mod native_dragon_refs;
-#[path = "modding/native_effect_category.rs"]
+#[path = "game/modding/native_effect_category.rs"]
 mod native_effect_category;
-#[path = "modding/native_entities.rs"]
+#[path = "game/modding/native_entities.rs"]
 mod native_entities;
-#[path = "modding/native_entity_commands.rs"]
+#[path = "game/modding/native_entity_commands.rs"]
 mod native_entity_commands;
-#[path = "modding/native_entity_data.rs"]
+#[path = "game/modding/native_entity_data.rs"]
 mod native_entity_data;
-#[path = "modding/native_entity_extinguish.rs"]
+#[path = "game/modding/native_entity_extinguish.rs"]
 mod native_entity_extinguish;
-#[path = "modding/native_entity_extinguish_tests.rs"]
+#[path = "game/modding/native_entity_extinguish_tests.rs"]
 mod native_entity_extinguish_tests;
-#[path = "modding/native_entity_index_parity_tests.rs"]
+#[path = "game/modding/native_entity_index_parity_tests.rs"]
 mod native_entity_index_parity_tests;
-#[path = "modding/native_entity_invulnerable.rs"]
+#[path = "game/modding/native_entity_invulnerable.rs"]
 mod native_entity_invulnerable;
-#[path = "modding/native_entity_kind.rs"]
+#[path = "game/modding/native_entity_kind.rs"]
 mod native_entity_kind;
-#[path = "modding/native_entity_layers.rs"]
+#[path = "game/modding/native_entity_layers.rs"]
 mod native_entity_layers;
-#[path = "modding/native_entity_layers_tests.rs"]
+#[path = "game/modding/native_entity_layers_tests.rs"]
 mod native_entity_layers_tests;
-#[path = "modding/native_entity_motion.rs"]
+#[path = "game/modding/native_entity_motion.rs"]
 mod native_entity_motion;
-#[path = "modding/native_entity_move_correction_tests.rs"]
+#[path = "game/modding/native_entity_move_correction_tests.rs"]
 mod native_entity_move_correction_tests;
-#[path = "modding/native_entity_move_player_tests.rs"]
+#[path = "game/modding/native_entity_move_player_tests.rs"]
 mod native_entity_move_player_tests;
-#[path = "modding/native_entity_move_sweep_tests.rs"]
+#[path = "game/modding/native_entity_move_sweep_tests.rs"]
 mod native_entity_move_sweep_tests;
-#[path = "modding/native_entity_move_tests.rs"]
+#[path = "game/modding/native_entity_move_tests.rs"]
 mod native_entity_move_tests;
-#[path = "modding/native_entity_moves.rs"]
+#[path = "game/modding/native_entity_moves.rs"]
 mod native_entity_moves;
-#[path = "modding/native_entity_physics.rs"]
+#[path = "game/modding/native_entity_physics.rs"]
 mod native_entity_physics;
-#[path = "modding/native_entity_refs.rs"]
+#[path = "game/modding/native_entity_refs.rs"]
 mod native_entity_refs;
-#[path = "modding/native_entity_remove.rs"]
+#[path = "game/modding/native_entity_remove.rs"]
 mod native_entity_remove;
-#[path = "modding/native_entity_renderers.rs"]
+#[path = "game/modding/native_entity_renderers.rs"]
 mod native_entity_renderers;
-#[path = "modding/native_entity_renderers_tests.rs"]
+#[path = "game/modding/native_entity_renderers_tests.rs"]
 mod native_entity_renderers_tests;
-#[path = "modding/native_entity_riding.rs"]
+#[path = "game/modding/native_entity_riding.rs"]
 mod native_entity_riding;
-#[path = "modding/native_entity_selectors.rs"]
+#[path = "game/modding/native_entity_selectors.rs"]
 mod native_entity_selectors;
-#[path = "modding/native_entity_sounds.rs"]
+#[path = "game/modding/native_entity_sounds.rs"]
 mod native_entity_sounds;
-#[path = "modding/native_entity_state.rs"]
+#[path = "game/modding/native_entity_state.rs"]
 mod native_entity_state;
-#[path = "modding/native_explosion_destroy.rs"]
+#[path = "game/modding/native_explosion_destroy.rs"]
 mod native_explosion_destroy;
-#[path = "modding/native_explosion_destroy_tests.rs"]
+#[path = "game/modding/native_explosion_destroy_tests.rs"]
 mod native_explosion_destroy_tests;
-#[path = "modding/native_explosion_resistance.rs"]
+#[path = "game/modding/native_explosion_resistance.rs"]
 mod native_explosion_resistance;
-#[path = "modding/native_explosion_resistance_tests.rs"]
+#[path = "game/modding/native_explosion_resistance_tests.rs"]
 mod native_explosion_resistance_tests;
-#[path = "modding/native_explosions.rs"]
+#[path = "game/modding/native_explosions.rs"]
 mod native_explosions;
-#[path = "modding/native_explosions_tests.rs"]
+#[path = "game/modding/native_explosions_tests.rs"]
 mod native_explosions_tests;
-#[path = "modding/native_falling.rs"]
+#[path = "game/modding/native_falling.rs"]
 mod native_falling;
-#[path = "modding/native_fire_odds_tests.rs"]
+#[path = "game/modding/native_fire_odds_tests.rs"]
 mod native_fire_odds_tests;
-#[path = "modding/native_fishing_hook_refs.rs"]
+#[path = "game/modding/native_fishing_hook_refs.rs"]
 mod native_fishing_hook_refs;
-#[path = "modding/native_fluid_render.rs"]
+#[path = "game/modding/native_fluid_render.rs"]
 mod native_fluid_render;
-#[path = "modding/native_game_event_context.rs"]
+#[path = "game/modding/native_game_event_context.rs"]
 mod native_game_event_context;
-#[path = "modding/native_game_rules_read.rs"]
+#[path = "game/modding/native_game_rules_read.rs"]
 mod native_game_rules_read;
-#[path = "modding/native_give_stack.rs"]
+#[path = "game/modding/native_give_stack.rs"]
 mod native_give_stack;
-#[path = "modding/native_give_stack_tests.rs"]
+#[path = "game/modding/native_give_stack_tests.rs"]
 mod native_give_stack_tests;
-#[path = "modding/native_goal_ticks/mod.rs"]
+#[path = "game/modding/native_goal_ticks/mod.rs"]
 mod native_goal_ticks;
-#[path = "modding/native_ground.rs"]
+#[path = "game/modding/native_ground.rs"]
 mod native_ground;
-#[path = "modding/native_guest_turn_tests.rs"]
+#[path = "game/modding/native_guest_turn_tests.rs"]
 mod native_guest_turn_tests;
-#[path = "modding/native_gui_entity.rs"]
+#[path = "game/modding/native_gui_entity.rs"]
 mod native_gui_entity;
-#[path = "modding/native_hanging.rs"]
+#[path = "game/modding/native_hanging.rs"]
 mod native_hanging;
-#[path = "modding/native_hanging_tests.rs"]
+#[path = "game/modding/native_hanging_tests.rs"]
 mod native_hanging_tests;
-#[path = "modding/native_held_out_tests.rs"]
+#[path = "game/modding/native_held_out_tests.rs"]
 mod native_held_out_tests;
-#[path = "modding/native_hit_attempt_tests.rs"]
+#[path = "game/modding/native_hit_attempt_tests.rs"]
 mod native_hit_attempt_tests;
-#[path = "modding/native_hotbar_slot.rs"]
+#[path = "game/modding/native_hotbar_slot.rs"]
 mod native_hotbar_slot;
-#[path = "modding/native_ignited_by_lava_tests.rs"]
+#[path = "game/modding/native_ignited_by_lava_tests.rs"]
 mod native_ignited_by_lava_tests;
-#[path = "modding/native_instance_groups.rs"]
+#[path = "game/modding/native_instance_groups.rs"]
 mod native_instance_groups;
-#[path = "modding/native_inventories.rs"]
+#[path = "game/modding/native_inventories.rs"]
 mod native_inventories;
-#[path = "modding/native_invulnerability_check_tests.rs"]
+#[path = "game/modding/native_invulnerability_check_tests.rs"]
 mod native_invulnerability_check_tests;
-#[path = "modding/native_is_fire_source_tests.rs"]
+#[path = "game/modding/native_is_fire_source_tests.rs"]
 mod native_is_fire_source_tests;
-#[path = "modding/native_is_piglin_currency_tests.rs"]
+#[path = "game/modding/native_is_piglin_currency_tests.rs"]
 mod native_is_piglin_currency_tests;
-#[path = "modding/native_item_bundle.rs"]
+#[path = "game/modding/native_item_bundle.rs"]
 mod native_item_bundle;
-#[path = "modding/native_item_bundle_tests.rs"]
+#[path = "game/modding/native_item_bundle_tests.rs"]
 mod native_item_bundle_tests;
-#[path = "modding/native_item_container.rs"]
+#[path = "game/modding/native_item_container.rs"]
 mod native_item_container;
-#[path = "modding/native_item_entity_refs.rs"]
+#[path = "game/modding/native_item_entity_refs.rs"]
 mod native_item_entity_refs;
-#[path = "modding/native_item_particles.rs"]
+#[path = "game/modding/native_item_particles.rs"]
 mod native_item_particles;
-#[path = "modding/native_item_places.rs"]
+#[path = "game/modding/native_item_places.rs"]
 mod native_item_places;
-#[path = "modding/native_item_rules.rs"]
+#[path = "game/modding/native_item_rules.rs"]
 pub(crate) mod native_item_rules;
-#[path = "modding/native_key_mappings.rs"]
+#[path = "game/modding/native_key_mappings.rs"]
 mod native_key_mappings;
-#[path = "modding/native_key_mappings_tests.rs"]
+#[path = "game/modding/native_key_mappings_tests.rs"]
 mod native_key_mappings_tests;
-#[path = "modding/native_knockback_tests.rs"]
+#[path = "game/modding/native_knockback_tests.rs"]
 mod native_knockback_tests;
-#[path = "modding/native_level_border.rs"]
+#[path = "game/modding/native_level_border.rs"]
 mod native_level_border;
-#[path = "modding/native_level_effects.rs"]
+#[path = "game/modding/native_level_effects.rs"]
 mod native_level_effects;
-#[path = "modding/native_level_events.rs"]
+#[path = "game/modding/native_level_events.rs"]
 mod native_level_events;
-#[path = "modding/native_level_items.rs"]
+#[path = "game/modding/native_level_items.rs"]
 mod native_level_items;
-#[path = "modding/native_level_notify_tests.rs"]
+#[path = "game/modding/native_level_notify_tests.rs"]
 mod native_level_notify_tests;
-#[path = "modding/native_level_players.rs"]
+#[path = "game/modding/native_level_players.rs"]
 mod native_level_players;
-#[path = "modding/native_level_refs.rs"]
+#[path = "game/modding/native_level_refs.rs"]
 mod native_level_refs;
-#[path = "modding/native_level_signals.rs"]
+#[path = "game/modding/native_level_signals.rs"]
 mod native_level_signals;
-#[path = "modding/native_level_spawning.rs"]
+#[path = "game/modding/native_level_spawning.rs"]
 mod native_level_spawning;
-#[path = "modding/native_level_ticking.rs"]
+#[path = "game/modding/native_level_ticking.rs"]
 mod native_level_ticking;
-#[path = "modding/native_level_weather.rs"]
+#[path = "game/modding/native_level_weather.rs"]
 mod native_level_weather;
-#[path = "modding/native_level_world.rs"]
+#[path = "game/modding/native_level_world.rs"]
 mod native_level_world;
-#[path = "modding/native_lifecycle.rs"]
+#[path = "game/modding/native_lifecycle.rs"]
 mod native_lifecycle;
-#[path = "modding/native_live_holder_tests.rs"]
+#[path = "game/modding/native_live_holder_tests.rs"]
 mod native_live_holder_tests;
-#[path = "modding/native_living_absorption.rs"]
+#[path = "game/modding/native_living_absorption.rs"]
 mod native_living_absorption;
-#[path = "modding/native_living_blocking.rs"]
+#[path = "game/modding/native_living_blocking.rs"]
 mod native_living_blocking;
-#[path = "modding/native_living_effects.rs"]
+#[path = "game/modding/native_living_effects.rs"]
 mod native_living_effects;
-#[path = "modding/native_living_flags.rs"]
+#[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
-#[path = "modding/native_living_position.rs"]
+#[path = "game/modding/native_living_position.rs"]
 mod native_living_position;
-#[path = "modding/native_living_refs.rs"]
+#[path = "game/modding/native_living_refs.rs"]
 mod native_living_refs;
-#[path = "modding/native_living_renderers_tests.rs"]
+#[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
-#[path = "modding/native_living_writes.rs"]
+#[path = "game/modding/native_living_writes.rs"]
 mod native_living_writes;
-#[path = "modding/native_local_sounds.rs"]
+#[path = "game/modding/native_local_sounds.rs"]
 mod native_local_sounds;
-#[path = "modding/native_makes_piglins_neutral_tests.rs"]
+#[path = "game/modding/native_makes_piglins_neutral_tests.rs"]
 mod native_makes_piglins_neutral_tests;
-#[path = "modding/native_mapping_presses.rs"]
+#[path = "game/modding/native_mapping_presses.rs"]
 mod native_mapping_presses;
-#[path = "modding/native_menu_places.rs"]
+#[path = "game/modding/native_menu_places.rs"]
 mod native_menu_places;
-#[path = "modding/native_menu_refs.rs"]
+#[path = "game/modding/native_menu_refs.rs"]
 mod native_menu_refs;
-#[path = "modding/native_menus.rs"]
+#[path = "game/modding/native_menus.rs"]
 mod native_menus;
-#[path = "modding/native_merchant_refs.rs"]
+#[path = "game/modding/native_merchant_refs.rs"]
 mod native_merchant_refs;
-#[path = "modding/native_minecart_refs.rs"]
+#[path = "game/modding/native_minecart_refs.rs"]
 mod native_minecart_refs;
-#[path = "modding/native_mob_draw.rs"]
+#[path = "game/modding/native_mob_draw.rs"]
 mod native_mob_draw;
-#[path = "modding/native_mob_goals.rs"]
+#[path = "game/modding/native_mob_goals.rs"]
 mod native_mob_goals;
-#[path = "modding/native_mob_navigation.rs"]
+#[path = "game/modding/native_mob_navigation.rs"]
 mod native_mob_navigation;
-#[path = "modding/native_mob_refs.rs"]
+#[path = "game/modding/native_mob_refs.rs"]
 mod native_mob_refs;
-#[path = "modding/native_mobs.rs"]
+#[path = "game/modding/native_mobs.rs"]
 mod native_mobs;
-#[path = "modding/native_motion.rs"]
+#[path = "game/modding/native_motion.rs"]
 mod native_motion;
-#[path = "modding/native_mounts.rs"]
+#[path = "game/modding/native_mounts.rs"]
 mod native_mounts;
-#[path = "modding/native_namespaced_id.rs"]
+#[path = "game/modding/native_namespaced_id.rs"]
 mod native_namespaced_id;
-#[path = "modding/native_net.rs"]
+#[path = "game/modding/native_net.rs"]
 mod native_net;
-#[path = "modding/native_on_caught_fire_tests.rs"]
+#[path = "game/modding/native_on_caught_fire_tests.rs"]
 mod native_on_caught_fire_tests;
-#[path = "modding/native_panel.rs"]
+#[path = "game/modding/native_panel.rs"]
 mod native_panel;
-#[path = "modding/native_panel_recipes.rs"]
+#[path = "game/modding/native_panel_recipes.rs"]
 mod native_panel_recipes;
-#[path = "modding/native_passage_cross.rs"]
+#[path = "game/modding/native_passage_cross.rs"]
 mod native_passage_cross;
-#[path = "modding/native_passages.rs"]
+#[path = "game/modding/native_passages.rs"]
 mod native_passages;
-#[path = "modding/native_path_types_tests.rs"]
+#[path = "game/modding/native_path_types_tests.rs"]
 mod native_path_types_tests;
-#[path = "modding/native_player_attack.rs"]
+#[path = "game/modding/native_player_attack.rs"]
 mod native_player_attack;
-#[path = "modding/native_player_break.rs"]
+#[path = "game/modding/native_player_break.rs"]
 mod native_player_break;
-#[path = "modding/native_player_cooldowns.rs"]
+#[path = "game/modding/native_player_cooldowns.rs"]
 mod native_player_cooldowns;
-#[path = "modding/native_player_death.rs"]
+#[path = "game/modding/native_player_death.rs"]
 mod native_player_death;
-#[path = "modding/native_player_destroyed_block_tests.rs"]
+#[path = "game/modding/native_player_destroyed_block_tests.rs"]
 mod native_player_destroyed_block_tests;
-#[path = "modding/native_player_disconnect.rs"]
+#[path = "game/modding/native_player_disconnect.rs"]
 mod native_player_disconnect;
-#[path = "modding/native_player_disconnect_tests.rs"]
+#[path = "game/modding/native_player_disconnect_tests.rs"]
 mod native_player_disconnect_tests;
-#[path = "modding/native_player_ender_chest.rs"]
+#[path = "game/modding/native_player_ender_chest.rs"]
 mod native_player_ender_chest;
-#[path = "modding/native_player_ender_chest_tests.rs"]
+#[path = "game/modding/native_player_ender_chest_tests.rs"]
 mod native_player_ender_chest_tests;
-#[path = "modding/native_player_food.rs"]
+#[path = "game/modding/native_player_food.rs"]
 mod native_player_food;
-#[path = "modding/native_player_inventory.rs"]
+#[path = "game/modding/native_player_inventory.rs"]
 mod native_player_inventory;
-#[path = "modding/native_player_inventory_tests.rs"]
+#[path = "game/modding/native_player_inventory_tests.rs"]
 mod native_player_inventory_tests;
-#[path = "modding/native_player_modes.rs"]
+#[path = "game/modding/native_player_modes.rs"]
 mod native_player_modes;
-#[path = "modding/native_player_move_tests.rs"]
+#[path = "game/modding/native_player_move_tests.rs"]
 mod native_player_move_tests;
-#[path = "modding/native_player_moves.rs"]
+#[path = "game/modding/native_player_moves.rs"]
 mod native_player_moves;
-#[path = "modding/native_player_persistent_data.rs"]
+#[path = "game/modding/native_player_persistent_data.rs"]
 mod native_player_persistent_data;
-#[path = "modding/native_player_persistent_data_tests.rs"]
+#[path = "game/modding/native_player_persistent_data_tests.rs"]
 mod native_player_persistent_data_tests;
-#[path = "modding/native_player_place.rs"]
+#[path = "game/modding/native_player_place.rs"]
 mod native_player_place;
-#[path = "modding/native_player_spectating_tests.rs"]
+#[path = "game/modding/native_player_spectating_tests.rs"]
 mod native_player_spectating_tests;
-#[path = "modding/native_player_stats.rs"]
+#[path = "game/modding/native_player_stats.rs"]
 mod native_player_stats;
-#[path = "modding/native_projectile_launch.rs"]
+#[path = "game/modding/native_projectile_launch.rs"]
 mod native_projectile_launch;
-#[path = "modding/native_projectile_launch_tests.rs"]
+#[path = "game/modding/native_projectile_launch_tests.rs"]
 mod native_projectile_launch_tests;
-#[path = "modding/native_projectile_refs.rs"]
+#[path = "game/modding/native_projectile_refs.rs"]
 mod native_projectile_refs;
-#[path = "modding/native_projectiles.rs"]
+#[path = "game/modding/native_projectiles.rs"]
 mod native_projectiles;
-#[path = "modding/native_quick_move.rs"]
+#[path = "game/modding/native_quick_move.rs"]
 mod native_quick_move;
-#[path = "modding/native_raid_refs.rs"]
+#[path = "game/modding/native_raid_refs.rs"]
 mod native_raid_refs;
-#[path = "modding/native_recipe_properties.rs"]
+#[path = "game/modding/native_recipe_properties.rs"]
 mod native_recipe_properties;
-#[path = "modding/native_recipe_sync.rs"]
+#[path = "game/modding/native_recipe_sync.rs"]
 mod native_recipe_sync;
-#[path = "modding/native_recipe_sync_tests.rs"]
+#[path = "game/modding/native_recipe_sync_tests.rs"]
 mod native_recipe_sync_tests;
-#[path = "modding/native_recipes.rs"]
+#[path = "game/modding/native_recipes.rs"]
 mod native_recipes;
-#[path = "modding/native_registry_ids.rs"]
+#[path = "game/modding/native_registry_ids.rs"]
 mod native_registry_ids;
-#[path = "modding/native_registry_ids_tests.rs"]
+#[path = "game/modding/native_registry_ids_tests.rs"]
 mod native_registry_ids_tests;
-#[path = "modding/native_render_pair_tests.rs"]
+#[path = "game/modding/native_render_pair_tests.rs"]
 mod native_render_pair_tests;
-#[path = "modding/native_render_visibility.rs"]
+#[path = "game/modding/native_render_visibility.rs"]
 mod native_render_visibility;
-#[path = "modding/native_resources.rs"]
+#[path = "game/modding/native_resources.rs"]
 mod native_resources;
-#[path = "modding/native_rotate.rs"]
+#[path = "game/modding/native_rotate.rs"]
 pub(crate) mod native_rotate;
-#[path = "modding/native_scene.rs"]
+#[path = "game/modding/native_scene.rs"]
 mod native_scene;
-#[path = "modding/native_server.rs"]
+#[path = "game/modding/native_server.rs"]
 mod native_server;
-#[path = "modding/native_server_distances.rs"]
+#[path = "game/modding/native_server_distances.rs"]
 mod native_server_distances;
-#[path = "modding/native_server_max_players.rs"]
+#[path = "game/modding/native_server_max_players.rs"]
 mod native_server_max_players;
-#[path = "modding/native_server_max_players_tests.rs"]
+#[path = "game/modding/native_server_max_players_tests.rs"]
 mod native_server_max_players_tests;
-#[path = "modding/native_shaders.rs"]
+#[path = "game/modding/native_shaders.rs"]
 mod native_shaders;
-#[path = "modding/native_shield_totem_tests.rs"]
+#[path = "game/modding/native_shield_totem_tests.rs"]
 mod native_shield_totem_tests;
-#[path = "modding/native_smoke_source_tests.rs"]
+#[path = "game/modding/native_smoke_source_tests.rs"]
 mod native_smoke_source_tests;
-#[path = "modding/native_sound_refs.rs"]
+#[path = "game/modding/native_sound_refs.rs"]
 mod native_sound_refs;
-#[path = "modding/native_special_renderers.rs"]
+#[path = "game/modding/native_special_renderers.rs"]
 mod native_special_renderers;
-#[path = "modding/native_spectator_shader_tests.rs"]
+#[path = "game/modding/native_spectator_shader_tests.rs"]
 mod native_spectator_shader_tests;
-#[path = "modding/native_state_shapes.rs"]
+#[path = "game/modding/native_state_shapes.rs"]
 mod native_state_shapes;
-#[path = "modding/native_structure_types.rs"]
+#[path = "game/modding/native_structure_types.rs"]
 mod native_structure_types;
-#[path = "modding/native_structures.rs"]
+#[path = "game/modding/native_structures.rs"]
 mod native_structures;
-#[path = "modding/native_surface.rs"]
+#[path = "game/modding/native_surface.rs"]
 pub(crate) mod native_surface;
-#[path = "modding/native_tags.rs"]
+#[path = "game/modding/native_tags.rs"]
 mod native_tags;
-#[path = "modding/native_terrain_model.rs"]
+#[path = "game/modding/native_terrain_model.rs"]
 mod native_terrain_model;
-#[path = "modding/native_text_grammar.rs"]
+#[path = "game/modding/native_text_grammar.rs"]
 mod native_text_grammar;
-#[path = "modding/native_text_json.rs"]
+#[path = "game/modding/native_text_json.rs"]
 mod native_text_json;
-#[path = "modding/native_text_legacy.rs"]
+#[path = "game/modding/native_text_legacy.rs"]
 mod native_text_legacy;
-#[path = "modding/native_tick_time.rs"]
+#[path = "game/modding/native_tick_time.rs"]
 mod native_tick_time;
-#[path = "modding/native_ticks.rs"]
+#[path = "game/modding/native_ticks.rs"]
 mod native_ticks;
-#[path = "modding/native_trapdoor_ladder.rs"]
+#[path = "game/modding/native_trapdoor_ladder.rs"]
 pub(crate) mod native_trapdoor_ladder;
-#[path = "modding/native_tree_grow.rs"]
+#[path = "game/modding/native_tree_grow.rs"]
 pub(crate) mod native_tree_grow;
-#[path = "modding/native_unspawned_mob.rs"]
+#[path = "game/modding/native_unspawned_mob.rs"]
 mod native_unspawned_mob;
-#[path = "modding/native_viewed_levels.rs"]
+#[path = "game/modding/native_viewed_levels.rs"]
 mod native_viewed_levels;
-#[path = "modding/native_visuals.rs"]
+#[path = "game/modding/native_visuals.rs"]
 mod native_visuals;
-#[path = "modding/native_world_columns.rs"]
+#[path = "game/modding/native_world_columns.rs"]
 mod native_world_columns;
-#[path = "modding/native_world_edit.rs"]
+#[path = "game/modding/native_world_edit.rs"]
 mod native_world_edit;
-#[path = "modding/native_world_read.rs"]
+#[path = "game/modding/native_world_read.rs"]
 mod native_world_read;
-#[path = "modding/native_worldgen.rs"]
+#[path = "game/modding/native_worldgen.rs"]
 mod native_worldgen;
-#[path = "modding/native_worldgen_parts.rs"]
+#[path = "game/modding/native_worldgen_parts.rs"]
 pub(crate) mod native_worldgen_parts;
-#[path = "modding/neoforge_block_maps.rs"]
+#[path = "game/modding/neoforge_block_maps.rs"]
 mod neoforge_block_maps;
-#[path = "modding/neoforge_mob_maps.rs"]
+#[path = "game/modding/neoforge_mob_maps.rs"]
 mod neoforge_mob_maps;
-#[path = "modding/orb_merge_tests.rs"]
+#[path = "game/modding/orb_merge_tests.rs"]
 mod orb_merge_tests;
-#[path = "modding/original_player.rs"]
+#[path = "game/modding/original_player.rs"]
 mod original_player;
-#[path = "modding/pack_finders/mod.rs"]
+#[path = "game/modding/pack_finders/mod.rs"]
 mod pack_finders;
-#[path = "modding/part_admission.rs"]
+#[path = "game/modding/part_admission.rs"]
 mod part_admission;
-#[path = "modding/part_admission_tests.rs"]
+#[path = "game/modding/part_admission_tests.rs"]
 mod part_admission_tests;
-#[path = "modding/payload_transport.rs"]
+#[path = "game/modding/payload_transport.rs"]
 mod payload_transport;
-#[path = "modding/player_equipment_change_tests.rs"]
+#[path = "game/modding/player_equipment_change_tests.rs"]
 mod player_equipment_change_tests;
-#[path = "modding/published_loops.rs"]
+#[path = "game/modding/published_loops.rs"]
 mod published_loops;
-#[path = "modding/rectangular_recipe_remainder_tests.rs"]
+#[path = "game/modding/rectangular_recipe_remainder_tests.rs"]
 mod rectangular_recipe_remainder_tests;
-#[path = "modding/registration_capability_coverage.rs"]
+#[path = "game/modding/registration_capability_coverage.rs"]
 mod registration_capability_coverage;
-#[path = "modding/registration_capability_coverage_wasm_tests.rs"]
+#[path = "game/modding/registration_capability_coverage_wasm_tests.rs"]
 mod registration_capability_coverage_wasm_tests;
-#[path = "modding/scheduled_tasks.rs"]
+#[path = "game/modding/scheduled_tasks.rs"]
 mod scheduled_tasks;
-#[path = "modding/slot_rules.rs"]
+#[path = "game/modding/slot_rules.rs"]
 mod slot_rules;
-#[path = "modding/slot_rules_tests.rs"]
+#[path = "game/modding/slot_rules_tests.rs"]
 mod slot_rules_tests;
-#[path = "network/cauldron_prediction.rs"]
+#[path = "game/network/cauldron_prediction.rs"]
 mod cauldron_prediction;
 #[cfg(feature = "friends")]
-#[path = "network/friends.rs"]
+#[path = "game/network/friends.rs"]
 mod friends;
 #[cfg(not(feature = "friends"))]
-#[path = "network/friends_off.rs"]
+#[path = "game/network/friends_off.rs"]
 mod friends;
-#[path = "network/lan/mod.rs"]
+#[path = "game/network/lan/mod.rs"]
 mod lan;
-#[path = "network/lan_actions/mod.rs"]
+#[path = "game/network/lan_actions/mod.rs"]
 mod lan_actions;
-#[path = "network/lan_attributes.rs"]
+#[path = "game/network/lan_attributes.rs"]
 mod lan_attributes;
-#[path = "network/lan_camera.rs"]
+#[path = "game/network/lan_camera.rs"]
 mod lan_camera;
-#[path = "network/lan_chat.rs"]
+#[path = "game/network/lan_chat.rs"]
 mod lan_chat;
-#[path = "network/lan_crafting.rs"]
+#[path = "game/network/lan_crafting.rs"]
 mod lan_crafting;
-#[path = "network/lan_entities.rs"]
+#[path = "game/network/lan_entities.rs"]
 mod lan_entities;
-#[path = "network/lan_far.rs"]
+#[path = "game/network/lan_far.rs"]
 mod lan_far;
-#[path = "network/lan_idle.rs"]
+#[path = "game/network/lan_idle.rs"]
 mod lan_idle;
-#[path = "network/lan_menus.rs"]
+#[path = "game/network/lan_menus.rs"]
 mod lan_menus;
-#[path = "network/lan_menus_tests.rs"]
+#[path = "game/network/lan_menus_tests.rs"]
 mod lan_menus_tests;
-#[path = "network/lan_mobs.rs"]
+#[path = "game/network/lan_mobs.rs"]
 mod lan_mobs;
-#[path = "network/lan_mount_menu.rs"]
+#[path = "game/network/lan_mount_menu.rs"]
 mod lan_mount_menu;
-#[path = "network/lan_particles.rs"]
+#[path = "game/network/lan_particles.rs"]
 mod lan_particles;
-#[path = "network/lan_pvp.rs"]
+#[path = "game/network/lan_pvp.rs"]
 mod lan_pvp;
-#[path = "network/lan_quiet.rs"]
+#[path = "game/network/lan_quiet.rs"]
 mod lan_quiet;
-#[path = "network/lan_screen.rs"]
+#[path = "game/network/lan_screen.rs"]
 mod lan_screen;
-#[path = "network/lan_stations.rs"]
+#[path = "game/network/lan_stations.rs"]
 mod lan_stations;
-#[path = "network/lan_trading.rs"]
+#[path = "game/network/lan_trading.rs"]
 mod lan_trading;
-#[path = "network/lan_vehicles.rs"]
+#[path = "game/network/lan_vehicles.rs"]
 mod lan_vehicles;
-#[path = "network/lan_waypoints.rs"]
+#[path = "game/network/lan_waypoints.rs"]
 mod lan_waypoints;
-#[path = "network/net_harness.rs"]
+#[path = "game/network/net_harness.rs"]
 mod net_harness;
-#[path = "network/player_kill_credit_tests.rs"]
+#[path = "game/network/player_kill_credit_tests.rs"]
 mod player_kill_credit_tests;
-#[path = "network/prediction.rs"]
+#[path = "game/network/prediction.rs"]
 mod prediction;
-#[path = "network/prediction_tests.rs"]
+#[path = "game/network/prediction_tests.rs"]
 mod prediction_tests;
-#[path = "network/raw_backlog.rs"]
+#[path = "game/network/raw_backlog.rs"]
 mod raw_backlog;
-#[path = "network/remote/mod.rs"]
+#[path = "game/network/remote/mod.rs"]
 mod remote;
-#[path = "network/remote_block_writes.rs"]
+#[path = "game/network/remote_block_writes.rs"]
 mod remote_block_writes;
-#[path = "network/remote_camera.rs"]
+#[path = "game/network/remote_camera.rs"]
 mod remote_camera;
-#[path = "network/remote_chat.rs"]
+#[path = "game/network/remote_chat.rs"]
 mod remote_chat;
-#[path = "network/remote_chunks.rs"]
+#[path = "game/network/remote_chunks.rs"]
 mod remote_chunks;
-#[path = "network/remote_mob_data.rs"]
+#[path = "game/network/remote_mob_data.rs"]
 mod remote_mob_data;
-#[path = "network/remote_mob_particles.rs"]
+#[path = "game/network/remote_mob_particles.rs"]
 mod remote_mob_particles;
-#[path = "network/remote_mob_use.rs"]
+#[path = "game/network/remote_mob_use.rs"]
 mod remote_mob_use;
-#[path = "network/remote_mob_use_tests.rs"]
+#[path = "game/network/remote_mob_use_tests.rs"]
 mod remote_mob_use_tests;
-#[path = "network/remote_objects.rs"]
+#[path = "game/network/remote_objects.rs"]
 mod remote_objects;
-#[path = "network/remote_projectiles.rs"]
+#[path = "game/network/remote_projectiles.rs"]
 mod remote_projectiles;
-#[path = "network/remote_removal.rs"]
+#[path = "game/network/remote_removal.rs"]
 mod remote_removal;
-#[path = "network/remote_stations.rs"]
+#[path = "game/network/remote_stations.rs"]
 mod remote_stations;
-#[path = "network/remote_tags.rs"]
+#[path = "game/network/remote_tags.rs"]
 mod remote_tags;
-#[path = "network/remote_vehicles.rs"]
+#[path = "game/network/remote_vehicles.rs"]
 mod remote_vehicles;
-#[path = "network/server_links.rs"]
+#[path = "game/network/server_links.rs"]
 mod server_links;
-#[path = "network/social.rs"]
+#[path = "game/network/social.rs"]
 mod social;
-#[path = "network/swing_packet.rs"]
+#[path = "game/network/swing_packet.rs"]
 mod swing_packet;
-#[path = "network/viewed_worlds/mod.rs"]
+#[path = "game/network/viewed_worlds/mod.rs"]
 mod viewed_worlds;
-#[path = "network/villager_client.rs"]
+#[path = "game/network/villager_client.rs"]
 mod villager_client;
-#[path = "runtime/activity.rs"]
+#[path = "game/runtime/activity.rs"]
 mod activity;
-#[path = "runtime/agent/mod.rs"]
+#[path = "game/runtime/agent/mod.rs"]
 mod agent;
-#[path = "runtime/agent_settings.rs"]
+#[path = "game/runtime/agent_settings.rs"]
 mod agent_settings;
-#[path = "runtime/blockctl.rs"]
+#[path = "game/runtime/blockctl.rs"]
 mod blockctl;
-#[path = "runtime/client_tick_steps.rs"]
+#[path = "game/runtime/client_tick_steps.rs"]
 mod client_tick_steps;
-#[path = "runtime/control.rs"]
+#[path = "game/runtime/control.rs"]
 mod control;
-#[path = "runtime/core_tests.rs"]
+#[path = "game/runtime/core_tests.rs"]
 mod core_tests;
-#[path = "runtime/event_loop.rs"]
+#[path = "game/runtime/event_loop.rs"]
 mod event_loop;
-#[path = "runtime/events.rs"]
+#[path = "game/runtime/events.rs"]
 mod events;
-#[path = "runtime/execution_role.rs"]
+#[path = "game/runtime/execution_role.rs"]
 mod execution_role;
-#[path = "runtime/falling_air_tick_tests.rs"]
+#[path = "game/runtime/falling_air_tick_tests.rs"]
 mod falling_air_tick_tests;
-#[path = "runtime/frame_autotune.rs"]
+#[path = "game/runtime/frame_autotune.rs"]
 mod frame_autotune;
-#[path = "runtime/headless.rs"]
+#[path = "game/runtime/headless.rs"]
 mod headless;
-#[path = "runtime/hot_paths/mod.rs"]
+#[path = "game/runtime/hot_paths/mod.rs"]
 mod hot_paths;
-#[path = "runtime/input_trace.rs"]
+#[path = "game/runtime/input_trace.rs"]
 mod input_trace;
-#[path = "runtime/launch_api.rs"]
+#[path = "game/runtime/launch_api.rs"]
 mod launch_api;
-#[path = "runtime/launch_options.rs"]
+#[path = "game/runtime/launch_options.rs"]
 mod launch_options;
-#[path = "runtime/launch_timeout.rs"]
+#[path = "game/runtime/launch_timeout.rs"]
 mod launch_timeout;
-#[path = "runtime/loading_screen.rs"]
+#[path = "game/runtime/loading_screen.rs"]
 mod loading_screen;
-#[path = "runtime/loading_window.rs"]
+#[path = "game/runtime/loading_window.rs"]
 mod loading_window;
-#[path = "runtime/memory.rs"]
+#[path = "game/runtime/memory.rs"]
 mod memory;
-#[path = "runtime/mining_component_tests.rs"]
+#[path = "game/runtime/mining_component_tests.rs"]
 mod mining_component_tests;
 #[cfg(not(target_os = "android"))]
-#[path = "runtime/no_resources.rs"]
+#[path = "game/runtime/no_resources.rs"]
 mod no_resources;
-#[path = "runtime/replay.rs"]
+#[path = "game/runtime/replay.rs"]
 mod replay;
-#[path = "runtime/repro.rs"]
+#[path = "game/runtime/repro.rs"]
 mod repro;
-#[path = "runtime/resource_load.rs"]
+#[path = "game/runtime/resource_load.rs"]
 mod resource_load;
-#[path = "runtime/resource_loader.rs"]
+#[path = "game/runtime/resource_loader.rs"]
 mod resource_loader;
-#[path = "runtime/resource_tables.rs"]
+#[path = "game/runtime/resource_tables.rs"]
 mod resource_tables;
-#[path = "runtime/runtime_reset_tests.rs"]
+#[path = "game/runtime/runtime_reset_tests.rs"]
 mod runtime_reset_tests;
-#[path = "runtime/saves_control.rs"]
+#[path = "game/runtime/saves_control.rs"]
 mod saves_control;
-#[path = "runtime/screenshot_sequence.rs"]
+#[path = "game/runtime/screenshot_sequence.rs"]
 mod screenshot_sequence;
-#[path = "runtime/split/mod.rs"]
+#[path = "game/runtime/split/mod.rs"]
 mod split;
-#[path = "runtime/startup_cpu_tests.rs"]
+#[path = "game/runtime/startup_cpu_tests.rs"]
 mod startup_cpu_tests;
-#[path = "runtime/startup_progress.rs"]
+#[path = "game/runtime/startup_progress.rs"]
 pub(crate) mod startup_progress;
-#[path = "runtime/stateful_block_entity_tests.rs"]
+#[path = "game/runtime/stateful_block_entity_tests.rs"]
 mod stateful_block_entity_tests;
-#[path = "runtime/station_control.rs"]
+#[path = "game/runtime/station_control.rs"]
 mod station_control;
-#[path = "runtime/storage_alias_tests.rs"]
+#[path = "game/runtime/storage_alias_tests.rs"]
 mod storage_alias_tests;
-#[path = "runtime/test_pos_guest_tests.rs"]
+#[path = "game/runtime/test_pos_guest_tests.rs"]
 mod test_pos_guest_tests;
-#[path = "runtime/transaction_entities_tests.rs"]
+#[path = "game/runtime/transaction_entities_tests.rs"]
 mod transaction_entities_tests;
-#[path = "runtime/transactions.rs"]
+#[path = "game/runtime/transactions.rs"]
 mod transactions;
-#[path = "runtime/ui_control.rs"]
+#[path = "game/runtime/ui_control.rs"]
 mod ui_control;
-#[path = "runtime/window_handler.rs"]
+#[path = "game/runtime/window_handler.rs"]
 mod window_handler;
-#[path = "starling/arms.rs"]
+#[path = "game/starling/arms.rs"]
 mod arms;
-#[path = "starling/basins.rs"]
+#[path = "game/starling/basins.rs"]
 mod basins;
-#[path = "starling/bearings.rs"]
+#[path = "game/starling/bearings.rs"]
 mod bearings;
-#[path = "starling/belts.rs"]
+#[path = "game/starling/belts.rs"]
 mod belts;
 #[cfg(target_os = "android")]
-#[path = "starling/build_mining.rs"]
+#[path = "game/starling/build_mining.rs"]
 mod build_mining;
-#[path = "starling/chutes.rs"]
+#[path = "game/starling/chutes.rs"]
 mod chutes;
-#[path = "starling/creative_shift.rs"]
+#[path = "game/starling/creative_shift.rs"]
 mod creative_shift;
-#[path = "starling/diagnostics.rs"]
+#[path = "game/starling/diagnostics.rs"]
 mod diagnostics;
-#[path = "starling/falling_trees.rs"]
+#[path = "game/starling/falling_trees.rs"]
 mod falling_trees;
-#[path = "starling/fans.rs"]
+#[path = "game/starling/fans.rs"]
 mod fans;
 #[cfg(target_os = "android")]
-#[path = "starling/files_offer.rs"]
+#[path = "game/starling/files_offer.rs"]
 mod files_offer;
-#[path = "starling/funnels.rs"]
+#[path = "game/starling/funnels.rs"]
 mod funnels;
-#[path = "starling/imports.rs"]
+#[path = "game/starling/imports.rs"]
 mod imports;
-#[path = "starling/input_mode.rs"]
+#[path = "game/starling/input_mode.rs"]
 mod input_mode;
-#[path = "starling/kinetic_machines.rs"]
+#[path = "game/starling/kinetic_machines.rs"]
 mod kinetic_machines;
-#[path = "starling/kinetics.rs"]
+#[path = "game/starling/kinetics.rs"]
 mod kinetics;
-#[path = "starling/machine_entities.rs"]
+#[path = "game/starling/machine_entities.rs"]
 mod machine_entities;
 #[cfg(target_os = "android")]
-#[path = "starling/mobile_controls/mod.rs"]
+#[path = "game/starling/mobile_controls/mod.rs"]
 mod mobile_controls;
-#[path = "starling/mod_assets.rs"]
+#[path = "game/starling/mod_assets.rs"]
 mod mod_assets;
 #[cfg(target_os = "android")]
-#[path = "starling/mod_catalog.rs"]
+#[path = "game/starling/mod_catalog.rs"]
 mod mod_catalog;
 #[cfg(target_os = "android")]
-#[path = "starling/native_builds.rs"]
+#[path = "game/starling/native_builds.rs"]
 mod native_builds;
-#[path = "starling/native_compat.rs"]
+#[path = "game/starling/native_compat.rs"]
 mod native_compat;
-#[path = "starling/old_mod_net.rs"]
+#[path = "game/starling/old_mod_net.rs"]
 mod old_mod_net;
-#[path = "starling/own_skin.rs"]
+#[path = "game/starling/own_skin.rs"]
 mod own_skin;
-#[path = "starling/perf.rs"]
+#[path = "game/starling/perf.rs"]
 mod perf;
-#[path = "starling/perf_lab.rs"]
+#[path = "game/starling/perf_lab.rs"]
 mod perf_lab;
-#[path = "starling/processing.rs"]
+#[path = "game/starling/processing.rs"]
 mod processing;
-#[path = "starling/saws.rs"]
+#[path = "game/starling/saws.rs"]
 mod saws;
-#[path = "starling/setup/mod.rs"]
+#[path = "game/starling/setup/mod.rs"]
 mod setup;
-#[path = "starling/touch/mod.rs"]
+#[path = "game/starling/touch/mod.rs"]
 mod touch;
 #[cfg(target_os = "android")]
-#[path = "starling/update_offer.rs"]
+#[path = "game/starling/update_offer.rs"]
 mod update_offer;
-#[path = "starling/world_content.rs"]
+#[path = "game/starling/world_content.rs"]
 mod world_content;
-#[path = "world/autosave.rs"]
+#[path = "game/world/autosave.rs"]
 mod autosave;
-#[path = "world/carrier_transfers.rs"]
+#[path = "game/world/carrier_transfers.rs"]
 mod carrier_transfers;
-#[path = "world/class_tags.rs"]
+#[path = "game/world/class_tags.rs"]
 mod class_tags;
-#[path = "world/class_tags_tests.rs"]
+#[path = "game/world/class_tags_tests.rs"]
 mod class_tags_tests;
-#[path = "world/condition_reload_state.rs"]
+#[path = "game/world/condition_reload_state.rs"]
 mod condition_reload_state;
-#[path = "world/container_loot.rs"]
+#[path = "game/world/container_loot.rs"]
 mod container_loot;
-#[path = "world/dynamic_light_emission.rs"]
+#[path = "game/world/dynamic_light_emission.rs"]
 mod dynamic_light_emission;
-#[path = "world/dynamic_light_emission_tests.rs"]
+#[path = "game/world/dynamic_light_emission_tests.rs"]
 mod dynamic_light_emission_tests;
-#[path = "world/early_game_rules.rs"]
+#[path = "game/world/early_game_rules.rs"]
 mod early_game_rules;
-#[path = "world/early_game_rules_tests.rs"]
+#[path = "game/world/early_game_rules_tests.rs"]
 mod early_game_rules_tests;
-#[path = "world/end.rs"]
+#[path = "game/world/end.rs"]
 mod end;
-#[path = "world/far_terrain_edits.rs"]
+#[path = "game/world/far_terrain_edits.rs"]
 mod far_terrain_edits;
-#[path = "world/infiniburn.rs"]
+#[path = "game/world/infiniburn.rs"]
 mod infiniburn;
-#[path = "world/infiniburn_tests.rs"]
+#[path = "game/world/infiniburn_tests.rs"]
 mod infiniburn_tests;
-#[path = "world/initial_spawn.rs"]
+#[path = "game/world/initial_spawn.rs"]
 mod initial_spawn;
-#[path = "world/integrated.rs"]
+#[path = "game/world/integrated.rs"]
 mod integrated;
-#[path = "world/legacy_rules.rs"]
+#[path = "game/world/legacy_rules.rs"]
 mod legacy_rules;
-#[path = "world/levels.rs"]
+#[path = "game/world/levels.rs"]
 mod levels;
-#[path = "world/mob_hurt_cooldown_tests.rs"]
+#[path = "game/world/mob_hurt_cooldown_tests.rs"]
 mod mob_hurt_cooldown_tests;
-#[path = "world/ordered_tick.rs"]
+#[path = "game/world/ordered_tick.rs"]
 mod ordered_tick;
-#[path = "world/packs/mod.rs"]
+#[path = "game/world/packs/mod.rs"]
 mod packs;
-#[path = "world/persist.rs"]
+#[path = "game/world/persist.rs"]
 mod persist;
-#[path = "world/piston_nbt.rs"]
+#[path = "game/world/piston_nbt.rs"]
 mod piston_nbt;
-#[path = "world/player_save_projection_tests.rs"]
+#[path = "game/world/player_save_projection_tests.rs"]
 mod player_save_projection_tests;
-#[path = "world/player_spawn.rs"]
+#[path = "game/world/player_spawn.rs"]
 mod player_spawn;
-#[path = "world/portal_ticking_tests.rs"]
+#[path = "game/world/portal_ticking_tests.rs"]
 mod portal_ticking_tests;
-#[path = "world/postprocess.rs"]
+#[path = "game/world/postprocess.rs"]
 mod postprocess;
-#[path = "world/remote_save_tests.rs"]
+#[path = "game/world/remote_save_tests.rs"]
 mod remote_save_tests;
-#[path = "world/respawn_position.rs"]
+#[path = "game/world/respawn_position.rs"]
 mod respawn_position;
-#[path = "world/runtime_levels.rs"]
+#[path = "game/world/runtime_levels.rs"]
 mod runtime_levels;
-#[path = "world/runtime_levels_tests.rs"]
+#[path = "game/world/runtime_levels_tests.rs"]
 mod runtime_levels_tests;
-#[path = "world/save_format_tests.rs"]
+#[path = "game/world/save_format_tests.rs"]
 mod save_format_tests;
-#[path = "world/save_load_pass_tests.rs"]
+#[path = "game/world/save_load_pass_tests.rs"]
 mod save_load_pass_tests;
-#[path = "world/save_pass_tests.rs"]
+#[path = "game/world/save_pass_tests.rs"]
 mod save_pass_tests;
-#[path = "world/saving.rs"]
+#[path = "game/world/saving.rs"]
 mod saving;
-#[path = "world/server_lifecycle/mod.rs"]
+#[path = "game/world/server_lifecycle/mod.rs"]
 mod server_lifecycle;
-#[path = "world/server_packs.rs"]
+#[path = "game/world/server_packs.rs"]
 mod server_packs;
-#[path = "world/server_reload/mod.rs"]
+#[path = "game/world/server_reload/mod.rs"]
 mod server_reload;
-#[path = "world/server_travel.rs"]
+#[path = "game/world/server_travel.rs"]
 mod server_travel;
-#[path = "world/spawn_save_tests.rs"]
+#[path = "game/world/spawn_save_tests.rs"]
 mod spawn_save_tests;
-#[path = "world/storage.rs"]
+#[path = "game/world/storage.rs"]
 mod storage;
-#[path = "world/tick_profile.rs"]
+#[path = "game/world/tick_profile.rs"]
 mod tick_profile;
-#[path = "world/tick_script.rs"]
+#[path = "game/world/tick_script.rs"]
 mod tick_script;
-#[path = "world/view_pass.rs"]
+#[path = "game/world/view_pass.rs"]
 mod view_pass;
-#[path = "world/villager_professions.rs"]
+#[path = "game/world/villager_professions.rs"]
 mod villager_professions;
-#[path = "world/visibility_unwind_tests.rs"]
+#[path = "game/world/visibility_unwind_tests.rs"]
 mod visibility_unwind_tests;
-#[path = "world/wake_time.rs"]
+#[path = "game/world/wake_time.rs"]
 mod wake_time;
-#[path = "world/weather.rs"]
+#[path = "game/world/weather.rs"]
 mod weather;
-#[path = "world/world_entry.rs"]
+#[path = "game/world/world_entry.rs"]
 mod world_entry;
-#[path = "world/world_loading.rs"]
+#[path = "game/world/world_loading.rs"]
 mod world_loading;
-#[path = "world/world_rest.rs"]
+#[path = "game/world/world_rest.rs"]
 mod world_rest;
-#[path = "world/world_session.rs"]
+#[path = "game/world/world_session.rs"]
 mod world_session;
-#[path = "world/world_update.rs"]
+#[path = "game/world/world_update.rs"]
 mod world_update;
 /// Installs the dispatcher of each injection point a mod listens at as its function's entry,
 /// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
@@ -1877,7 +1877,7 @@ pub mod points {
     }
 }
 mod host;
-#[path = "native_hooks/mod.rs"]
+#[path = "game/native_hooks/mod.rs"]
 mod native_hooks;
 use event_loop::EventLoopCtl;
 use hand::interact_location;

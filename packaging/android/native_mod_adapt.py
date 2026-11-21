@@ -478,7 +478,7 @@ def module_tree(source):
         folder = file.parent if owns_folder else file.parent / file.stem
         for name, attribute in declared:
             if attribute:
-                child = folder / attribute
+                child = file.parent / attribute
                 walk(child, f"{path}::{name}", child.name == "mod.rs")
             elif (folder / f"{name}.rs").is_file():
                 walk(folder / f"{name}.rs", f"{path}::{name}", False)
