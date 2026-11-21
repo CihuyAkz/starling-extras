@@ -18,6 +18,7 @@ horizon-materialize. Two things horizon-mixins refuses in the game since the for
 
 import pathlib
 import re
+import shutil
 import sys
 
 ATTR = re.compile(r'^(\s*)#\[path\s*=\s*"([^"]*\.\.[^"]*)"\]\s*$')
@@ -29,6 +30,7 @@ REPLACEABLE = "#[horizon_mod_api_macros::replaceable]"
 def parent_paths(source: pathlib.Path) -> None:
     src = source / "crates/horizon-client/src"
     moves = {}
+    copies = {}
     edits = []
     for file in sorted(src.rglob("*.rs")):
         lines = file.read_text(encoding="utf-8").split("\n")
@@ -49,21 +51,32 @@ def parent_paths(source: pathlib.Path) -> None:
             if j >= len(lines) or not MOD.match(lines[j]) or any("cfg(test)" in a for a in attrs):
                 continue
             target = (file.parent / m.group(2)).resolve()
-            # A test file's own fixtures outside the game (horizon-mod-wasm's, the book's): the test module above
-            # them is under #[cfg(test)], which horizon-mixins does not read.
-            if not target.is_file() or src not in target.parents:
+            if not target.is_file():
                 continue
-            if target in moves:
-                sys.exit(f"native_mixins_source: {target.relative_to(source)} is named twice")
-            if CHILD.search(target.read_text(encoding="utf-8")):
-                sys.exit(f"native_mixins_source: {target.relative_to(source)} names modules of its own")
-            new = file.parent / target.name
-            if new.exists():
-                sys.exit(f"native_mixins_source: {new.relative_to(source)} is taken")
-            moves[target] = new
+            if src in target.parents:
+                if target in moves:
+                    sys.exit(f"native_mixins_source: {target.relative_to(source)} is named twice")
+                if CHILD.search(target.read_text(encoding="utf-8")):
+                    sys.exit(f"native_mixins_source: {target.relative_to(source)} names modules of its own")
+                new = file.parent / target.name
+                if new.exists():
+                    sys.exit(f"native_mixins_source: {new.relative_to(source)} is taken")
+                moves[target] = new
+            elif source in target.parents:
+                if CHILD.search(target.read_text(encoding="utf-8")):
+                    sys.exit(f"native_mixins_source: {target.relative_to(source)} names modules of its own")
+                new = file.parent / target.name
+                if new.exists() and new.read_bytes() != target.read_bytes():
+                    sys.exit(f"native_mixins_source: {new.relative_to(source)} is taken")
+                copies[(target, new)] = None
+            else:
+                continue
             edits.append((file, i, f'{m.group(1)}#[path = "{target.name}"]'))
     for target, new in moves.items():
         target.rename(new)
+    for target, new in copies:
+        if not new.exists():
+            shutil.copy2(target, new)
     by_file = {}
     for file, i, text in edits:
         by_file.setdefault(file, []).append((i, text))
@@ -74,6 +87,8 @@ def parent_paths(source: pathlib.Path) -> None:
         file.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     for target, new in moves.items():
         print(f"native_mixins_source: {target.relative_to(source)} -> {new.relative_to(source)}")
+    for target, new in copies:
+        print(f"native_mixins_source: {target.relative_to(source)} -> {new.relative_to(source)} (copy)")
 
 
 def replaceable_markers(source: pathlib.Path) -> None:
