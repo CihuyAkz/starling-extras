@@ -1,0 +1,56 @@
+
+name: Sync Upstream Release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Target Branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Upstream Release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_TAG=$(gh release view --repo starling-client/starling --json tagName --jq '.tagName')
+
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "No upstream release found."
+            exit 1
+          fi
+
+          git remote add upstream https://github.com/starling-client/starling.git
+          git fetch upstream "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Merge Upstream Release
+        run: |
+          git merge "refs/tags/${{ steps.upstream.outputs.tag }}" --no-edit
+
+      - name: Push Target Branch
+        run: |
+          git push origin "HEAD:${{ github.ref_name }}"
