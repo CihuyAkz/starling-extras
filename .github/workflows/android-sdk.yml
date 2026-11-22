@@ -93,6 +93,7 @@ jobs:
   # The Preview APK with the game and the mod API as libraries of their own (tools/android_native_sdk.py), and
   # catalog native mods built beside it as libraries the game loads from its native-libs folder (android_lib.rs).
   apk:
+    environment: preview
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -102,6 +103,11 @@ jobs:
       PROFILE: ${{ inputs.profile || 'quick' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Restore the original Android signing key cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .local/android/debug.keystore
+          key: horizon-android-signing-${{ github.repository_id }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -109,6 +115,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: Reuse the original Android signing key when present
+        id: original_signing
+        shell: bash
+        run: |
+          KEYSTORE=.local/android/debug.keystore
+          if [[ ! -s "$KEYSTORE" ]]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keytool -list -keystore "$KEYSTORE" -storepass android -alias androiddebugkey > /dev/null
+          chmod 600 "$KEYSTORE"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "HORIZON_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/$KEYSTORE" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_ALIAS=androiddebugkey" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_STORE_PASSWORD=android" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_PASSWORD=android" >> "$GITHUB_ENV"
       - name: Install the build-tools, platform and NDK build_apk.py pins
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
@@ -122,19 +144,30 @@ jobs:
         with:
           shared-key: android-dylib-arm64-v8a
           save-if: ${{ github.ref == 'refs/heads/android-native-sdk' }}
-      - name: Unpack the debug key
+      - name: Unpack the persistent Preview signing key
+        if: steps.original_signing.outputs.available != 'true'
         env:
-          KEYSTORE: ${{ secrets.STARLING_DEBUG_KEYSTORE_BASE64 }}
+          KEYSTORE: ${{ secrets.STARLING_PREVIEW_KEYSTORE_BASE64 || secrets.STARLING_DEBUG_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.STARLING_PREVIEW_KEY_ALIAS || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-preview' }}
+          STORE_PASSWORD: ${{ secrets.STARLING_PREVIEW_STORE_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_STORE_PASSWORD || 'android' }}
+          KEY_PASSWORD: ${{ secrets.STARLING_PREVIEW_KEY_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_KEY_PASSWORD || 'android' }}
         run: |
-          test -n "$KEYSTORE" || exit 0
-          mkdir -p target/android
-          echo "$KEYSTORE" | base64 -d > target/android/debug.keystore
+          test -n "$KEYSTORE" || {
+            echo "Preview signing key is not configured. Run packaging/android/setup_signing.py for mode preview."
+            exit 1
+          }
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/starling-preview.jks"
+          echo "HORIZON_ANDROID_KEYSTORE=$RUNNER_TEMP/starling-preview.jks" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: The game and the mod API as dylibs
         run: python3 tools/android_native_sdk.py prepare
       - name: Build the APK
         env:
+          STARLING_NATIVE_BUILD_INTERNAL: '1'
           RUSTFLAGS: -C prefer-dynamic
-          HORIZON_ANDROID_KEY_ALIAS: horizon-debug
         run: |
           python packaging/android/build_apk.py --abi arm64-v8a --profile "$PROFILE" --preview
           # The game's libraries as the APK has them, to check the mods' build leaves them as they are.

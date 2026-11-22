@@ -119,8 +119,10 @@ For developers. Requirements: Rust 1.90 or newer with the `aarch64-linux-android
 ```sh
 git clone -b starling https://github.com/starling-client/starling.git
 cd starling
-python packaging/android/build_apk.py            # the APK lands in target/android/
+python packaging/android/build_apk.py            # compiles built-in Punchy and builds the APK
 ```
+
+GitHub Actions signing keys and Preview/Public release channels are documented in [Android release setup](packaging/android/RELEASES.md).
 
 The build compiles Horizon's original exporter classes with the host JDK and
 packages their checked bundle. It uses `HORIZON_MINECRAFT_DIR` as a read-only

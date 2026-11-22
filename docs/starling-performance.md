@@ -106,12 +106,12 @@ Nothing there cuts the terrain's GPU work (no LOD rings, no merged faces). What 
 
 ## How to try a change on the phone
 
-- **A test APK that installs over the release** (keeps the phone's data):
-  `gh workflow run android.yml --repo starling-client/starling --ref starling -f release_key=true`. It signs
-  with the release key and builds with the fast profile, does not publish, and the artifact is kept one
-  day (`gh run download <id> -R starling-client/starling -n starling-apk`). About 11 minutes. Only the
-  `starling` branch and v* tags reach the key's `release` environment: a branch of its own is tried as a
-  StarExtras: Preview (any push or `workflow_dispatch`), which installs beside the release.
+- **A test APK that installs over the Public release** (keeps the phone's data): run
+  `gh workflow run android.yml --repo OWNER/REPO --ref starling -f release_mode=public`. It signs
+  with the Public key and builds with the fast profile without publishing; download the artifact with
+  `gh run download <id> -R OWNER/REPO -n starling-apk-arm64-v8a`. For Preview, select
+  `release_mode=preview`; the Preview key and package ID are separate from Public. The signing keys are
+  configured once with `packaging/android/setup_signing.py` and must not be rotated after distribution.
 - **adb**: wireless debugging, the phone at home on 192.168.1.x (its address changes; the port too, the
   owner reads it off Developer options); `adb connect <ip>:<port>`, `adb install -r <apk>`. Xiaomi's
   "Install via USB" sometimes refuses an install without asking (`INSTALL_FAILED_USER_RESTRICTED`):

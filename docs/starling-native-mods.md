@@ -57,7 +57,9 @@ without native mods" stops using one. Nothing is installed: the APK stays the re
 6. `horizon-mixins apply` into a stage, then into a build folder kept between builds: files whose bytes changed get
    the time of now, the others keep theirs, so Cargo recompiles only what the mods touched.
 7. `build_apk.py --profile fast`, as a release: the stripped library, an APK unless `NATIVE_LIBRARY_ONLY` is set, and
-   `build.json`.
+   `build.json`. The normal APK build runs this pipeline with the built-in Punchy bundle, so Punchy is compiled into
+   `libhorizon_android.so`. The APK also carries `native-mods/compiled.txt`, which tells the installed-mod list that
+   Punchy is already in the APK and must not be shown as `Not Compiled`.
 
 ## Permissions
 

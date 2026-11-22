@@ -114,6 +114,15 @@ echo "native_build: build $key of $commit with $(ls "$work/mods" | tr '\n' ' ')"
 
 "$tools/bin/horizon-mixins" apply --workspace "$work/source" --mods "$work/mods" \
   --out "$work/stage"
+compiled_mods=$(python3 - "$work/mods" <<'PY'
+import pathlib
+import sys
+mods = pathlib.Path(sys.argv[1])
+ids = {path.name for path in mods.iterdir() if path.is_dir()}
+print(" ".join(sorted(ids)))
+PY
+)
+export STARLING_APK_NATIVE_MODS="$compiled_mods"
 
 # Into the build folder: a file whose bytes changed gets the time of now (no -t), one that did not
 # keeps its time, so Cargo recompiles what changed even when the commit is older than the last
@@ -126,13 +135,18 @@ git -C "$source" show "HEAD:$manifest" > "$work/manifest"
 cmp -s "$work/manifest" "$build/$manifest" || cp "$work/manifest" "$build/$manifest"
 
 rm -f "$build"/target/android/starling-*.apk
-# NATIVE_LIBRARY_ONLY: the library is all the game downloads, and the APK takes time to make.
-(cd "$build" && python3 packaging/android/build_apk.py --abi "$abi" --profile "$profile" $variant \
-  ${NATIVE_LIBRARY_ONLY:+--library-only})
+build_args=(--abi "$abi" --profile "$profile")
+[ -z "$variant" ] || build_args+=("$variant")
+[ "${KEEP_SYMBOLS:-}" != 1 ] || build_args+=(--keep-symbols)
+[ -z "${NATIVE_LIBRARY_ONLY:-}" ] || build_args+=(--library-only)
+(cd "$build" && STARLING_NATIVE_BUILD_INTERNAL=1 python3 packaging/android/build_apk.py "${build_args[@]}")
 
 library=$build/target/android/libhorizon_android.so
 cp "$library" "$out/libhorizon_android.so"
-[ -n "${NATIVE_LIBRARY_ONLY:-}" ] || cp "$build"/target/android/starling-*-"$abi".apk "$out/"
+if [ -f "$build/target/android/libhorizon_android-symbols.so" ]; then
+  cp "$build/target/android/libhorizon_android-symbols.so" "$out/libhorizon_android-symbols.so"
+fi
+[ -n "${NATIVE_LIBRARY_ONLY:-}" ] || cp "$build"/target/android/starling-*"$abi".apk "$out/"
 python3 - "$build" "$work/mods" "$out" "$key" "$commit" "$profile" "$MIXINS_REV" "$abi" <<'EOF'
 import hashlib, json, pathlib, re, sys, tomllib
 build, mods, out, key, commit, profile, mixins, abi = sys.argv[1:]

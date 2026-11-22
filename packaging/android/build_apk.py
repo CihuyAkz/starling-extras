@@ -8,8 +8,7 @@ arm64-v8a, the libadrenotools Vulkan hook libraries for custom GPU drivers. Noth
 Minecraft: the resources
 horizon-prepare makes from the player's own copy are made on the phone, or copied there.
 
-    python3 packaging/android/build_apk.py                 # build the library, then the APK
-    python3 packaging/android/build_apk.py --no-build      # package the library built last
+    python3 packaging/android/build_apk.py                 # compile built-in Punchy, then build the APK
     python3 packaging/android/build_apk.py --install       # and adb install it
     python3 packaging/android/build_apk.py --zip           # and a zip of it to send
     python3 packaging/android/build_apk.py --preview       # StarExtras: Preview, the organisation's CI build
@@ -369,8 +368,10 @@ def bundle_native_mods(assets_folder):
                 archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     compiled_mods = os.environ.get("STARLING_APK_NATIVE_MODS", "").split()
     if compiled_mods:
-        if len(compiled_mods) != len(set(compiled_mods)) or not set(compiled_mods).issubset(BUILTIN_NATIVE_MODS):
-            raise RuntimeError("STARLING_APK_NATIVE_MODS contains unknown or duplicate mod ids")
+        if len(compiled_mods) != len(set(compiled_mods)) or any(
+            not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", mod_id) for mod_id in compiled_mods
+        ):
+            raise RuntimeError("STARLING_APK_NATIVE_MODS contains invalid or duplicate mod ids")
         (destination / "compiled.txt").write_text(" ".join(sorted(compiled_mods)) + "\n", encoding="utf-8")
 
 
@@ -505,19 +506,36 @@ def add_code(base, libraries, dex, unsigned, abi=ABI):
             apk.write(path, f"lib/{abi}/{name}", compress_type=zipfile.ZIP_DEFLATED)
 
 
-def sign(build_tools, aligned, apk, out):
+def sign(build_tools, aligned, apk, out, variant=None):
     keystore = os.environ.get("HORIZON_ANDROID_KEYSTORE")
-    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS", "horizon-debug")
     env = dict(os.environ)
     if not keystore:
-        keystore = out / "debug.keystore"
-        env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
-        if not keystore.exists():
-            run(
-                "keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
-                "-keypass", "android", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
-                "-validity", "10000", "-dname", "CN=Horizon Android debug",
-            )
+        previous = ROOT / ".local" / "android" / "debug.keystore"
+        if previous.is_file():
+            keystore = previous
+            default_alias = "androiddebugkey"
+            env.setdefault("HORIZON_ANDROID_STORE_PASSWORD", "android")
+            env.setdefault("HORIZON_ANDROID_KEY_PASSWORD", "android")
+        else:
+            keystore = out / ("preview.keystore" if variant == "preview" else "debug.keystore")
+            default_alias = "horizon-preview" if variant == "preview" else "horizon-debug"
+            env["HORIZON_ANDROID_STORE_PASSWORD"] = env["HORIZON_ANDROID_KEY_PASSWORD"] = "android"
+            if not keystore.exists():
+                run(
+                    "keytool", "-genkeypair", "-noprompt", "-storetype", "JKS", "-keystore", keystore,
+                    "-storepass", "android", "-keypass", "android", "-alias", default_alias, "-keyalg", "RSA",
+                    "-keysize", "2048", "-validity", "10000", "-dname", f"CN=Starling Extras {variant or 'Local'}",
+                )
+                try:
+                    keystore.chmod(0o600)
+                except OSError:
+                    pass
+    else:
+        default_alias = "horizon-debug"
+        missing = [name for name in ("HORIZON_ANDROID_STORE_PASSWORD", "HORIZON_ANDROID_KEY_PASSWORD") if not env.get(name)]
+        if missing:
+            sys.exit("build_apk: signing keystore is set but these password variables are missing: " + ", ".join(missing))
+    alias = os.environ.get("HORIZON_ANDROID_KEY_ALIAS", default_alias)
     apksigner = tool(build_tools, "apksigner")
     run(
         apksigner, "sign", "--ks", keystore, "--ks-key-alias", alias,
@@ -573,13 +591,72 @@ def compiler_runtime_resolves(ndk, libraries):
                  + "; ".join(f"{name} ({', '.join(users)})" for name, users in sorted(missing.items())))
 
 
+def build_with_builtin_native_mods(args):
+    if args.no_build:
+        sys.exit("build_apk: --no-build cannot package the built-in Punchy mod; build through native_build.sh")
+    if args.library_only and args.install:
+        sys.exit("build_apk: --install cannot be used with --library-only")
+    variant = "preview" if args.preview else "public"
+    native_out = ROOT / "target" / "android" / "native-build" / variant / args.abi
+    shutil.rmtree(native_out, ignore_errors=True)
+    native_out.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    local_keystore = ROOT / ".local" / "android" / "debug.keystore"
+    if not env.get("HORIZON_ANDROID_KEYSTORE") and local_keystore.is_file():
+        env["HORIZON_ANDROID_KEYSTORE"] = str(local_keystore)
+        env.setdefault("HORIZON_ANDROID_KEY_ALIAS", "androiddebugkey")
+        env.setdefault("HORIZON_ANDROID_STORE_PASSWORD", "android")
+        env.setdefault("HORIZON_ANDROID_KEY_PASSWORD", "android")
+    env["PROFILE"] = args.profile
+    env["ABI"] = args.abi
+    if args.preview:
+        env["VARIANT"] = "--preview"
+    else:
+        env.pop("VARIANT", None)
+    if args.keep_symbols:
+        env["KEEP_SYMBOLS"] = "1"
+    else:
+        env.pop("KEEP_SYMBOLS", None)
+    if args.library_only:
+        env["NATIVE_LIBRARY_ONLY"] = "1"
+    else:
+        env.pop("NATIVE_LIBRARY_ONLY", None)
+    bundle = ROOT / "native-mods" / "punchy" / "mixins" / "punchy"
+    run("bash", HERE / "native_build.sh", ROOT, native_out, bundle, env=env)
+    target = ROOT / "target" / "android"
+    target.mkdir(parents=True, exist_ok=True)
+    library = native_out / "libhorizon_android.so"
+    if library.is_file():
+        shutil.copy2(library, target / library.name)
+    symbols = native_out / "libhorizon_android-symbols.so"
+    if symbols.is_file():
+        shutil.copy2(symbols, target / symbols.name)
+    if args.library_only:
+        print(target / "libhorizon_android.so")
+        return
+    apks = sorted(native_out.glob("starling-*.apk"))
+    if len(apks) != 1:
+        sys.exit(f"build_apk: expected one Punchy APK from native_build.sh, found {len(apks)}")
+    apk = target / apks[0].name
+    shutil.copy2(apks[0], apk)
+    if args.zip:
+        packed = apk.with_suffix(".apk.zip")
+        with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            archive.write(apk, apk.name)
+        print(packed)
+    if args.install:
+        adb = tool(sdk_dir() / "platform-tools", "adb")
+        run(adb, "install", "-r", apk)
+    print(apk)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--profile", default="quick",
         help="Cargo profile (default: quick, for iteration; fast or release to measure and ship)",
     )
-    parser.add_argument("--no-build", action="store_true", help="package the library built last")
+    parser.add_argument("--no-build", action="store_true", help="not available when built-in Punchy is compiled")
     parser.add_argument("--install", action="store_true", help="adb install the APK")
     parser.add_argument(
         "--zip", action="store_true",
@@ -597,6 +674,9 @@ def main():
     )
     parser.add_argument("--abi", choices=TARGETS, default=ABI, help="Android ABI (default: arm64-v8a)")
     args = parser.parse_args()
+    if os.environ.get("STARLING_NATIVE_BUILD_INTERNAL") != "1":
+        build_with_builtin_native_mods(args)
+        return
     triple, _, _ = TARGETS[args.abi]
 
     sdk = sdk_dir()
@@ -651,7 +731,7 @@ def main():
     aligned = out / "aligned.apk"
     run(tool(build_tools, "zipalign"), "-P", "16", "-f", "4", out / "unsigned.apk", aligned)
     apk = out / f"starling{'-' + variant if variant else ''}-{VERSION_NAME}-{args.abi}.apk"
-    sign(build_tools, aligned, apk, out)
+    sign(build_tools, aligned, apk, out, variant)
     print(apk)
     if args.zip:
         # Sent where an .apk is refused (a chat, a phone away from adb): unzip, then install.

@@ -1505,6 +1505,16 @@ fn not_built(
     built: &[mod_api::__private::native::BuiltMod],
     rows: &[Installed],
 ) -> Vec<Installed> {
+    let apk_built = std::env::var("STARLING_APK_NATIVE_MODS").unwrap_or_default();
+    not_built_for_apk(dir, built, rows, &apk_built)
+}
+
+fn not_built_for_apk(
+    dir: &std::path::Path,
+    built: &[mod_api::__private::native::BuiltMod],
+    rows: &[Installed],
+    apk_built: &str,
+) -> Vec<Installed> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|d| d.flatten().map(|e| e.path()).collect())
         .unwrap_or_default();
@@ -1539,7 +1549,8 @@ fn not_built(
         };
         let (id, version) = (bundle.id().to_owned(), bundle.version());
         let listed = rows.iter().chain(&out).any(|row| row.id == id);
-        if !listed && !built.iter().any(|b| b.id == id) {
+        let compiled_in_apk = apk_built.split_ascii_whitespace().any(|compiled| compiled == id);
+        if !listed && !compiled_in_apk && !built.iter().any(|b| b.id == id) {
             out.push(Installed {
                 title: format!("{} {version}", display_name(&id)),
                 id,
@@ -2916,6 +2927,33 @@ mod tests {
         );
     }
 
+    fn hnmod(dir: &std::path::Path, id: &str) {
+        use std::io::Write as _;
+
+        let revision = "a".repeat(40);
+        let manifest = serde_json::json!({
+            "schema": 1,
+            "id": id,
+            "version": "0.3.0",
+            "game": "26.3",
+            "horizon": revision,
+            "mixins": "b".repeat(40),
+        });
+        let mixin = format!(
+            "[mod]\nid = '{id}'\nversion = '0.3.0'\n[compatibility]\nhorizon_revision = '{}'\n",
+            "a".repeat(40)
+        );
+        let path = dir.join(format!("{id}.hnmod"));
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("horizon-native.json", options).unwrap();
+        zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        zip.start_file(format!("mixins/{id}/horizon-mixin.toml"), options)
+            .unwrap();
+        zip.write_all(mixin.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+
     fn hmod(dir: &std::path::Path, id: &str) {
         let manifest = format!(
             "id = '{id}'\nname = '{id}'\nversion = '0.3.0'\napi = '0.2'\nside = 'both'\ncapabilities = ['registries']\n[native]\ngame = '26.3'\nhorizon = '{}'\nmixins = '{}'\n",
@@ -3208,6 +3246,18 @@ mod tests {
             Some("machine_sample 0.3.0, pipes 2.0")
         );
         assert_eq!(native_mods_detail(&[]), None);
+    }
+
+    #[test]
+    fn a_native_mod_bundled_and_compiled_in_the_apk_is_not_marked_unbuilt() {
+        let f = Fixture::new("apk-native-built");
+        hnmod(&f.0, "punchy");
+        let rows = not_built_for_apk(&f.0, &[], &[], "punchy");
+        assert!(rows.is_empty());
+        let rows = not_built_for_apk(&f.0, &[], &[], "another_mod");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "punchy");
+        assert_eq!(rows[0].problem.as_deref(), Some(mod_list::NOT_BUILT));
     }
 
     #[test]
