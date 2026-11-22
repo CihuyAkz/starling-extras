@@ -1,5 +1,0 @@
-[client_side]
-mods = ["zoom", "recipes", "smartf3", "freecam_plus", "connected_textures", "armorhud", "jade", "visuality_horizon", "punchy", "freelook", "cinematic_interactions", "firstpersonmodel", "eatinganimation", "appleskin", "customhud"]
-
-[server_side]
-mods = ["veinminer", "liteminer", "rightharvest", "carryblock"]
