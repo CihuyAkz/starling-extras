@@ -36,7 +36,45 @@ concurrency:
   group: android-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  prepare_signing:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_MODE: ${{ inputs.release_mode == 'auto' && (vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview')) || inputs.release_mode || vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview') }}
+    steps:
+      - uses: actions/setup-java@v4
+        if: env.RELEASE_MODE == 'preview'
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Restore or create the persistent Preview signing key
+        if: env.RELEASE_MODE == 'preview'
+        uses: actions/cache@v4
+        with:
+          path: .local/android/debug.keystore
+          key: horizon-android-signing-${{ github.repository_id }}
+      - name: Generate the Preview signing key when missing
+        if: env.RELEASE_MODE == 'preview'
+        shell: bash
+        run: |
+          KEYSTORE=.local/android/debug.keystore
+          mkdir -p "$(dirname "$KEYSTORE")"
+          if [[ ! -s "$KEYSTORE" ]]; then
+            keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storetype JKS -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Starling Extras Preview, OU=Android, O=CihuyAkz, L=Jakarta, ST=DKI Jakarta, C=ID"
+          fi
+          keytool -list -keystore "$KEYSTORE" -storepass android -alias androiddebugkey > /dev/null
+          chmod 600 "$KEYSTORE"
+      - name: Upload the Preview signing key for APK builds
+        if: env.RELEASE_MODE == 'preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-preview-signing-key
+          path: .local/android/debug.keystore
+          if-no-files-found: error
+          retention-days: 1
   apk:
+    needs: prepare_signing
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
@@ -58,6 +96,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: Download the persistent Preview signing key
+        if: env.RELEASE_MODE == 'preview'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-preview-signing-key
+          path: .local/android
+      - name: Configure the Preview signing key
+        if: env.RELEASE_MODE == 'preview'
+        shell: bash
+        run: |
+          KEYSTORE=.local/android/debug.keystore
+          keytool -list -keystore "$KEYSTORE" -storepass android -alias androiddebugkey > /dev/null
+          chmod 600 "$KEYSTORE"
+          echo "HORIZON_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/$KEYSTORE" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_ALIAS=androiddebugkey" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_STORE_PASSWORD=android" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_PASSWORD=android" >> "$GITHUB_ENV"
       - name: Install the build-tools, platform and NDK build_apk.py pins
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
@@ -76,7 +131,7 @@ jobs:
             preview|public) ;;
             *) echo "STARLING_RELEASE_MODE must be preview or public, not: $RELEASE_MODE"; exit 1 ;;
           esac
-      - name: Load the Public signing key from Environment Secrets
+      - name: Unpack the Public signing key
         if: env.RELEASE_MODE == 'public'
         env:
           KEYSTORE: ${{ secrets.STARLING_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
@@ -93,26 +148,6 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/starling-public.jks"
           echo "HORIZON_ANDROID_KEYSTORE=$RUNNER_TEMP/starling-public.jks" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-      - name: Load the Preview signing key from Environment Secrets
-        if: env.RELEASE_MODE == 'preview'
-        env:
-          KEYSTORE: ${{ secrets.STARLING_PREVIEW_KEYSTORE_BASE64 || secrets.STARLING_DEBUG_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.STARLING_PREVIEW_KEY_ALIAS || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-preview' }}
-          STORE_PASSWORD: ${{ secrets.STARLING_PREVIEW_STORE_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_STORE_PASSWORD || 'android' }}
-          KEY_PASSWORD: ${{ secrets.STARLING_PREVIEW_KEY_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_KEY_PASSWORD || 'android' }}
-        run: |
-          test -n "$KEYSTORE" || {
-            echo "Preview signing key is not configured in the preview environment."
-            echo "Run: python3 packaging/android/setup_signing.py --repo OWNER/REPO --mode preview"
-            exit 1
-          }
-          test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" || { echo "Preview signing passwords are missing."; exit 1; }
-          umask 077
-          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/starling-preview.jks"
-          echo "HORIZON_ANDROID_KEYSTORE=$RUNNER_TEMP/starling-preview.jks" >> "$GITHUB_ENV"
           echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
