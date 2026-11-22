@@ -1,4 +1,4 @@
-name: Starling Extras Android SDK Build
+name: android-sdk
 # The Android native mod route, step by step (branch android-native-sdk): first a toy (tools/android_dylib_toy)
 # that answers whether the std the APK builds from source (build_apk.py's TLS_FLAGS and BUILD_STD) can be one
 # shared library for the game and every mod. Its artifact goes to a phone by adb (`toyhost libtoymod.so`).
@@ -136,7 +136,7 @@ jobs:
           RUSTFLAGS: -C prefer-dynamic
           HORIZON_ANDROID_KEY_ALIAS: horizon-debug
         run: |
-          python packaging/android/build_apk.py --abi arm64-v8a --profile "$PROFILE" --dev
+          python packaging/android/build_apk.py --abi arm64-v8a --profile "$PROFILE" --preview
           # The game's libraries as the APK has them, to check the mods' build leaves them as they are.
           (cd "target/aarch64-linux-android/$PROFILE" && sha256sum libhorizon_android.so deps/lib*.so) > "$RUNNER_TEMP/game.sha256"
       - name: Fetch the catalog's packages of the mods
@@ -175,7 +175,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: starling-extras-dev-dylib-arm64-v8a
+          name: starling-preview-dylib-arm64-v8a
           path: target/android/starling-*.apk
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
@@ -190,9 +190,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           short=${GITHUB_SHA:0:10}
-          apk="$RUNNER_TEMP/starling-extras-dev-nightly-$short-arm64-v8a.apk"
+          apk="$RUNNER_TEMP/starling-preview-nightly-$short-arm64-v8a.apk"
           cp target/android/starling-*-arm64-v8a.apk "$apk"
           gh release create "nightly-$short" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Starling Extras Dev nightly $(date -u +%Y-%m-%d) · $short (native mods)" \
-            --notes "Starling Extras Dev built from $GITHUB_SHA with the game as Rust libraries ($PROFILE profile), so native mods from Horizon's catalog load beside it. arm64-v8a only."
+            --title "StarExtras: Preview nightly $(date -u +%Y-%m-%d) · $short (native mods)" \
+            --notes "StarExtras: Preview built from $GITHUB_SHA with the game as Rust libraries ($PROFILE profile), so native mods from Horizon's catalog load beside it. arm64-v8a only."
           echo "APK: https://github.com/$GITHUB_REPOSITORY/releases/download/nightly-$short/$(basename "$apk")"
