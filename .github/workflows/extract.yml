@@ -98,8 +98,7 @@ jobs:
               while IFS= read -r -d '' item; do
                 entries+=("$item")
               done < <(
-                find "$CURRENT" -mindepth 1 -maxdepth 1 \
-                  ! -name ".github" -print0
+                find "$CURRENT" -mindepth 1 -maxdepth 1 -print0
               )
 
               if [ "${#entries[@]}" -ne 1 ]; then
@@ -135,8 +134,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf /tmp/final/.github
-          rsync -av --exclude='/.github/' /tmp/final/ ./
+          rsync -av --exclude='*.zip' /tmp/final/ ./
+
+          echo "Semua file berhasil di-merge termasuk folder .github."
 
       - name: Remove source ZIP
         shell: bash
