@@ -2831,7 +2831,6 @@ fn native_mod_side(id: &str) -> Option<NativeModSide> {
         | "connected_textures"
         | "armorhud"
         | "jade"
-        | "basic_hud"
         | "visuality_horizon"
         | "punchy"
         | "freelook"

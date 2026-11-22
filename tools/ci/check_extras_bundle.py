@@ -27,8 +27,8 @@ def main():
     categories = tomllib.loads(CATEGORIES.read_text(encoding="utf-8"))
     client = categories.get("client_side", {}).get("mods", [])
     server = categories.get("server_side", {}).get("mods", [])
-    if len(client) != 16 or len(server) != 4:
-        fail(f"expected 16 Client-Side and 4 Server-Side mods, got {len(client)} and {len(server)}")
+    if len(client) != 15 or len(server) != 4:
+        fail(f"expected 15 Client-Side and 4 Server-Side mods, got {len(client)} and {len(server)}")
     if len(set(client)) != len(client) or len(set(server)) != len(server):
         fail("duplicate mod ID in category lists")
     if set(client) & set(server):
@@ -40,8 +40,8 @@ def main():
         fail("prebuilt.txt must list wrench separately, followed by one Extras bundle")
     ids = entries[1].split()
     expected = client + server
-    if len(ids) != 20 or len(set(ids)) != 20 or set(ids) != set(expected):
-        fail("Extras bundle IDs do not exactly match the 16 Client-Side + 4 Server-Side IDs")
+    if len(ids) != 19 or len(set(ids)) != 19 or set(ids) != set(expected):
+        fail("Extras bundle IDs do not exactly match the 15 Client-Side + 4 Server-Side IDs")
     if "wrench" in ids or "kotost_roulette" in ids:
         fail("base or unrelated mod was included in the Extras bundle")
 
@@ -143,7 +143,7 @@ def main():
     if args.print_ids:
         print(" ".join(ids))
     else:
-        print(f"extras bundle check: 20 mods, 16 Client-Side, 4 Server-Side; {len(module_targets)} unique modules, metadata, hooks, targets, helpers, module destinations and crate manifests are present")
+        print(f"extras bundle check: 19 mods, 15 Client-Side, 4 Server-Side; {len(module_targets)} unique modules, metadata, hooks, targets, helpers, module destinations and crate manifests are present")
 
 
 if __name__ == "__main__":
