@@ -195,8 +195,8 @@ target = "horizon_client::game::totem::Game<'_>::totem_event"
 helper = "totem.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "target", ty = "&horizon_client::particles::TrackingTarget", value = "&target" },
   { name = "body", ty = "&Body", value = "&body" },
-  { name = "own", ty = "bool", value = "own" },
 ]
 
 [[injection]]

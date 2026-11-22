@@ -1,9 +1,20 @@
-// A crafting table opening on the server: what was left on it is in its grid again.
-fn cinematic_table_open(game: &mut crate::game::Game<'_>, pos: [i32; 3]) {
-    use horizon_client_lib::native_cinematic_interactions_scene as ci;
-    if game.remote.is_some() || &*game.block_name(pos) != "minecraft:crafting_table" {
+fn cinematic_table_open(
+    game: &mut crate::game::Game<'_>,
+    menu: &str,
+    pos: Option<[i32; 3]>,
+) {
+    let Some(pos) = pos else {
+        return;
+    };
+    if game.remote.is_some()
+        || menu != "minecraft:crafting"
+        || &*game.block_name(pos) != "minecraft:crafting_table"
+    {
         return;
     }
+    game.craft_table = Some(pos);
+    game.craft_size = 3;
+    use horizon_client_lib::native_cinematic_interactions_scene as ci;
     if game.craft_grid.iter().any(Option::is_some) {
         return;
     }

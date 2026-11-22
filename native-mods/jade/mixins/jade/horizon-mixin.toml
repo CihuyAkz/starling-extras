@@ -382,7 +382,6 @@ target = "horizon_client::game::lan_actions::Game<'_>::lan_guest_packet"
 helper = "rule_values.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "host", ty = "&mut LanHost", value = "&mut *host" },
   { name = "conn", ty = "u32", value = "conn" },
   { name = "packet", ty = "&S", value = "&packet" },
 ]

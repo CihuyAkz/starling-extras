@@ -137,11 +137,12 @@ bindings = [{ name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *s
 [[injection]]
 id = "table-open"
 kind = "HEAD"
-target = "horizon_client::game::Game<'_>::open_menu"
+target = "horizon_client::game::native_hooks::base::Game<'_>::native_player_container_open"
 helper = "table_open.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "menu", ty = "&str", value = "menu" },
+  { name = "pos", ty = "Option<[i32; 3]>", value = "pos" },
 ]
 
 [[injection]]

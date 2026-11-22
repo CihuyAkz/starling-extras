@@ -45,6 +45,5 @@ target = "horizon_client::game::mods::content_root"
 helper = "embedded_content.rs"
 bindings = [
   { name = "root", ty = "&std::path::Path", value = "root" },
-  { name = "enabled", ty = "&std::collections::BTreeSet<String>", value = "enabled" },
-  { name = "dev", ty = "&[std::path::PathBuf]", value = "dev" },
+  { name = "sources", ty = "&ModsState", value = "sources" },
 ]

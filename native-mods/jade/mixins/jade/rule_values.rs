@@ -1,6 +1,9 @@
 // The reply this function makes to ServerboundClientCommandPacket's REQUEST_GAMERULE_VALUES, with Jade's rule too.
-fn jade_rule_values(game: &crate::game::Game<'_>, host: &mut LanHost, conn: u32, packet: &S) -> core::ops::ControlFlow<()> {
+fn jade_rule_values(game: &crate::game::Game<'_>, conn: u32, packet: &S) -> core::ops::ControlFlow<()> {
     let S::ClientCommand(p) = packet else {
+        return core::ops::ControlFlow::Continue(());
+    };
+    let Some(host) = game.lan.as_ref() else {
         return core::ops::ControlFlow::Continue(());
     };
     if p.action != 2 || !host.hub.guests.iter().any(|g| g.conn == conn && g.permission >= 2) {
