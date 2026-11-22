@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: extract-zip-${{ github.ref }}
@@ -21,6 +22,7 @@ jobs:
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
+          token: ${{ secrets.REPO_TOKEN }}
           persist-credentials: true
 
       - name: Find ZIP
@@ -122,7 +124,6 @@ jobs:
             echo "Merging contents from: $ZIP_FILE"
 
             rsync -av "$CURRENT/" /tmp/final/
-
           done
 
           echo "=================================="
@@ -136,7 +137,8 @@ jobs:
 
           rsync -av --exclude='*.zip' /tmp/final/ ./
 
-          echo "Semua file berhasil di-merge termasuk folder .github."
+          echo "Semua file berhasil di-merge."
+          echo "Folder .github juga ikut diproses."
 
       - name: Remove source ZIP
         shell: bash
