@@ -1,0 +1,57 @@
+
+name: Self Destruct
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  self-destruct:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Destroy branch contents
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != refs/heads/* ]]; then
+            echo "Only branches are supported."
+            exit 1
+          fi
+
+          git check-ref-format --branch "$TARGET_BRANCH"
+
+          CHECKED_OUT_BRANCH="$(git branch --show-current)"
+
+          if [[ "$CHECKED_OUT_BRANCH" != "$TARGET_BRANCH" ]]; then
+            echo "Branch mismatch."
+            exit 1
+          fi
+
+          git rm -r -f --ignore-unmatch -- .
+
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "Branch is already empty."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git commit -m "chore: self-destruct branch contents"
+
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+          echo "Self-destruct completed."
