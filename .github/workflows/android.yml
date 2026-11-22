@@ -51,11 +51,6 @@ jobs:
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
-      - name: Restore the original Android signing key cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .local/android/debug.keystore
-          key: horizon-android-signing-${{ github.repository_id }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -63,22 +58,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Reuse the original Android signing key when present
-        id: original_signing
-        shell: bash
-        run: |
-          KEYSTORE=.local/android/debug.keystore
-          if [[ ! -s "$KEYSTORE" ]]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          keytool -list -keystore "$KEYSTORE" -storepass android -alias androiddebugkey > /dev/null
-          chmod 600 "$KEYSTORE"
-          echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "HORIZON_ANDROID_KEYSTORE=$GITHUB_WORKSPACE/$KEYSTORE" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_KEY_ALIAS=androiddebugkey" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_STORE_PASSWORD=android" >> "$GITHUB_ENV"
-          echo "HORIZON_ANDROID_KEY_PASSWORD=android" >> "$GITHUB_ENV"
       - name: Install the build-tools, platform and NDK build_apk.py pins
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
@@ -97,8 +76,8 @@ jobs:
             preview|public) ;;
             *) echo "STARLING_RELEASE_MODE must be preview or public, not: $RELEASE_MODE"; exit 1 ;;
           esac
-      - name: Unpack the Public signing key
-        if: env.RELEASE_MODE == 'public' && steps.original_signing.outputs.available != 'true'
+      - name: Load the Public signing key from Environment Secrets
+        if: env.RELEASE_MODE == 'public'
         env:
           KEYSTORE: ${{ secrets.STARLING_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.STARLING_KEY_ALIAS || (secrets.STARLING_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-release' }}
@@ -117,8 +96,8 @@ jobs:
           echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-      - name: Unpack the Preview signing key
-        if: env.RELEASE_MODE == 'preview' && steps.original_signing.outputs.available != 'true'
+      - name: Load the Preview signing key from Environment Secrets
+        if: env.RELEASE_MODE == 'preview'
         env:
           KEYSTORE: ${{ secrets.STARLING_PREVIEW_KEYSTORE_BASE64 || secrets.STARLING_DEBUG_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.STARLING_PREVIEW_KEY_ALIAS || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-preview' }}
