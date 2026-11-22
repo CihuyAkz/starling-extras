@@ -512,7 +512,7 @@ pub fn is_open() -> bool {
 
 /// A page with the preview is up, where `hud` can build the box for it (PreviewOptionsScreen).
 pub fn wants_box() -> bool {
-    UI.with_borrow(|u| u.as_ref().is_some_and(|ui| matches!(ui.page, Page::Mod | Page::Plugins)))
+    UI.with_borrow(|u| u.as_ref().is_some_and(|ui| ::core::matches!(ui.page, Page::Mod | Page::Plugins)))
 }
 
 fn new_ui(host: Host) -> Ui {
@@ -736,7 +736,7 @@ impl Builder {
                         _ if o.values.len() == 2 && o.values[0].0 == "true" && o.values[1].0 == "false" => Kind::Toggle,
                         _ => Kind::Cycle,
                     };
-                    self.push(kind, jade::option_label(o), o.key, depth).ignore = matches!(key, "display_entities" | "display_blocks");
+                    self.push(kind, jade::option_label(o), o.key, depth).ignore = ::core::matches!(key, "display_entities" | "display_blocks");
                 }
                 Slide(key, depth, min, max, step, percent) => {
                     let Some(o) = jade::option(key) else { continue };
@@ -1212,7 +1212,7 @@ impl Ui {
         if let Some(entry) = self.expanded
             && !self.sticky
         {
-            let inside = self.keyboard && matches!(self.focus, Focus::Row(r) if r == entry || self.rows[r].parent == Some(entry));
+            let inside = self.keyboard && ::core::matches!(self.focus, Focus::Row(r) if r == entry || self.rows[r].parent == Some(entry));
             if !inside && !self.over_popup(entry, m) {
                 self.collapse();
             }
@@ -1658,7 +1658,7 @@ impl Ui {
     /// changed (`forcePreviewOverlay`), and the Grass Block while adjusting with nothing looked at.
     fn draw_preview(&mut self, game: &Game<'_>, batch: &mut HudBatch, mouse: [f32; 2]) {
         let built = jade::take_built();
-        if !matches!(self.page, Page::Mod | Page::Plugins) {
+        if !::core::matches!(self.page, Page::Mod | Page::Plugins) {
             return;
         }
         if self.adjusting && built.is_none() && self.sample.is_none() {
@@ -1671,7 +1671,7 @@ impl Ui {
         };
         let Some(shown) = shown else { return };
         let rect = jade::box_rect(game, [batch.width, batch.height], shown, self.adjusting);
-        let forced = self.adjusting || matches!(self.drag, Drag::Slider(row, _) if self.rows[row].key == "scale");
+        let forced = self.adjusting || ::core::matches!(self.drag, Drag::Slider(row, _) if self.rows[row].key == "scale");
         let draw = forced || (self.preview && self.confirm.is_none() && !hit(rect, mouse));
         if draw {
             jade::draw_box(game, batch, shown, self.adjusting);
@@ -1808,7 +1808,7 @@ impl Ui {
 
     /// The Preview button: only over a level, with a page that has the preview.
     fn has_preview_button(&self, game: &Game<'_>) -> bool {
-        game.player.is_some() && matches!(self.page, Page::Mod | Page::Plugins)
+        game.player.is_some() && ::core::matches!(self.page, Page::Mod | Page::Plugins)
     }
 
     /// OptionsList.extractListItems in card mode: the sections and cards, then the open popup over them. What the
@@ -1956,7 +1956,7 @@ impl Ui {
                 let value = jade::num(game, row.key) as f32;
                 let t = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
                 let text = if percent { format!("{}%", value.round() as i64) } else { jade::trim2(f64::from(value)) };
-                let dragging = matches!(self.drag, Drag::Slider(r, _) if r == row_index) || (self.slider_keys && self.focused_row() == Some(row_index));
+                let dragging = ::core::matches!(self.drag, Drag::Slider(r, _) if r == row_index) || (self.slider_keys && self.focused_row() == Some(row_index));
                 ui::slider(batch, atlas, vx, vy, vw, &Text::literal(text), t, hover, true, dragging);
             }
             Kind::Toggle => ui::button(batch, atlas, vx, vy, vw, vh, &on_off(jade::on(game, row.key)), true, hover),
@@ -2098,7 +2098,7 @@ impl Ui {
                 game.native_fill(batch, [r[0] + 5.0, r[1] + 6.0 + 3.0 * bar as f32, 10.0, 2.0], 0xFFFF_FFFF);
             }
         }
-        if !matches!(row.kind, Kind::Reload | Kind::Reset) {
+        if !::core::matches!(row.kind, Kind::Reload | Kind::Reset) {
             let changed = self.row_changed(game, row);
             let r = rects.reset;
             ui::button(batch, atlas, r[0], r[1], r[2], r[3], &Text::literal("R"), changed, changed && hit(r, m));
@@ -2243,7 +2243,7 @@ impl Ui {
         if kind == Kind::Title {
             return;
         }
-        if !matches!(kind, Kind::Reload | Kind::Reset) && hit(rects.reset, m) {
+        if !::core::matches!(kind, Kind::Reload | Kind::Reset) && hit(rects.reset, m) {
             if self.row_changed(game, &self.rows[row_index]) {
                 click_sound();
                 self.reset_row(game, row_index);
@@ -2258,7 +2258,7 @@ impl Ui {
         if !hit(rects.value, m) || !enabled {
             return;
         }
-        if matches!(kind, Kind::Slider { .. }) {
+        if ::core::matches!(kind, Kind::Slider { .. }) {
             self.press_slider(game, row_index, rects.value, m);
         } else {
             self.use_row(game, row_index, shift);
@@ -2298,7 +2298,7 @@ impl Ui {
                 let y = panel[1] + 3.0 + slide + k * ROW;
                 let value = Self::popup_value(panel, y);
                 if hit(value, m) && self.row_enabled(game, &self.rows[row]) {
-                    if matches!(self.rows[row].kind, Kind::Slider { .. }) {
+                    if ::core::matches!(self.rows[row].kind, Kind::Slider { .. }) {
                         self.press_slider(game, row, value, m);
                     } else {
                         self.use_row(game, row, shift);
@@ -2325,7 +2325,7 @@ impl Ui {
                 let value = [cx + 4.0, cy + ch - 2.0 - 20.0, cw - 8.0, 20.0];
                 if hit(value, m) {
                     if self.row_enabled(game, &self.rows[row]) {
-                        if matches!(self.rows[row].kind, Kind::Slider { .. }) {
+                        if ::core::matches!(self.rows[row].kind, Kind::Slider { .. }) {
                             self.press_slider(game, row, value, m);
                         } else {
                             self.use_row(game, row, shift);
@@ -2472,13 +2472,13 @@ impl Ui {
         }
         // AbstractSliderButton: Enter lets a focused slider's arrows move it; they do until Enter again or the focus goes.
         if let Focus::Row(row) = self.focus
-            && matches!(self.rows[row].kind, Kind::Slider { .. })
+            && ::core::matches!(self.rows[row].kind, Kind::Slider { .. })
         {
             if SELECT.contains(&key) {
                 self.slider_keys = !self.slider_keys;
                 return;
             }
-            if self.slider_keys && matches!(key, "key.keyboard.left" | "key.keyboard.right") {
+            if self.slider_keys && ::core::matches!(key, "key.keyboard.left" | "key.keyboard.right") {
                 self.step_slider(game, row, if key == "key.keyboard.left" { -1.0 } else { 1.0 });
                 return;
             }
@@ -2494,7 +2494,7 @@ impl Ui {
             "key.keyboard.page.down" => self.scroll = (self.scroll + ROW * 9.0).min(self.max_scroll()),
             _ => {}
         }
-        let arrow = matches!(key, "key.keyboard.up" | "key.keyboard.down" | "key.keyboard.left" | "key.keyboard.right");
+        let arrow = ::core::matches!(key, "key.keyboard.up" | "key.keyboard.down" | "key.keyboard.left" | "key.keyboard.right");
         match self.focus {
             // The search box keeps left and right for its caret; down leaves it for the list.
             Focus::Search => {
@@ -2532,7 +2532,7 @@ impl Ui {
             }
             // A name's box keeps left and right too.
             Focus::Profile(i) => {
-                if matches!(key, "key.keyboard.up" | "key.keyboard.down") {
+                if ::core::matches!(key, "key.keyboard.up" | "key.keyboard.down") {
                     self.arrow_list(game, key);
                 } else if SELECT.contains(&key) && key != "key.keyboard.space" && jade::on(game, "enable_profiles") && jade::opt(game, "profile") != i.to_string() {
                     click_sound();

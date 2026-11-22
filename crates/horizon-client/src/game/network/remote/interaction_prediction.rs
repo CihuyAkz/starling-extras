@@ -420,7 +420,7 @@ impl Game<'_> {
                 }
                 return true;
             } else if let Some(stack) = held.as_ref().filter(|_| item_used).filter(|s| {
-                matches!(
+                ::core::matches!(
                     &*s.item,
                     "minecraft:flint_and_steel" | "minecraft:fire_charge"
                 )
@@ -445,7 +445,7 @@ impl Game<'_> {
                 if let Some(mud) = self.pack.assets.registry.default_state("minecraft:mud") {
                     let pos =
                         horizon_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
-                    self.predict_blocks(&vec![(pos, mud)], seq);
+                    self.predict_blocks(&::std::vec![(pos, mud)], seq);
                 }
                 self.with_hand(hand, |g| {
                     g.filled_result(ItemStack::new("minecraft:glass_bottle", 1))

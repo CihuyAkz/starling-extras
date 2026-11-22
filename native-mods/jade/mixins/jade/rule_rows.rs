@@ -13,12 +13,12 @@ fn jade_rule_rows(screen: &RulesScreen, value: Vec<Row>) -> Vec<Row> {
     if !matches {
         return rows;
     }
-    match rows.iter().position(|row| matches!(row, Row::Category(c) if *c == rule.category)) {
+    match rows.iter().position(|row| ::core::matches!(row, Row::Category(c) if *c == rule.category)) {
         Some(at) => rows.insert(at + 1, Row::Rule(rule)),
         None => {
             let at = rows
                 .iter()
-                .position(|row| matches!(row, Row::Category(c) if *c > rule.category))
+                .position(|row| ::core::matches!(row, Row::Category(c) if *c > rule.category))
                 .unwrap_or(rows.len());
             rows.insert(at, Row::Category(rule.category));
             rows.insert(at + 1, Row::Rule(rule));

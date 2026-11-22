@@ -383,7 +383,7 @@ pub fn fill(pattern: &str, args: &[&str]) -> String {
 fn choice(choices: &str, number: f64) -> &str {
     let mut chosen = "";
     for (i, part) in choices.split('|').enumerate() {
-        let Some((at, mark)) = part.char_indices().find(|(_, m)| matches!(m, '#' | '≤' | '<')) else { continue };
+        let Some((at, mark)) = part.char_indices().find(|(_, m)| ::core::matches!(m, '#' | '≤' | '<')) else { continue };
         let limit: f64 = part[..at].trim().parse().unwrap_or(0.0);
         if i == 0 || number > limit || (mark != '<' && number == limit) {
             chosen = &part[at + mark.len_utf8()..];
@@ -1065,7 +1065,7 @@ fn target(game: &Game<'_>) -> Option<Target> {
         !id.is_some_and(|id| ignored(game, None, Some(&id)))
     });
     let entity = entity.filter(|(_, t)| {
-        cfg.bosses || !matches!(t, Target::Mob { index } if game.mobs.get(*index).is_some_and(|m| matches!(m.kind.id.as_ref(), "minecraft:ender_dragon" | "minecraft:wither")))
+        cfg.bosses || !::core::matches!(t, Target::Mob { index } if game.mobs.get(*index).is_some_and(|m| ::core::matches!(m.kind.id.as_ref(), "minecraft:ender_dragon" | "minecraft:wither")))
     });
     // RayTracing.rayTrace: fluids count from outside them with Any (or Toggle Fluid), and with Fallback only when no
     // block is there.
@@ -1375,7 +1375,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             // CropProgressProvider: crops, stems, sweet berries, nether wart, cocoa (their `age`).
             if let Some(age) = prop("age").and_then(|a| a.parse::<u32>().ok()).filter(|_| on(game, "crop_progress")) {
                 let most = reg.property_values(block, "age").iter().filter_map(|v| v.parse::<u32>().ok()).max().unwrap_or(7).max(1);
-                let crop = block.ends_with("_crop") || matches!(block.as_str(), "minecraft:wheat" | "minecraft:carrots" | "minecraft:potatoes" | "minecraft:beetroots"
+                let crop = block.ends_with("_crop") || ::core::matches!(block.as_str(), "minecraft:wheat" | "minecraft:carrots" | "minecraft:potatoes" | "minecraft:beetroots"
                     | "minecraft:melon_stem" | "minecraft:pumpkin_stem" | "minecraft:sweet_berry_bush" | "minecraft:nether_wart" | "minecraft:cocoa"
                     | "minecraft:torchflower_crop" | "minecraft:pitcher_crop");
                 if crop {
@@ -1397,7 +1397,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 lines.push(Line::text(trf("tooltip.jade.mode", "Mode: %s", &[&format!("§f{m}")])));
             }
             if let Some(power) = prop("power").filter(|_| redstone)
-                && !matches!(block.as_str(), "minecraft:comparator" | "minecraft:lever" | "minecraft:repeater")
+                && !::core::matches!(block.as_str(), "minecraft:comparator" | "minecraft:lever" | "minecraft:repeater")
             {
                 lines.push(Line::text(trf("tooltip.jade.power", "Power: %d", &[&format!("§f{power}")])));
             }
@@ -1426,7 +1426,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 lines.push(Line::text(trf("jade.beehive.honey", "Honey: %s", &[&format!("§f{}", trf("jade.fraction", "%d / %d", &[&h.to_string(), "5"]))])));
             }
             // EnchantmentPowerProvider: a bookshelf counts one for an enchanting table.
-            if matches!(block.as_str(), "minecraft:bookshelf" | "minecraft:chiseled_bookshelf") && details && on(game, "enchantment_power") {
+            if ::core::matches!(block.as_str(), "minecraft:bookshelf" | "minecraft:chiseled_bookshelf") && details && on(game, "enchantment_power") {
                 lines.push(Line::text(trf("jade.ench_power", "Ench Power: %s", &["§f1"])));
             }
             // TotalEnchantmentPowerProvider: the bookshelves an enchanting table reads.
@@ -1452,7 +1452,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 if block == "minecraft:redstone_wire" {
                     let sides: Vec<String> = ["north", "south", "west", "east"].into_iter().filter(|d| prop(*d).is_some_and(|v| v != "none")).map(dir_name).collect();
                     lines.push(Line::text(if sides.is_empty() { tr("jade.access.block.redstone_wire.dot", "Shape: Dot") } else { trf("jade.access.block.redstone_wire", "Shape: %s", &[&sides.join(", ")]) }));
-                } else if !(block.ends_with("campfire") || block == "minecraft:decorated_pot" || matches!(block.as_str(), "minecraft:small_dripleaf" | "minecraft:big_dripleaf" | "minecraft:big_dripleaf_stem" | "minecraft:pink_petals" | "minecraft:wildflowers")) {
+                } else if !(block.ends_with("campfire") || block == "minecraft:decorated_pot" || ::core::matches!(block.as_str(), "minecraft:small_dripleaf" | "minecraft:big_dripleaf" | "minecraft:big_dripleaf_stem" | "minecraft:pink_petals" | "minecraft:wildflowers")) {
                     if let Some(shape) = prop("shape").filter(|_| block.ends_with("rail")) {
                         let words = match shape.as_str() {
                             "north_south" => "North-South", "east_west" => "East-West", "ascending_east" => "Ascending East", "ascending_west" => "Ascending West",
@@ -1502,7 +1502,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             let kind = m.kind.id.as_ref();
             // EntityHealthAndArmorProvider (not armour stands, not the creaking): the absorption and the armour come from
             // the server (`apply_stats`).
-            if !matches!(kind, "minecraft:armor_stand" | "minecraft:creaking") && on(game, "entity_health") {
+            if !::core::matches!(kind, "minecraft:armor_stand" | "minecraft:creaking") && on(game, "entity_health") {
                 // The mob's own max_health attribute (a horse rolls its own).
                 let max = m.attrs.max_health.max(1.0);
                 lines.push(Line::new().with(El::Hearts { health: m.health.max(0.0), max, absorb: 0.0 }));
@@ -1562,14 +1562,14 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
                 }
             }
             // VillagerProfessionProvider: the profession, and its level for one with a job.
-            if matches!(kind, "minecraft:villager" | "minecraft:zombie_villager") && on(game, "villager_profession") {
+            if ::core::matches!(kind, "minecraft:villager" | "minecraft:zombie_villager") && on(game, "villager_profession") {
                 const PROFESSIONS: [&str; 15] = ["none", "armorer", "butcher", "cartographer", "cleric", "farmer", "fisherman", "fletcher",
                     "leatherworker", "librarian", "mason", "nitwit", "shepherd", "toolsmith", "weaponsmith"];
                 // 15 is AE2's Fluix Researcher (InitVillager.PROFESSION).
                 let prof = if m.extra.variant2 == 15 { "fluix_researcher" } else { PROFESSIONS[m.extra.variant2 as usize % PROFESSIONS.len()] };
                 let mut text = game.translate(&format!("entity.minecraft.villager.{prof}"), prof);
                 let level = m.extra.variant3;
-                if !matches!(prof, "none" | "nitwit") && (1..=5).contains(&level) {
+                if !::core::matches!(prof, "none" | "nitwit") && (1..=5).contains(&level) {
                     const LEVELS: [&str; 5] = ["Novice", "Apprentice", "Journeyman", "Expert", "Master"];
                     text = format!("{text} - {}", game.translate(&format!("merchant.level.{level}"), LEVELS[level as usize - 1]));
                 }
@@ -1578,7 +1578,7 @@ fn vanilla(game: &Game<'_>, t: &Target, details: bool, lines: &mut Vec<Line>) {
             // PetArmorProvider: an OwnableEntity's or happy ghast's body armour ("Show Damageable" leaves out what wears no
             // durability).
             if on(game, "pet_armor")
-                && matches!(kind, "minecraft:wolf" | "minecraft:cat" | "minecraft:parrot" | "minecraft:horse" | "minecraft:donkey" | "minecraft:mule"
+                && ::core::matches!(kind, "minecraft:wolf" | "minecraft:cat" | "minecraft:parrot" | "minecraft:horse" | "minecraft:donkey" | "minecraft:mule"
                     | "minecraft:skeleton_horse" | "minecraft:zombie_horse" | "minecraft:llama" | "minecraft:trader_llama" | "minecraft:camel"
                     | "minecraft:camel_husk" | "minecraft:nautilus" | "minecraft:zombie_nautilus" | "minecraft:happy_ghast")
                 && let Some(armor) = m.extra.head.as_deref()
@@ -2125,7 +2125,7 @@ fn vanilla_server(game: &mut Game<'_>, player: u128, pos: [i32; 3], block: &str,
     let key = (pos[0], pos[1], pos[2]);
     let asking = game.native_server_players().into_iter().find(|p| p.uuid == player);
     // Creative or spectator: not kept out of what is locked or unrolled.
-    let privileged = asking.as_ref().is_some_and(|p| matches!(p.game_mode, 1 | 3));
+    let privileged = asking.as_ref().is_some_and(|p| ::core::matches!(p.game_mode, 1 | 3));
     // BodyProviderAdapter: AE2's blocks don't show Jade's fluid and energy lines.
     let ae2 = block.starts_with("ae2:");
     // RedstoneProvider: a comparator's output, a calibrated sculk sensor's input.
@@ -2654,7 +2654,7 @@ fn apply_directives(game: &Game<'_>, lines: &mut Vec<Line>, icon: &mut Option<St
                 }
             }
         }
-        lines.retain(|l| !l.els.iter().any(|e| matches!(e, El::Armor(_))));
+        lines.retain(|l| !l.els.iter().any(|e| ::core::matches!(e, El::Armor(_))));
         if armor > 0.0 && on(game, "entity_armor") {
             let armor_text = armor > num(game, "armor_max") as f32;
             let hearts_text = hearts_at.is_some_and(|i| {
@@ -3057,7 +3057,7 @@ fn server_command(game: &mut Game<'_>, from: u128, level: u8, args: &[&str]) {
     };
     let players = game.native_server_players();
     let mut told = 0;
-    for p in players.iter().filter(|p| wanted == "@a" || (matches!(wanted, "@s" | "@p") && p.uuid == from) || p.name == wanted) {
+    for p in players.iter().filter(|p| wanted == "@a" || (::core::matches!(wanted, "@s" | "@p") && p.uuid == from) || p.name == wanted) {
         let line = format!("o {}", u8::from(show));
         if game.native_net_send_to_player(p.uuid, NET_DATA, line.as_bytes()).is_ok() {
             told += 1;
@@ -3211,7 +3211,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             game.native_chat(&second.replace("%s", &bound));
         }
     }
-    if CLIENT.with_borrow_mut(|c| std::mem::take(&mut c.open_config)) && matches!(game.screen, crate::game::Screen::Playing) {
+    if CLIENT.with_borrow_mut(|c| std::mem::take(&mut c.open_config)) && ::core::matches!(game.screen, crate::game::Screen::Playing) {
         // HomeConfigScreen over the world. Where it can't open, Options > Mods, whose Jade page has it too.
         if crate::game::jade_config::open_in_world(game) {
             return;
@@ -3224,7 +3224,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
         return;
     }
     // JEI's recipe view opens over the inventory: once it is open, JEI hears its own key for the item.
-    if !matches!(game.screen, crate::game::Screen::Playing)
+    if !::core::matches!(game.screen, crate::game::Screen::Playing)
         && let Some((item, uses)) = CLIENT.with_borrow_mut(|c| c.lookup_item.take())
     {
         let name = if uses { "uses" } else { "recipe" };
@@ -3242,7 +3242,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
     // Overlay toggled off.
     // A config screen open shows the box over itself (PreviewOptionsScreen): built here as ever, drawn there.
     let previewing = crate::game::jade_config::wants_box();
-    let screen_hides = !previewing && !matches!(game.screen, crate::game::Screen::Playing) && on(game, "hide_from_guis");
+    let screen_hides = !previewing && !::core::matches!(game.screen, crate::game::Screen::Playing) && on(game, "hide_from_guis");
     let list_hides = on(game, "hide_from_tab_list") && game.physical_keys.contains(&winit::keyboard::KeyCode::Tab);
     if !game.native_on(ID) || game.player.is_none() || screen_hides || list_hides || CLIENT.with_borrow(|c| c.hidden) {
         return;
@@ -3290,7 +3290,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
         let ask = CLIENT.with_borrow(|c| c.mob_asked.is_none_or(|(i, at)| i != id || at.elapsed().as_millis() > 250) || c.asked_details != details);
         if ask {
             let off = request_off_list(game);
-            let msg = if matches!(t, Target::Mob { .. }) {
+            let msg = if ::core::matches!(t, Target::Mob { .. }) {
                 let cfg = config(game);
                 let bit = |k: &'static str| u8::from(on(game, k));
                 format!("m {id} {} {} {} {} {} {} {}{off}", u8::from(details), u8::from(cfg.restock), u8::from(cfg.entity_stats), bit("mob_growth"), bit("mob_breeding"), bit("next_entity_drop"), bit("zombie_villager"))
@@ -3329,7 +3329,7 @@ pub fn hud(game: &mut Game<'_>, batch: &mut HudBatch) {
             (game.res.items().get(&block).is_some().then(|| block.clone()), item_name(game, &block), ns)
         }
         // A fluid: its name, its bucket for the icon (ClientProxy.elementFromLiquid).
-        Target::Block { block, .. } if matches!(block.as_str(), "minecraft:water" | "minecraft:lava") => (Some(format!("{block}_bucket")), fluid_name(game, block), "minecraft".to_owned()),
+        Target::Block { block, .. } if ::core::matches!(block.as_str(), "minecraft:water" | "minecraft:lava") => (Some(format!("{block}_bucket")), fluid_name(game, block), "minecraft".to_owned()),
         // PlayerHeadProvider: a head with an owner is named after them.
         Target::Block { pos, block } if (block == "minecraft:player_head" || block == "minecraft:player_wall_head") && on(game, "player_head") => {
             icon_stack = ber_icon(game, *pos);
@@ -3650,7 +3650,7 @@ fn place(game: &Game<'_>, [sw, sh]: [f32; 2], b: &BuiltBox, [pad_up, pad_down, p
                 "3" => (sh - h - 60.0).floor(),
                 _ => 8.0,
             };
-            if push && !matches!(row.as_str(), "1" | "2" | "3") {
+            if push && !::core::matches!(row.as_str(), "1" | "2" | "3") {
                 y += 19.0 * bars as f32;
             }
             (y, y - 12.0)
@@ -3936,7 +3936,7 @@ fn mob_request(game: &mut Game<'_>, player: u128, text: &str) {
 fn mob_server_lines(game: &Game<'_>, m: &horizon_client::mobs::Mob, player: u128, details: bool, lines: &mut Vec<String>) {
     let kind = m.kind.id.as_ref();
     // EntityHealthAndArmorProvider.
-    if !matches!(kind, "minecraft:armor_stand" | "minecraft:creaking") {
+    if !::core::matches!(kind, "minecraft:armor_stand" | "minecraft:creaking") {
         lines.push(encode(&Line::new().with(El::Stats { absorb: 0.0, armor: m.kind.armor })));
     }
     // WaxedProvider.EntityData (CopperGolem.nextWeatheringTick == -2).
@@ -4007,7 +4007,7 @@ fn mob_lines(m: &horizon_client::mobs::Mob, game_time: i64, details: bool, resto
         lines.push(Line::text(trf("jade.zombieConversion.time", "Conversion time: %s", &[&format!("§f{}", seconds(i64::from(c.time)))])));
     }
     // NextEntityDropProvider: a grown chicken's next egg, an armadillo's next scute.
-    if drops && matches!(kind, "minecraft:chicken" | "minecraft:armadillo") && !m.is_baby() && m.extra.egg_time < 48000 {
+    if drops && ::core::matches!(kind, "minecraft:chicken" | "minecraft:armadillo") && !m.is_baby() && m.extra.egg_time < 48000 {
         let (key, english) = if kind == "minecraft:chicken" { ("jade.nextEgg", "Next egg: %s") } else { ("jade.nextScute", "Next scute: %s") };
         lines.push(Line::text(trf(key, english, &[&format!("§f{}", seconds(i64::from(m.extra.egg_time)))])));
     }

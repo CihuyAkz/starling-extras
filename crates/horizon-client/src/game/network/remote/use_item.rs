@@ -67,7 +67,7 @@ impl Game<'_> {
                 let name = if sound.contains(':') {
                     sound.to_string()
                 } else {
-                    format!("minecraft:{sound}")
+                    ::std::format!("minecraft:{sound}")
                 };
                 self.play_client_local_sound(
                     LevelSound::new(&name, at, volume, pitch)
@@ -103,7 +103,7 @@ impl Game<'_> {
                 || held
                     .data()
                     .and_then(|d| d.other("minecraft:recipes"))
-                    .is_some_and(|t| matches!(t, Tag::List(l) if !l.is_empty()));
+                    .is_some_and(|t| ::core::matches!(t, Tag::List(l) if !l.is_empty()));
             self.with_hand(hand, Game::consume_held);
             if has_recipes {
                 self.apply_use_cooldown(&held);

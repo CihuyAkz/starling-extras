@@ -1,27 +1,15 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy)]
 struct Receipt { session: usize, item: i32, player: i32, amount: u32 }
-thread_local! {
-    static RECEIPTS: RefCell<VecDeque<Receipt>> = RefCell::new(VecDeque::new());
-    static BACKLOG_START: Cell<usize> = const { Cell::new(0) };
-}
-
-pub fn mark_backlog_start(len: usize) {
-    BACKLOG_START.with(|start| start.set(len));
-}
-
-pub fn take_backlog_start() -> usize {
-    BACKLOG_START.with(|start| start.replace(0))
-}
+thread_local! { static RECEIPTS: RefCell<VecDeque<Receipt>> = RefCell::new(VecDeque::new()); }
 
 pub fn observe_packet(
     session: &crate::net::Session,
     packet: &horizon_protocol::packets::play::Clientbound,
 ) {
-    use horizon_protocol::packets::play::Clientbound;
-    if let Clientbound::TakeItemEntity(p) = packet {
+    if let horizon_protocol::packets::play::Clientbound::TakeItemEntity(p) = packet {
         if p.amount > 0 {
             RECEIPTS.with(|receipts| {
                 let mut receipts = receipts.borrow_mut();

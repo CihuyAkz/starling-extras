@@ -49,23 +49,13 @@ source = "pickup_packets.rs"
 visibility = "pub"
 
 [[injection]]
-id = "pickup_remote_ingress_start"
+id = "pickup_remote_packet"
 kind = "HEAD"
-target = "horizon_client::game::network::remote::Remote::receive_credited_backlog"
-helper = "pickup_remote_ingress_start.rs"
+target = "horizon_client::game::remote::Game<'_>::apply_packet"
+helper = "pickup_remote_packet.rs"
 bindings = [
-  { name = "events", ty = "&mut std::collections::VecDeque<crate::game::network::raw_backlog::Received>", value = "events" },
-]
-
-[[injection]]
-id = "pickup_remote_ingress"
-kind = "RETURN"
-target = "horizon_client::game::network::remote::Remote::receive_credited_backlog"
-helper = "pickup_remote_ingress.rs"
-bindings = [
-  { name = "value", ty = "()", value = "$value" },
-  { name = "remote", ty = "&crate::game::network::remote::Remote", value = "self" },
-  { name = "events", ty = "&mut std::collections::VecDeque<crate::game::network::raw_backlog::Received>", value = "events" },
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "packet", ty = "&horizon_protocol::packets::play::Clientbound", value = "&packet" },
 ]
 
 [[module]]

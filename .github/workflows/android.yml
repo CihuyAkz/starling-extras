@@ -105,7 +105,7 @@ jobs:
       - name: Install Starling Android SDK packages
         shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "platforms;android-36" \
             "build-tools;35.0.0" \
             "ndk;28.2.13676358" > /dev/null
