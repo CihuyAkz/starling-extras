@@ -102,7 +102,6 @@ jobs:
         with:
           packages: platform-tools
 
- 
       - name: Install Starling Android SDK packages
         shell: bash
         run: |
