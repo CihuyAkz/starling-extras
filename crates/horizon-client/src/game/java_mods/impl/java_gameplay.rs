@@ -1,5 +1,5 @@
 use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use horizon_core::random::RandomSource;
 
@@ -9,14 +9,17 @@ use horizon_client::chunk::MIN_Y;
 use horizon_client::world::World;
 use horizon_world::registry::{BlockRegistry, BlockStateId};
 
-static JAVA_PLAYER_STATE: Mutex<std::collections::HashMap<String, bool>> = Mutex::new(std::collections::HashMap::new());
+static JAVA_PLAYER_STATE: LazyLock<Mutex<std::collections::HashMap<String, bool>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 static JAVA_PENDING_EVENTS: Mutex<Vec<horizon_jvm::events::Event>> = Mutex::new(Vec::new());
-static JAVA_INVENTORY_STATE: Mutex<std::collections::HashMap<String, u64>> = Mutex::new(std::collections::HashMap::new());
+static JAVA_INVENTORY_STATE: LazyLock<Mutex<std::collections::HashMap<String, u64>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 static JAVA_RULE_STATE: Mutex<String> = Mutex::new(String::new());
 static JAVA_UNHANDLED_ACTIONS_WARNED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 static JAVA_MOB_EFFECT_TYPES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-static JAVA_MENU_WINDOWS: Mutex<std::collections::HashMap<String, (u32, i32, String)>> = Mutex::new(std::collections::HashMap::new());
+static JAVA_MENU_WINDOWS: LazyLock<Mutex<std::collections::HashMap<String, (u32, i32, String)>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 pub(in crate::game) fn reset() {
     super::java_gui::reset();
@@ -805,7 +808,7 @@ impl super::Game<'_> {
             return false;
         };
         let parse_item = |snbt: &str| {
-            let (tag, _) = horizon_world::nbt::parse_snbt(snbt).ok()?;
+            let (tag, _) = horizon_core::nbt::parse_snbt(snbt).ok()?;
             horizon_items::item_nbt::item_from_nbt(&tag)
         };
         let stacks = items
@@ -927,7 +930,10 @@ impl super::Game<'_> {
                     health: guest.health,
                     food: guest.food,
                     saturation: guest.saturation,
-                    exhaustion: guest.food_exhaustion,
+                    exhaustion: guest.motion.as_deref().map_or_else(
+                        || guest.loaded_body.as_ref().map_or(0.0, |body| body.food_exhaustion),
+                        |motion| motion.health.food.exhaustion,
+                    ),
                     permission: guest.permission,
                     sneaking: guest.sneaking,
                     selected: guest.selected.min(8) as u8,
@@ -1352,7 +1358,7 @@ impl super::Game<'_> {
                         unhandled += 1;
                         continue;
                     };
-                    let kind = kind.to_string_lossy().into_owned();
+                    let kind = kind.to_string_lossy();
                     let position = [position.x, position.y, position.z];
                     if !position.iter().all(|value| value.is_finite())
                         || !matches!(self.summon_with_nbt(&kind, position, &snbt), Ok(Some(_)))

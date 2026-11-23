@@ -3973,7 +3973,7 @@ impl Game<'_> {
         self.observe_client_packet(&packet);
         match packet {
             #[cfg(feature = "java-mods")]
-            C::CustomPayload(payload) if payload.channel == super::super::java_entities::CHANNEL => {
+            C::CustomPayload(payload) if payload.channel == crate::game::java_entities::CHANNEL => {
                 self.remote_java_entities(&payload.data);
             }
             #[cfg(feature = "java-mods")]

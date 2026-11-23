@@ -714,7 +714,7 @@ impl Game<'_> {
         // Starling: the old hook, for the mods made for it (native_compat.rs).
         self.native_place_block(&stack, target, state);
         #[cfg(feature = "java-mods")]
-        super::super::java_gameplay::queue_block_placed(self, target, state);
+        crate::game::java_gameplay::queue_block_placed(self, target, state);
         self.check_wither_spawn(target)?;
         self.check_golem_spawn(target)?;
         self.consume_held();

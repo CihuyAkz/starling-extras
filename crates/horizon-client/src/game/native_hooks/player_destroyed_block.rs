@@ -15,6 +15,6 @@ impl Game<'_> {
     ) {
         self.fire_player_destroyed_block(pos, state, block_entity);
         #[cfg(feature = "java-mods")]
-        super::super::java_gameplay::queue_block(self, pos, state);
+        crate::game::java_gameplay::queue_block(self, pos, state);
     }
 }

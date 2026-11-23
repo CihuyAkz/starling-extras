@@ -241,9 +241,9 @@ fn java_dimension_type_data(
             );
         }
         Some(_) => {
-            data.entry("skybox".into())
+            data.entry("skybox")
                 .or_insert(serde_json::json!("overworld"));
-            data.entry("cardinal_light".into())
+            data.entry("cardinal_light")
                 .or_insert(serde_json::json!("default"));
         }
         None => {}

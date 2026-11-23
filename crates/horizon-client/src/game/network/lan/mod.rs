@@ -3523,7 +3523,7 @@ impl Game<'_> {
     /// log, and `detectRateSpam`.
     fn lan_player_chatted(&mut self, sender: u128, text: &str) {
         #[cfg(feature = "java-mods")]
-        super::super::java_gameplay::queue_chat_uuid(sender, text);
+        crate::game::java_gameplay::queue_chat_uuid(sender, text);
         let Some(host) = self.lan.as_ref() else {
             return;
         };

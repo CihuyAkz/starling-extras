@@ -251,7 +251,7 @@ fn floats<const N: usize>(value: &Value) -> Option<[f32; N]> {
 }
 
 fn parse_item(value: &Value) -> Option<Item> {
-    let (tag, _) = horizon_world::nbt::parse_snbt(value.get("item")?.as_str()?).ok()?;
+    let (tag, _) = horizon_core::nbt::parse_snbt(value.get("item")?.as_str()?).ok()?;
     Some(Item {
         stack: horizon_items::item_nbt::item_from_nbt(&tag)?,
         context: horizon_assets::item_model::DisplayContext::by_name(
@@ -743,7 +743,7 @@ impl Game<'_> {
                 );
             }
         }
-        if !self.camera_type.first_person()
+        if !self.camera_type.is_first_person()
             && let Some(player) = self.player_model.as_ref()
         {
             let at = glam::DVec3::new(player.position.x, player.position.y, player.position.z);

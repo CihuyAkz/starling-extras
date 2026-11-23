@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -79,18 +79,20 @@ impl UiState {
     }
 }
 
-static UI: Mutex<UiState> = Mutex::new(UiState {
-    local_uuid: None,
-    screen_open: false,
-    menu_open: false,
-    client_screen_open: false,
-    screen: None,
-    hud: None,
-    overlay: None,
-    sent_size: None,
-    dynamic_images: HashMap::new(),
-    drag_button: None,
-    pointer: [0.0, 0.0],
+static UI: LazyLock<Mutex<UiState>> = LazyLock::new(|| {
+    Mutex::new(UiState {
+        local_uuid: None,
+        screen_open: false,
+        menu_open: false,
+        client_screen_open: false,
+        screen: None,
+        hud: None,
+        overlay: None,
+        sent_size: None,
+        dynamic_images: HashMap::new(),
+        drag_button: None,
+        pointer: [0.0, 0.0],
+    })
 });
 
 pub(in crate::game) fn reset() {
@@ -261,7 +263,7 @@ pub(in crate::game) fn key_code(code: winit::keyboard::KeyCode) -> Option<i32> {
         K::KeyU => 85, K::KeyV => 86, K::KeyW => 87, K::KeyX => 88, K::KeyY => 89, K::KeyZ => 90,
         K::Digit0 => 48, K::Digit1 => 49, K::Digit2 => 50, K::Digit3 => 51, K::Digit4 => 52,
         K::Digit5 => 53, K::Digit6 => 54, K::Digit7 => 55, K::Digit8 => 56, K::Digit9 => 57,
-        K::Space => 32, K::Apostrophe => 39, K::Comma => 44, K::Minus => 45, K::Period => 46,
+        K::Space => 32, K::Quote => 39, K::Comma => 44, K::Minus => 45, K::Period => 46,
         K::Slash => 47, K::Semicolon => 59, K::Equal => 61, K::BracketLeft => 91,
         K::Backslash => 92, K::BracketRight => 93, K::Backquote => 96,
         K::Escape => 256, K::Enter => 257, K::Tab => 258, K::Backspace => 259,

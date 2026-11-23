@@ -1416,7 +1416,7 @@ impl Game<'_> {
             }
         } else {
             #[cfg(feature = "java-mods")]
-            super::super::java_gameplay::queue_chat(&self.level, &message);
+            crate::game::java_gameplay::queue_chat(&self.level, &message);
             let line = Text::translate(
                 "chat.type.text",
                 &[
