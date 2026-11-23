@@ -1,0 +1,386 @@
+name: android
+on:
+  push:
+    branches: [android, starling, integration]
+    tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: Build as Preview or Public; Auto uses STARLING_RELEASE_MODE, or Public for v* tags
+        type: choice
+        options: [auto, preview, public]
+        default: auto
+      publish_release:
+        description: Publish or replace the selected GitHub Release after all APKs build successfully
+        type: boolean
+        default: false
+      keep_symbols:
+        description: Ship the library unstripped, for a profiler (simpleperf) to name its functions
+        type: boolean
+        default: false
+      native_mods:
+        description: A test with these native mods of native-mods/ compiled in (ids, separated by spaces), by native_build.sh
+        type: string
+        default: ''
+      wasm_probe:
+        description: Also build packaging/android/wasm-probe, a wasm mod that says its hooks ran, as an artifact (arm64)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+env:
+  RELEASE_MODE: ${{ inputs.release_mode == 'auto' && (vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview')) || inputs.release_mode || vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview') }}
+concurrency:
+  group: android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  prepare_signing:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      key_created: ${{ steps.create_signing.outputs.key_created }}
+    env:
+      RELEASE_MODE: ${{ inputs.release_mode == 'auto' && (vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview')) || inputs.release_mode || vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview') }}
+      SIGNING_ENVIRONMENT: ${{ (inputs.release_mode == 'public' || (inputs.release_mode == 'auto' && vars.STARLING_RELEASE_MODE == 'public') || (inputs.release_mode == '' && vars.STARLING_RELEASE_MODE == 'public') || ((inputs.release_mode == 'auto' || inputs.release_mode == '') && vars.STARLING_RELEASE_MODE == '' && startsWith(github.ref, 'refs/tags/v'))) && 'release' || 'preview' }}
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Restore an existing Preview signing key
+        if: env.RELEASE_MODE == 'preview'
+        uses: actions/cache/restore@v4
+        with:
+          path: .local/android/debug.keystore
+          key: horizon-android-signing-${{ github.repository_id }}
+      - name: Create and permanently save the signing key when missing
+        id: create_signing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_MODE" in
+            preview|public) ;;
+            *) echo "Unsupported signing mode: $RELEASE_MODE"; exit 1 ;;
+          esac
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "key_created=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Signing key setup skipped::REPO_TOKEN is not configured. Existing signing secrets will be used."
+            exit 0
+          fi
+          REPO_NAMES="$(gh api "repos/$GITHUB_REPOSITORY/actions/secrets" --paginate --jq '.secrets[].name')"
+          if ! ENV_NAMES="$(gh api "repos/$GITHUB_REPOSITORY/environments/$SIGNING_ENVIRONMENT/secrets" --paginate --jq '.secrets[].name' 2>"$RUNNER_TEMP/environment-secrets-error.txt")"; then
+            if grep -qiE 'HTTP 404|Not Found' "$RUNNER_TEMP/environment-secrets-error.txt"; then
+              ENV_NAMES=""
+            else
+              cat "$RUNNER_TEMP/environment-secrets-error.txt" >&2
+              exit 1
+            fi
+          fi
+          ALL_NAMES="$(printf '%s\n%s\n' "$REPO_NAMES" "$ENV_NAMES")"
+          has_name() {
+            printf '%s\n' "$ALL_NAMES" | grep -Fqx "$1"
+          }
+          if [[ "$RELEASE_MODE" == "public" ]]; then
+            AUTO_NAMES=(STARLING_AUTO_PUBLIC_KEYSTORE_BASE64 STARLING_AUTO_PUBLIC_KEY_ALIAS STARLING_AUTO_PUBLIC_STORE_PASSWORD STARLING_AUTO_PUBLIC_KEY_PASSWORD)
+            LEGACY_KEY_NAMES=(STARLING_KEYSTORE_BASE64 HORIZON_ANDROID_KEYSTORE_BASE64)
+            AUTO_PREFIX=STARLING_AUTO_PUBLIC
+            KEY_ALIAS=starling-public
+            KEY_DNAME="CN=Starling Extras, OU=Android, O=CihuyAkz, C=ID"
+          else
+            AUTO_NAMES=(STARLING_AUTO_PREVIEW_KEYSTORE_BASE64 STARLING_AUTO_PREVIEW_KEY_ALIAS STARLING_AUTO_PREVIEW_STORE_PASSWORD STARLING_AUTO_PREVIEW_KEY_PASSWORD)
+            LEGACY_KEY_NAMES=(STARLING_PREVIEW_KEYSTORE_BASE64 STARLING_DEBUG_KEYSTORE_BASE64 HORIZON_ANDROID_KEYSTORE_BASE64)
+            AUTO_PREFIX=STARLING_AUTO_PREVIEW
+            KEY_ALIAS=starling-preview
+            KEY_DNAME="CN=Starling Extras Preview, OU=Android, O=CihuyAkz, C=ID"
+          fi
+          AUTO_COUNT=0
+          for name in "${AUTO_NAMES[@]}"; do
+            if has_name "$name"; then AUTO_COUNT=$((AUTO_COUNT + 1)); fi
+          done
+          if [[ "$AUTO_COUNT" -eq 4 ]]; then
+            echo "key_created=false" >> "$GITHUB_OUTPUT"
+            echo "The persistent $RELEASE_MODE signing key is already stored. It will not be replaced."
+            exit 0
+          fi
+          if [[ "$AUTO_COUNT" -ne 0 ]]; then
+            echo "Only part of the automatic $RELEASE_MODE signing key exists. Refusing to replace or rotate it."
+            exit 1
+          fi
+          for name in "${LEGACY_KEY_NAMES[@]}"; do
+            if has_name "$name"; then
+              echo "key_created=false" >> "$GITHUB_OUTPUT"
+              echo "An existing $RELEASE_MODE signing key was found. It will be preserved and used by the build."
+              exit 0
+            fi
+          done
+          KEY_DIR="$RUNNER_TEMP/starling-signing"
+          mkdir -p "$KEY_DIR"
+          chmod 700 "$KEY_DIR"
+          umask 077
+          UPLOAD_STARTED=0
+          cleanup_signing_files() {
+            local status=$?
+            rm -rf "$KEY_DIR"
+            if [[ "$status" -ne 0 && "$UPLOAD_STARTED" -eq 1 ]]; then
+              for name in "${AUTO_NAMES[@]}"; do
+                gh secret delete "$name" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+              done
+            fi
+          }
+          trap cleanup_signing_files EXIT
+          KEYSTORE="$KEY_DIR/signing.jks"
+          STORE_PASSWORD="$(openssl rand -hex 32)"
+          KEY_PASSWORD="$(openssl rand -hex 32)"
+          if [[ "$RELEASE_MODE" == "preview" && -s .local/android/debug.keystore ]] && keytool -list -keystore .local/android/debug.keystore -storepass android -alias androiddebugkey >/dev/null 2>&1; then
+            cp .local/android/debug.keystore "$KEYSTORE"
+            KEY_ALIAS=androiddebugkey
+            STORE_PASSWORD=android
+            KEY_PASSWORD=android
+            echo "Reusing the previously generated Preview key."
+          else
+            keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storetype JKS -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -alias "$KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 10000 -dname "$KEY_DNAME"
+          fi
+          chmod 600 "$KEYSTORE"
+          KEYSTORE_BASE64="$(base64 --wrap=0 "$KEYSTORE")"
+          UPLOAD_STARTED=1
+          printf '%s' "$KEYSTORE_BASE64" | gh secret set "${AUTO_PREFIX}_KEYSTORE_BASE64" --repo "$GITHUB_REPOSITORY"
+          printf '%s' "$KEY_ALIAS" | gh secret set "${AUTO_PREFIX}_KEY_ALIAS" --repo "$GITHUB_REPOSITORY"
+          printf '%s' "$STORE_PASSWORD" | gh secret set "${AUTO_PREFIX}_STORE_PASSWORD" --repo "$GITHUB_REPOSITORY"
+          printf '%s' "$KEY_PASSWORD" | gh secret set "${AUTO_PREFIX}_KEY_PASSWORD" --repo "$GITHUB_REPOSITORY"
+          echo "key_created=true" >> "$GITHUB_OUTPUT"
+          echo "The $RELEASE_MODE signing key and passwords are now stored as persistent repository secrets."
+      - name: Queue a fresh build using the newly saved signing key
+        if: steps.create_signing.outputs.key_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish_release }}
+          KEEP_SYMBOLS: ${{ inputs.keep_symbols || false }}
+          NATIVE_MODS: ${{ inputs.native_mods || '' }}
+          WASM_PROBE: ${{ inputs.wasm_probe || false }}
+        run: |
+          gh workflow run android.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+            -f release_mode="$RELEASE_MODE" \
+            -f publish_release="$PUBLISH_RELEASE" \
+            -f keep_symbols="$KEEP_SYMBOLS" \
+            -f native_mods="$NATIVE_MODS" \
+            -f wasm_probe="$WASM_PROBE"
+          echo "The signing key is saved. A new workflow run has been queued to build with it."
+  apk:
+    needs: prepare_signing
+    if: always() && (github.event_name == 'pull_request' || (needs.prepare_signing.result == 'success' && needs.prepare_signing.outputs.key_created != 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: arm64-v8a, target: aarch64-linux-android }
+          - { abi: armeabi-v7a, target: armv7-linux-androideabi }
+          - { abi: x86, target: i686-linux-android }
+          - { abi: x86_64, target: x86_64-linux-android }
+    environment: ${{ (inputs.release_mode == 'public' || (inputs.release_mode == 'auto' && vars.STARLING_RELEASE_MODE == 'public') || (inputs.release_mode == '' && vars.STARLING_RELEASE_MODE == 'public') || ((inputs.release_mode == 'auto' || inputs.release_mode == '') && vars.STARLING_RELEASE_MODE == '' && startsWith(github.ref, 'refs/tags/v'))) && 'release' || 'preview' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Install the build-tools, platform and NDK build_apk.py pins
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "build-tools;35.0.0" "platforms;android-36" "ndk;28.2.13676358" > /dev/null
+      - name: Install Rust for Android and cargo-ndk
+        run: |
+          bash tools/ci/rustup_install.sh --profile minimal --component rust-src --target ${{ matrix.target }}
+          cargo install cargo-ndk --version 3.5.4 --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android-${{ matrix.abi }}
+          save-if: ${{ github.ref == 'refs/heads/android' || github.ref == 'refs/heads/starling' }}
+      - name: Validate release mode
+        run: |
+          case "$RELEASE_MODE" in
+            preview|public) ;;
+            *) echo "STARLING_RELEASE_MODE must be preview or public, not: $RELEASE_MODE"; exit 1 ;;
+          esac
+      - name: Unpack the Public signing key
+        if: env.RELEASE_MODE == 'public'
+        env:
+          KEYSTORE: ${{ secrets.STARLING_AUTO_PUBLIC_KEYSTORE_BASE64 || secrets.STARLING_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.STARLING_AUTO_PUBLIC_KEY_ALIAS || secrets.STARLING_KEY_ALIAS || (secrets.STARLING_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-release' }}
+          STORE_PASSWORD: ${{ secrets.STARLING_AUTO_PUBLIC_STORE_PASSWORD || secrets.STARLING_STORE_PASSWORD || (secrets.STARLING_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.STARLING_AUTO_PUBLIC_KEY_PASSWORD || secrets.STARLING_KEY_PASSWORD || (secrets.STARLING_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE" || {
+            echo "Public signing key is not configured. Add REPO_TOKEN once to let this workflow create and save it, or configure an existing Public signing key."
+            exit 1
+          }
+          test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" || { echo "Public signing passwords are missing."; exit 1; }
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/starling-public.jks"
+          echo "HORIZON_ANDROID_KEYSTORE=$RUNNER_TEMP/starling-public.jks" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Unpack the Preview signing key
+        if: env.RELEASE_MODE == 'preview'
+        env:
+          KEYSTORE: ${{ secrets.STARLING_AUTO_PREVIEW_KEYSTORE_BASE64 || secrets.STARLING_PREVIEW_KEYSTORE_BASE64 || secrets.STARLING_DEBUG_KEYSTORE_BASE64 || secrets.HORIZON_ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.STARLING_AUTO_PREVIEW_KEY_ALIAS || secrets.STARLING_PREVIEW_KEY_ALIAS || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'androiddebugkey') || secrets.HORIZON_ANDROID_KEY_ALIAS || 'horizon-preview' }}
+          STORE_PASSWORD: ${{ secrets.STARLING_AUTO_PREVIEW_STORE_PASSWORD || secrets.STARLING_PREVIEW_STORE_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_STORE_PASSWORD || 'android' }}
+          KEY_PASSWORD: ${{ secrets.STARLING_AUTO_PREVIEW_KEY_PASSWORD || secrets.STARLING_PREVIEW_KEY_PASSWORD || (secrets.STARLING_DEBUG_KEYSTORE_BASE64 && 'android') || secrets.HORIZON_ANDROID_KEY_PASSWORD || 'android' }}
+        run: |
+          test -n "$KEYSTORE" || {
+            echo "Preview signing key is not configured. Add REPO_TOKEN once to let this workflow create and save it, or configure an existing Preview signing key."
+            exit 1
+          }
+          test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" || { echo "Preview signing passwords are missing."; exit 1; }
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/starling-preview.jks"
+          echo "HORIZON_ANDROID_KEYSTORE=$RUNNER_TEMP/starling-preview.jks" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "HORIZON_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Make room for the public release build
+        if: env.RELEASE_MODE == 'public'
+        run: |
+          sudo swapoff -a || true
+          where=/mnt size=20G
+          avail=$(df --output=avail -BG "$where" 2>/dev/null | tail -1 | tr -dc 0-9)
+          if [ "${avail:-0}" -lt 30 ]; then where=$RUNNER_TEMP size=10G; fi
+          sudo fallocate -l "$size" "$where/release.swap"
+          sudo chmod 600 "$where/release.swap"
+          sudo mkswap "$where/release.swap" > /dev/null
+          sudo swapon "$where/release.swap"
+          free -h
+          echo "CARGO_BUILD_JOBS=3" >> "$GITHUB_ENV"
+      - name: Build the APK
+        env:
+          ABI: ${{ matrix.abi }}
+          MODS: ${{ inputs.native_mods }}
+          PROFILE: ${{ env.RELEASE_MODE == 'public' && 'fast' || 'quick' }}
+          VARIANT: ${{ env.RELEASE_MODE == 'preview' && '--preview' || '' }}
+          KEEP_SYMBOLS: ${{ inputs.keep_symbols && '1' || '' }}
+        run: |
+          if [ -z "$MODS" ]; then
+            args=(--abi "$ABI" --profile "$PROFILE")
+            [ -z "$VARIANT" ] || args+=("$VARIANT")
+            [ "$KEEP_SYMBOLS" != 1 ] || args+=(--keep-symbols)
+            python packaging/android/build_apk.py "${args[@]}"
+            exit 0
+          fi
+          bundles=()
+          declare -A included=()
+          for id in $MODS; do
+            [[ "$id" =~ ^[a-z0-9][a-z0-9_-]*$ && -f "native-mods/$id/mixins/$id/horizon-mixin.toml" ]] || \
+              { echo "$id is not a mod of native-mods/"; exit 1; }
+            [[ -z "${included[$id]:-}" ]] || { echo "duplicate native mod: $id"; exit 1; }
+            included[$id]=1
+            bundles+=("native-mods/$id/mixins/$id")
+          done
+          export ABI PROFILE VARIANT KEEP_SYMBOLS
+          bash packaging/android/native_build.sh . "$RUNNER_TEMP/native" "${bundles[@]}"
+          mkdir -p target/android
+          for apk in "$RUNNER_TEMP"/native/starling-*.apk; do
+            cp "$apk" "target/android/$(basename "${apk%.apk}")-$(echo "$MODS" | tr ' ' '-').apk"
+          done
+          if [ -f "$RUNNER_TEMP/native/libhorizon_android-symbols.so" ]; then
+            cp "$RUNNER_TEMP/native/libhorizon_android-symbols.so" target/android/
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starling-apk-${{ matrix.abi }}
+          path: target/android/starling-*.apk
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starling-symbols-${{ matrix.abi }}
+          path: target/android/lib*-symbols.so
+          if-no-files-found: ignore
+          retention-days: 90
+      - name: Build the wasm probe mod
+        if: inputs.wasm_probe && matrix.abi == 'arm64-v8a'
+        working-directory: packaging/android/wasm-probe
+        run: ../../../target/debug/cargo-horizon-mod horizon-mod build --wasm
+      - uses: actions/upload-artifact@v4
+        if: inputs.wasm_probe && matrix.abi == 'arm64-v8a'
+        with:
+          name: starling-wasm-probe
+          path: packaging/android/wasm-probe/target/horizon-mod/*.hmod
+          if-no-files-found: error
+
+  release:
+    needs: apk
+    if: needs.apk.result == 'success' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    environment: ${{ (inputs.release_mode == 'public' || (inputs.release_mode == 'auto' && vars.STARLING_RELEASE_MODE == 'public') || (inputs.release_mode == '' && vars.STARLING_RELEASE_MODE == 'public') || ((inputs.release_mode == 'auto' || inputs.release_mode == '') && vars.STARLING_RELEASE_MODE == '' && startsWith(github.ref, 'refs/tags/v'))) && 'release' || 'preview' }}
+    env:
+      RELEASE_MODE: ${{ inputs.release_mode == 'auto' && (vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview')) || inputs.release_mode || vars.STARLING_RELEASE_MODE || (startsWith(github.ref, 'refs/tags/v') && 'public' || 'preview') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: starling-apk-*
+          path: target/android
+          merge-multiple: true
+      - name: Publish the selected release channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python3 -c 'import runpy; print(runpy.run_path("packaging/android/build_apk.py")["VERSION_NAME"])')
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION=${GITHUB_REF_NAME#v}
+            test "$TAG_VERSION" = "$VERSION" || { echo "Tag $GITHUB_REF_NAME does not match APK VERSION_NAME $VERSION"; exit 1; }
+          fi
+          if [[ "$RELEASE_MODE" == public ]]; then
+            TAG=${GITHUB_REF_NAME}
+            if [[ "$GITHUB_REF" != refs/tags/v* ]]; then TAG="v$VERSION"; fi
+            python3 packaging/android/release_assets.py --version "$VERSION"
+            shopt -s nullglob
+            APK_FILES=(target/android/starling-"$VERSION"-*.apk)
+            test "${#APK_FILES[@]}" -eq 4 || { echo "Expected four Public APKs, found ${#APK_FILES[@]}"; exit 1; }
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${APK_FILES[@]}" target/android/StarlingVisuals.zip --clobber
+              gh release edit "$TAG" --title "Starling Extras $VERSION" --notes-file packaging/android/release-notes.md --latest
+            else
+              gh release create "$TAG" "${APK_FILES[@]}" target/android/StarlingVisuals.zip \
+                --title "Starling Extras $VERSION" --notes-file packaging/android/release-notes.md \
+                --latest --target "$GITHUB_SHA"
+            fi
+          else
+            TAG=preview
+            shopt -s nullglob
+            APK_FILES=(target/android/starling-preview-"$VERSION"-*.apk)
+            test "${#APK_FILES[@]}" -eq 4 || { echo "Expected four Preview APKs, found ${#APK_FILES[@]}"; exit 1; }
+            PREVIEW_NOTES="$RUNNER_TEMP/preview-notes.md"
+            printf 'StarExtras: Preview %s\n\nThis Preview release is replaced in place by later Preview builds. All APKs use the same persistent application signing key.\n' "$VERSION" > "$PREVIEW_NOTES"
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${APK_FILES[@]}" --clobber
+              gh release edit "$TAG" --title "StarExtras: Preview $VERSION" --notes-file "$PREVIEW_NOTES" --prerelease
+            else
+              gh release create "$TAG" "${APK_FILES[@]}" --title "StarExtras: Preview $VERSION" \
+                --notes-file "$PREVIEW_NOTES" --prerelease --target "$GITHUB_SHA"
+            fi
+          fi
+      - name: Build native mods for the Public release
+        if: env.RELEASE_MODE == 'public'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python3 -c 'import runpy; print(runpy.run_path("packaging/android/build_apk.py")["VERSION_NAME"])')
+          gh workflow run native-mods.yml --repo "$GITHUB_REPOSITORY" --ref starling -f version="$VERSION"

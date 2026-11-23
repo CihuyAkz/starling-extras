@@ -1,0 +1,596 @@
+--- a/crates/horizon-client/src/android.rs
++++ b/crates/horizon-client/src/android.rs
+@@ -625,6 +625,7 @@
+     "datapacks",
+     "shaderpacks",
+     "horizon-mods",
++    "mods-java",
+     "screenshots",
+     "servers.dat",
+     "horizon-mods.txt",
+@@ -646,6 +647,7 @@
+     "datapacks",
+     "shaderpacks",
+     "horizon-mods",
++    "mods-java",
+     "horizon-native-mods",
+     "assets",
+     "downloads",
+--- a/crates/horizon-client/src/game/starling/imports.rs
++++ b/crates/horizon-client/src/game/starling/imports.rs
+@@ -453,6 +453,7 @@
+         Kind::DataPack => "Data pack imported",
+         Kind::ShaderPack => "Shader pack imported",
+         Kind::Mod | Kind::NativeMod => "Mod imported",
++        Kind::JavaMod => "Java mod imported",
+         Kind::GpuDriver => "GPU driver imported",
+         Kind::Skin => "Skin imported",
+         Kind::Resources => "Minecraft resources imported",
+@@ -598,7 +599,7 @@
+     match kind {
+         Kind::World => WORLD,
+         Kind::ResourcePack | Kind::DataPack | Kind::ShaderPack => PACK,
+-        Kind::Mod | Kind::NativeMod | Kind::GpuDriver => GEAR,
++        Kind::Mod | Kind::NativeMod | Kind::JavaMod | Kind::GpuDriver => GEAR,
+         Kind::Skin => FACE,
+         Kind::Resources | Kind::Bedrock | Kind::Unknown => BOX,
+     }
+--- a/crates/horizon-client/src/game/world/world_loading.rs
++++ b/crates/horizon-client/src/game/world/world_loading.rs
+@@ -1093,6 +1093,20 @@
+     // even when automatic structure starts are disabled.
+     let automatic_structures =
+         horizon_client::save::WorldGen::read(world_root).is_none_or(|w| w.structures);
++    let java_worldgen = runtime
++        .is_none_or(|generate| matches!(generate, super::runtime_levels::Generate::Stem(_)))
++        .then(|| {
++            crate::java_mods::worldgen_terrain(
++                dim.id(),
++                seed,
++                automatic_structures,
++                world_root,
++                shape,
++                pack.assets.registry,
++                biomes.clone(),
++            )
++        })
++        .flatten();
+     let flat_settings = (dim == Dim::Overworld)
+         .then(|| horizon_client::save::world_gen_settings(world_root))
+         .flatten()
+@@ -1153,6 +1167,17 @@
+         )
+         .ok_or("a runtime level's layers use a block the game lacks")?;
+         register_sea_level(-63);
++        Streaming::new(
++            Arc::new(Persistent {
++                inner: Arc::new(inner),
++                save: save.clone(),
++                registry: pack.assets.clone(),
++                biomes: biomes.clone(),
++            }),
++            pack.context_with(biomes.clone()),
++            res.threads(),
++        )
++    } else if let Some(inner) = java_worldgen {
+         Streaming::new(
+             Arc::new(Persistent {
+                 inner: Arc::new(inner),
+--- a/crates/horizon-client/src/import.rs
++++ b/crates/horizon-client/src/import.rs
+@@ -22,6 +22,7 @@
+     ShaderPack,
+     World,
+     Mod,
++    JavaMod,
+     /// A native mod (`horizon-native.json`): for `horizon-native-mods/`, compiled from there.
+     NativeMod,
+     /// A custom GPU driver package (`meta.json`): for `gpu-drivers/`, loaded at the next
+@@ -55,6 +56,16 @@
+         && crate::own_skin::is_png(&head)
+     {
+         return (Kind::Skin, String::new());
++    }
++    if ext == "jar" {
++        return (
++            if is_fabric_jar(path) {
++                Kind::JavaMod
++            } else {
++                Kind::Unknown
++            },
++            String::new(),
++        );
+     }
+     let Some(names) = File::open(path)
+         .ok()
+@@ -116,6 +127,57 @@
+         return (Kind::ShaderPack, prefix);
+     }
+     (Kind::Unknown, String::new())
++}
++
++fn is_fabric_jar(path: &Path) -> bool {
++    let Ok(file) = File::open(path) else {
++        return false;
++    };
++    let Ok(file_meta) = file.metadata() else {
++        return false;
++    };
++    if file_meta.len() > 256 << 20 {
++        return false;
++    }
++    let Ok(mut archive) = zip::ZipArchive::new(file) else {
++        return false;
++    };
++    if archive.len() > 65_536 {
++        return false;
++    }
++    let Ok(mut manifest) = archive.by_name("fabric.mod.json") else {
++        return false;
++    };
++    if manifest.size() > 1 << 20 {
++        return false;
++    }
++    let mut bytes = Vec::new();
++    if std::io::Read::read_to_end(&mut manifest, &mut bytes).is_err() {
++        return false;
++    }
++    let Ok(metadata) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
++        return false;
++    };
++    metadata
++        .get("id")
++        .and_then(serde_json::Value::as_str)
++        .is_some_and(|id| {
++            id.len() <= 64
++                && id
++                    .as_bytes()
++                    .first()
++                    .is_some_and(|byte| byte.is_ascii_lowercase())
++                && id.bytes().all(|byte| {
++                    byte.is_ascii_lowercase()
++                        || byte.is_ascii_digit()
++                        || byte == b'_'
++                        || byte == b'-'
++                })
++        })
++        && metadata
++            .get("version")
++            .and_then(serde_json::Value::as_str)
++            .is_some_and(|version| !version.is_empty() && version.len() <= 128)
+ }
+ 
+ /// The next complete file of the inbox as a custom button's picture, taken out of it: any size,
+@@ -223,6 +285,14 @@
+                 "Mod \"{title}\" added: turn it on in Options > Mods, or, if it adds blocks or items, pick it for a new world in Create New World > More > Mods & Data Packs"
+             )
+         }
++        Kind::JavaMod => {
++            let dir = places.game.join(crate::java_mods::MODS_DIRECTORY);
++            fs::create_dir_all(&dir).map_err(fail)?;
++            copy_file(path, &unique(&dir, &title, ".jar")).map_err(fail)?;
++            format!(
++                "Java mod \"{title}\" added to mods-java. Restart Starling to load it; this bridge supports Fabric mods for its Minecraft version."
++            )
++        }
+         Kind::NativeMod => {
+             // Either format: the registry's `horizon-native.json` bundle or a flat package.
+             let bundle = horizon_mod_package::index::native::Any::read(path)
+@@ -263,8 +333,8 @@
+         }
+         Kind::Unknown => {
+             return Err(format!(
+-                "the game does not know what {name} is: it takes resource packs, shader packs, \
+-                 worlds, mods and GPU drivers as .zip or .starling, and skins as .png"
++                "the game does not know what {name} is: it takes Fabric Java mods as .jar, resource packs, shader packs, \
++                 worlds, Horizon mods and GPU drivers as .zip or .starling, and skins as .png"
+             ));
+         }
+     };
+@@ -565,6 +635,30 @@
+                 "",
+             ),
+             (
++                "fabric.jar",
++                &[("fabric.mod.json", br#"{"id":"example_mod","version":"1.0.0"}"#)],
++                Kind::JavaMod,
++                "",
++            ),
++            (
++                "invalid-fabric.jar",
++                &[("fabric.mod.json", b"{")],
++                Kind::Unknown,
++                "",
++            ),
++            (
++                "plain.jar",
++                &[("META-INF/MANIFEST.MF", b"Manifest-Version: 1.0")],
++                Kind::Unknown,
++                "",
++            ),
++            (
++                "invalid-id.jar",
++                &[("fabric.mod.json", br#"{"id":"Not A Mod","version":"1.0.0"}"#)],
++                Kind::Unknown,
++                "",
++            ),
++            (
+                 "driver.adpkg",
+                 &[
+                     (
+@@ -602,6 +696,27 @@
+         assert_eq!(classify(&dir.join("addon.mcaddon")).0, Kind::Bedrock);
+         fs::write(dir.join("plain.txt"), b"hello").unwrap();
+         assert_eq!(classify(&dir.join("plain.txt")).0, Kind::Unknown);
++    }
++
++    #[test]
++    fn java_mods_land_in_the_bridge_folder_without_overwriting() {
++        let dir = scratch("java-mods");
++        let places = Places {
++            game: dir.join("game"),
++            resources: dir.join("resources"),
++        };
++        let jar = dir.join("example.jar");
++        zip_of(
++            &jar,
++            &[("fabric.mod.json", br#"{"id":"example_mod","version":"1.0.0"}"#)],
++        );
++        let first = install(&jar, "example.jar", &places).unwrap();
++        assert_eq!(first.kind, Kind::JavaMod);
++        assert!(first.message.contains("Restart Starling"));
++        assert!(places.game.join("mods-java/example.jar").is_file());
++        install(&jar, "example.jar", &places).unwrap();
++        assert!(places.game.join("mods-java/example (2).jar").is_file());
++        fs::remove_dir_all(&dir).unwrap();
+     }
+ 
+     #[test]
+--- a/crates/horizon-client/src/java_mods.rs
++++ b/crates/horizon-client/src/java_mods.rs
+@@ -566,6 +566,23 @@
+ }
+ 
+ #[cfg(feature = "java-mods")]
++pub(super) fn wait_for_startup() {
++    if let Some(thread) = STARTUP_THREAD
++        .lock()
++        .unwrap_or_else(|e| e.into_inner())
++        .take()
++        && thread.join().is_err()
++    {
++        log::warn!("Java mods: runtime startup thread panicked");
++    }
++}
++
++#[cfg(not(feature = "java-mods"))]
++pub(super) fn wait_for_startup() {}
++
++pub(crate) use crate::java_mods_worldgen::worldgen_terrain;
++
++#[cfg(feature = "java-mods")]
+ pub fn shutdown() {
+     crate::lan::packet_tap::want(false);
+     if let Some(thread) = STARTUP_THREAD
+--- a/crates/horizon-client/src/lib.rs
++++ b/crates/horizon-client/src/lib.rs
+@@ -23,6 +23,7 @@
+ static ALLOCATOR: horizon_threads::GameAllocator = horizon_threads::GAME_ALLOCATOR;
+ pub mod game;
+ pub mod java_mods;
++mod java_mods_worldgen;
+ 
+ pub mod diagnostics;
+ pub mod orb_limits;
+--- a/docs/starling-java-bridge.md
++++ b/docs/starling-java-bridge.md
+@@ -8,7 +8,9 @@
+ 
+ The `java-mods` feature is enabled by the Android app and the desktop game target. When `mods-java/` contains JARs, Starling starts the JVM and Fabric bootstrap on a dedicated thread during startup. The bridge requires the prepared Minecraft metadata and Java 25 runtime. Fabric API is supplied when the installed mod set does not already contain it. Renderer replacements that conflict with Starling's renderer, and mods that depend on those replacements, are excluded from Fabric's load set and reported in the log. The JVM shutdown path runs after Starling's event loop returns.
+ 
+-The Modrinth raw-JAR fallback only installs a downloadable Fabric build matching Starling's pinned Minecraft version. Forge and NeoForge JARs are not compatible with this Fabric-only startup path and are not silently installed into `mods-java/`.
++On Android, `.jar` files opened or shared to Starling are accepted only when their root `fabric.mod.json` contains a non-empty mod id and version, then copied into `mods-java/` without replacing an existing file. The folder is also exposed in the Starling game folder in Android Files. Restart Starling after adding a JAR; the bridge discovers its mod set during startup. Install only JARs from sources you trust. Forge and NeoForge JARs are not compatible with this Fabric-only startup path.
++
++The Modrinth raw-JAR fallback only installs a downloadable Fabric build matching Starling's pinned Minecraft version. Forge and NeoForge JARs are not compatible with this Fabric-only startup path and are not installed into `mods-java/`.
+ 
+ ## Implemented Java GUI and HUD bridge
+ 
+--- a/packaging/android/AndroidManifest.xml
++++ b/packaging/android/AndroidManifest.xml
+@@ -63,6 +63,8 @@
+                 <data android:scheme="file" />
+                 <data android:mimeType="application/zip" />
+                 <data android:mimeType="application/x-zip-compressed" />
++                <data android:mimeType="application/java-archive" />
++                <data android:mimeType="application/x-java-archive" />
+                 <data android:mimeType="application/octet-stream" />
+             </intent-filter>
+             <!-- Starling's own extension (.starling: any of them, told apart by what it holds),
+@@ -85,6 +87,9 @@
+                 <data android:pathPattern=".*\\.hnmod" />
+                 <data android:pathPattern=".*\\..*\\.hnmod" />
+                 <data android:pathPattern=".*\\..*\\..*\\.hnmod" />
++                <data android:pathPattern=".*\\.jar" />
++                <data android:pathPattern=".*\\..*\\.jar" />
++                <data android:pathPattern=".*\\..*\\..*\\.jar" />
+                 <!-- A GPU driver package (gpu_drivers.rs): a zip whose meta.json names the driver. -->
+                 <data android:pathPattern=".*\\.adpkg" />
+                 <data android:pathPattern=".*\\..*\\.adpkg" />
+@@ -95,6 +100,8 @@
+                 <category android:name="android.intent.category.DEFAULT" />
+                 <data android:mimeType="application/zip" />
+                 <data android:mimeType="application/x-zip-compressed" />
++                <data android:mimeType="application/java-archive" />
++                <data android:mimeType="application/x-java-archive" />
+                 <data android:mimeType="application/octet-stream" />
+             </intent-filter>
+         </activity>
+--- a/packaging/android/java/io/github/juanluci/starling/GameFolder.java
++++ b/packaging/android/java/io/github/juanluci/starling/GameFolder.java
+@@ -35,6 +35,7 @@
+             "datapacks",
+             "shaderpacks",
+             "horizon-mods",
++            "mods-java",
+             "screenshots",
+             "servers.dat",
+             "horizon-mods.txt",
+@@ -50,7 +51,8 @@
+     private static final List<String> LOGS = Arrays.asList("logs", "crash-reports");
+ 
+     /** Made when the app's own files are listed: nothing can be added at their top. */
+-    private static final String[] FOLDERS = {"saves", "resourcepacks", "shaderpacks", "horizon-mods"};
++    private static final String[] FOLDERS = {
++            "saves", "resourcepacks", "shaderpacks", "horizon-mods", "mods-java"};
+ 
+     /** How many taken names a new document tries before it gives up. */
+     private static final int NAME_TRIES = 1000;
+--- a/tests/java/GameFolderChecks.java
++++ b/tests/java/GameFolderChecks.java
+@@ -177,7 +177,9 @@
+         }
+         List<String> top = folder.children("starling");
+         check(top.contains("starling/options.txt") && top.contains("starling/saves"), "listed");
+-        for (String made : new String[] {"resourcepacks", "shaderpacks", "horizon-mods"}) {
++        for (String made : new String[] {
++            "resourcepacks", "shaderpacks", "horizon-mods", "mods-java"
++        }) {
+             check(top.contains("starling/" + made), made + " is made to copy into");
+         }
+         check(!top.contains("starling/accounts") && !top.contains("starling/native")
+--- /dev/null
++++ b/crates/horizon-client/src/java_mods_worldgen.rs
+@@ -0,0 +1,233 @@
++use crate::{
++    biome::Biomes,
++    chunk::{Chunk, LevelShape},
++    streaming::{ChunkGenerator, Proto},
++};
++use horizon_world::{
++    chunk_status::ChunkStatus,
++    registry::BlockRegistry,
++};
++use std::{path::Path, sync::Arc};
++
++pub(crate) struct JavaWorldgenTerrain {
++    dimension: String,
++    registry: &'static BlockRegistry,
++    biomes: Arc<Biomes>,
++    shape: LevelShape,
++}
++
++struct JavaWorldgenProto {
++    dimension: String,
++    x: i32,
++    z: i32,
++    token: Option<i64>,
++    decorated: bool,
++}
++
++impl Drop for JavaWorldgenProto {
++    fn drop(&mut self) {
++        #[cfg(feature = "java-mods")]
++        if let Some(token) = self.token.take() {
++            let _ = horizon_jvm::events::worldgen_forget(
++                &self.dimension,
++                self.x,
++                self.z,
++                token,
++            );
++        }
++    }
++}
++
++impl JavaWorldgenTerrain {
++    fn empty(&self, x: i32, z: i32) -> Chunk {
++        Chunk::with_layout(x, z, self.shape.column())
++    }
++
++    fn decode(&self, bytes: &[u8], x: i32, z: i32) -> Option<Chunk> {
++        let (root, _) = horizon_core::nbt::read_named(bytes, horizon_core::nbt::Limits::saved())
++            .ok()?;
++        let mut chunk = crate::save::decode_with(
++            &root,
++            self.registry,
++            &self.biomes,
++            None,
++            self.shape.column(),
++        )?;
++        chunk.x = x;
++        chunk.z = z;
++        Some(chunk)
++    }
++}
++
++impl ChunkGenerator for JavaWorldgenTerrain {
++    type Worker = ();
++
++    fn worker(&self) -> Self::Worker {}
++
++    fn proto(&self, _worker: &mut Self::Worker, x: i32, z: i32) -> Proto {
++        #[cfg(feature = "java-mods")]
++        let token = match horizon_jvm::events::worldgen_proto(&self.dimension, x, z) {
++            Ok(token) => token,
++            Err(error) => {
++                log::warn!(
++                    "Java mods: {} couldn't generate terrain for chunk {x} {z}: {error}",
++                    self.dimension
++                );
++                None
++            }
++        };
++        #[cfg(not(feature = "java-mods"))]
++        let token = None;
++
++        if token.is_none() {
++            log::warn!(
++                "Java mods: {} returned no terrain for chunk {x} {z}",
++                self.dimension
++            );
++        }
++
++        Box::new(JavaWorldgenProto {
++            dimension: self.dimension.clone(),
++            x,
++            z,
++            token,
++            decorated: false,
++        })
++    }
++
++    fn decorates(&self) -> bool {
++        true
++    }
++
++    fn decorate(&self, _worker: &mut Self::Worker, region: &mut [Proto; 9]) {
++        let Some(center) = region[4].downcast_mut::<JavaWorldgenProto>() else {
++            return;
++        };
++        if center.token.is_none() {
++            return;
++        }
++        #[cfg(feature = "java-mods")]
++        match horizon_jvm::events::worldgen_decorate(&center.dimension, center.x, center.z) {
++            Ok(()) => center.decorated = true,
++            Err(error) => log::warn!(
++                "Java mods: {} couldn't decorate chunk {} {}: {error}",
++                center.dimension,
++                center.x,
++                center.z
++            ),
++        }
++    }
++
++    fn finish(&self, proto: Proto) -> Chunk {
++        let Ok(mut proto) = proto.downcast::<JavaWorldgenProto>() else {
++            return self.empty(0, 0);
++        };
++        let (x, z) = (proto.x, proto.z);
++        #[cfg(feature = "java-mods")]
++        if let Some(token) = proto.token.take() {
++            match horizon_jvm::events::worldgen_finish(&proto.dimension, x, z, token) {
++                Ok(Some(bytes)) => match self.decode(&bytes, x, z) {
++                    Some(chunk) => return chunk,
++                    None => log::warn!(
++                        "Java mods: {} returned unreadable chunk data for {x} {z}",
++                        proto.dimension
++                    ),
++                },
++                Ok(None) => log::warn!(
++                    "Java mods: {} returned no finished chunk for {x} {z}",
++                    proto.dimension
++                ),
++                Err(error) => log::warn!(
++                    "Java mods: {} couldn't finish chunk {x} {z}: {error}",
++                    proto.dimension
++                ),
++            }
++            let _ = horizon_jvm::events::worldgen_forget(&proto.dimension, x, z, token);
++        }
++        self.empty(x, z)
++    }
++
++    fn is_decorated(&self, proto: &Proto) -> bool {
++        proto
++            .downcast_ref::<JavaWorldgenProto>()
++            .is_some_and(|proto| proto.decorated)
++    }
++
++    fn proto_status(&self, proto: &Proto) -> Option<ChunkStatus> {
++        let proto = proto.downcast_ref::<JavaWorldgenProto>()?;
++        Some(if proto.decorated {
++            ChunkStatus::Features
++        } else {
++            ChunkStatus::Terrain
++        })
++    }
++
++    fn light_view(&self, proto: &Proto) -> Option<Chunk> {
++        let proto = proto.downcast_ref::<JavaWorldgenProto>()?;
++        if !proto.decorated {
++            return None;
++        }
++        #[cfg(feature = "java-mods")]
++        {
++            let token = proto.token?;
++            match horizon_jvm::events::worldgen_snapshot(
++                &proto.dimension,
++                proto.x,
++                proto.z,
++                token,
++            ) {
++                Ok(Some(bytes)) => self.decode(&bytes, proto.x, proto.z),
++                Ok(None) => None,
++                Err(error) => {
++                    log::warn!(
++                        "Java mods: {} couldn't snapshot chunk {} {}: {error}",
++                        proto.dimension,
++                        proto.x,
++                        proto.z
++                    );
++                    None
++                }
++            }
++        }
++        #[cfg(not(feature = "java-mods"))]
++        {
++            None
++        }
++    }
++}
++
++pub(crate) fn worldgen_terrain(
++    dimension: &str,
++    seed: i64,
++    structures: bool,
++    world: &Path,
++    shape: LevelShape,
++    registry: &'static BlockRegistry,
++    biomes: Arc<Biomes>,
++) -> Option<JavaWorldgenTerrain> {
++    #[cfg(feature = "java-mods")]
++    {
++        crate::java_mods::wait_for_startup();
++        if !horizon_jvm::events::ready() {
++            return None;
++        }
++        match horizon_jvm::events::worldgen_start(dimension, seed, structures, world, &[]) {
++            Ok(true) => Some(JavaWorldgenTerrain {
++                dimension: dimension.to_owned(),
++                registry,
++                biomes,
++                shape,
++            }),
++            Ok(false) => None,
++            Err(error) => {
++                log::warn!("Java mods: couldn't prepare world generation for {dimension}: {error}");
++                None
++            }
++        }
++    }
++    #[cfg(not(feature = "java-mods"))]
++    {
++        let _ = (dimension, seed, structures, world, shape, registry, biomes);
++        None
++    }
++}

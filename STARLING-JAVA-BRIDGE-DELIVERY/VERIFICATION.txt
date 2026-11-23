@@ -1,0 +1,48 @@
+STARLING JAVA BRIDGE — SOURCE INTEGRATION VERIFICATION
+
+RESULT
+- The Starling source tree contains an existing JVM/Fabric bridge and concrete call sites into the game loop.
+- Android explicitly enables horizon-client/java-mods.
+- The previous final ZIP was incomplete: lib.rs declared java_mods_worldgen and world_loading.rs called it,
+  but the corresponding java_mods_worldgen.rs source was omitted from that ZIP and its patch.
+- This repack includes that missing source module and the complete patch.
+- This is source-level integration evidence, NOT proof that an APK or runtime build succeeds.
+
+SOURCE CONNECTIONS VERIFIED
+1. crates/horizon-android/Cargo.toml enables horizon-client features horizon-extras and java-mods.
+2. crates/horizon-client/Cargo.toml maps java-mods to the optional horizon-jvm and horizon-prepare crates.
+3. crates/horizon-client/src/game.rs calls prepare_content before Starling freezes mod/content registries.
+4. crates/horizon-client/src/game.rs calls start_if_present for client game startup and shutdown after the event loop.
+5. The game tick calls tick_java_server; this sends player/world snapshots and receives Java actions.
+6. The game renderer calls java_gui::draw_hud and java_gui::draw_screens; input is forwarded through Java GUI callbacks.
+7. horizon-jvm starts the JVM, registers Java Natives JNI methods and calls FabricBoot.start.
+8. world_loading.rs now calls java_mods::worldgen_terrain; the included java_mods_worldgen.rs routes terrain/proto,
+   decoration, finish and snapshot calls through horizon-jvm events.
+
+VALIDATION RUN
+- python3 -m unittest tests/test_android_game_folder.py: 7 tests passed (Android DocumentsProvider/GameFolder behavior).
+- AndroidManifest.xml was parsed by the Python test suite.
+- ZIP integrity test passed for the repacked delivery.
+- Source-diff audit: 10 modified files and 1 newly added source file.
+- Repacked source file count: 12099.
+
+NOT VERIFIED
+- cargo check / cargo test / rustfmt / Android native build / APK build / device runtime test were not run.
+  cargo and rustc are not installed in this environment.
+- Fabric mod compatibility is limited to APIs and behavior actually implemented by Starling's bridge.
+- This is not complete Horizon API parity; Forge and NeoForge are not supported by the Fabric startup path.
+
+SOURCE FILES CHANGED
+- crates/horizon-client/src/android.rs
+- crates/horizon-client/src/game/starling/imports.rs
+- crates/horizon-client/src/game/world/world_loading.rs
+- crates/horizon-client/src/import.rs
+- crates/horizon-client/src/java_mods.rs
+- crates/horizon-client/src/lib.rs
+- docs/starling-java-bridge.md
+- packaging/android/AndroidManifest.xml
+- packaging/android/java/io/github/juanluci/starling/GameFolder.java
+- tests/java/GameFolderChecks.java
+- crates/horizon-client/src/java_mods_worldgen.rs
+
+PATCH SHA-256: 387ffde5f29b4a63bc8c598157015635557a663588679736286ff384f730ac1d
