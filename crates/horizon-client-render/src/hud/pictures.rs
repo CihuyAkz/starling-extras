@@ -131,7 +131,6 @@ impl HudBatch {
             self.pictures.push(picture);
         }
     }
-}
 
     /// Draw a region of a named resource-pack texture in GUI pixels.
     /// `uv` is normalized to the whole texture, matching GuiGraphics' blit.
@@ -218,6 +217,7 @@ impl HudBatch {
         }
         true
     }
+}
 
 impl HudRenderer {
     pub(super) fn draw_picture(
