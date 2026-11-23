@@ -1,8 +1,14 @@
 
-name: Extract ZIP and Flatten
+name: Extract ZIP and Folder
 
 on:
   workflow_dispatch:
+    inputs:
+      folder_name:
+        description: "Nama folder atau path folder. Kosongkan untuk extract ZIP."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -26,12 +32,14 @@ jobs:
           persist-credentials: true
 
       - name: Find ZIP
+        if: ${{ inputs.folder_name == '' }}
         shell: bash
         run: |
           set -euo pipefail
 
           mapfile -d '' ZIP_FILES < <(
-            find . -maxdepth 1 -type f -iname "*.zip" -print0 | sort -z
+            find . -path './.git' -prune -o \
+              -type f -iname "*.zip" -print0 | sort -z
           )
 
           if [ "${#ZIP_FILES[@]}" -eq 0 ]; then
@@ -43,6 +51,7 @@ jobs:
           printf ' - %s\n' "${ZIP_FILES[@]}"
 
       - name: Extract ZIP
+        if: ${{ inputs.folder_name == '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +60,8 @@ jobs:
           mkdir -p /tmp/extracted /tmp/final
 
           mapfile -d '' ZIP_FILES < <(
-            find . -maxdepth 1 -type f -iname "*.zip" -print0 | sort -z
+            find . -path './.git' -prune -o \
+              -type f -iname "*.zip" -print0 | sort -z
           )
 
           INDEX=0
@@ -126,26 +136,130 @@ jobs:
             rsync -av "$CURRENT/" /tmp/final/
           done
 
-          echo "=================================="
           echo "Semua ZIP berhasil diekstrak."
-          echo "=================================="
 
-      - name: Merge extracted files
+      - name: Merge extracted ZIP files
+        if: ${{ inputs.folder_name == '' }}
         shell: bash
         run: |
           set -euo pipefail
 
           rsync -av --exclude='*.zip' /tmp/final/ ./
 
-          echo "Semua file berhasil di-merge."
-          echo "Folder .github juga ikut diproses."
+          echo "Semua hasil ZIP berhasil di-merge."
+
+      - name: Extract Folder Directly to Root
+        if: ${{ inputs.folder_name != '' }}
+        shell: bash
+        env:
+          FOLDER_NAME: ${{ inputs.folder_name }}
+        run: |
+          set -euo pipefail
+
+          ROOT="$(pwd -P)"
+
+          FOLDER_NAME="${FOLDER_NAME#./}"
+
+          if [[ -z "$FOLDER_NAME" || "$FOLDER_NAME" == "." ||
+                "$FOLDER_NAME" == ".." ||
+                "$FOLDER_NAME" == ../* ||
+                "$FOLDER_NAME" == */../* ||
+                "$FOLDER_NAME" == */.. ||
+                "$FOLDER_NAME" == /* ]]; then
+            echo "ERROR: Nama folder atau path tidak valid."
+            exit 1
+          fi
+
+          SOURCE_CANDIDATE=""
+
+          if [[ -d "$FOLDER_NAME" ]]; then
+            SOURCE_CANDIDATE="$FOLDER_NAME"
+          elif [[ "$FOLDER_NAME" != */* ]]; then
+            MATCHES=()
+
+            while IFS= read -r -d '' item; do
+              if [[ "$(basename "$item")" == "$FOLDER_NAME" ]]; then
+                MATCHES+=("$item")
+              fi
+            done < <(
+              find . -path './.git' -prune -o \
+                -type d -print0
+            )
+
+            if [[ "${#MATCHES[@]}" -eq 0 ]]; then
+              echo "ERROR: Folder tidak ditemukan: $FOLDER_NAME"
+              exit 1
+            fi
+
+            if [[ "${#MATCHES[@]}" -gt 1 ]]; then
+              echo "ERROR: Ditemukan beberapa folder dengan nama yang sama."
+              printf ' - %s\n' "${MATCHES[@]}"
+              echo "Gunakan path folder yang lebih spesifik."
+              exit 1
+            fi
+
+            SOURCE_CANDIDATE="${MATCHES[0]}"
+          else
+            echo "ERROR: Folder tidak ditemukan: $FOLDER_NAME"
+            exit 1
+          fi
+
+          SOURCE_FOLDER="$(realpath -e -- "$SOURCE_CANDIDATE")"
+
+          case "$SOURCE_FOLDER" in
+            "$ROOT"/*)
+              ;;
+            *)
+              echo "ERROR: Folder harus berada di dalam repository."
+              exit 1
+              ;;
+          esac
+
+          RELATIVE_SOURCE="${SOURCE_FOLDER#"$ROOT"/}"
+
+          if [[ "$RELATIVE_SOURCE" == ".git" ||
+                "$RELATIVE_SOURCE" == .git/* ||
+                "$RELATIVE_SOURCE" == */.git ||
+                "$RELATIVE_SOURCE" == */.git/* ]]; then
+            echo "ERROR: Tidak bisa mengekstrak folder .git."
+            exit 1
+          fi
+
+          if [[ -z "$(find "$SOURCE_FOLDER" -mindepth 1 -print -quit)" ]]; then
+            echo "ERROR: Folder kosong."
+            exit 1
+          fi
+
+          echo "=================================="
+          echo "Folder: $SOURCE_FOLDER"
+          echo "Target: Repository Root"
+          echo "=================================="
+
+          rm -rf /tmp/folder-content
+          mkdir -p /tmp/folder-content
+
+          rsync -av --exclude='.git' \
+            "$SOURCE_FOLDER/" /tmp/folder-content/
+
+          echo "Folder berhasil disalin ke temporary storage."
+
+          rm -rf -- "$SOURCE_FOLDER"
+
+          rsync -av --exclude='.git' \
+            /tmp/folder-content/ ./
+
+          echo "=================================="
+          echo "Folder berhasil diekstrak ke root!"
+          echo "=================================="
 
       - name: Remove source ZIP
+        if: ${{ inputs.folder_name == '' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          find . -maxdepth 1 -type f -iname "*.zip" -delete
+          find . -path './.git' -prune -o \
+            -type f -iname "*.zip" -delete
 
           echo "Semua file ZIP sumber berhasil dihapus."
 
@@ -164,7 +278,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Add or update source from ZIP"
+          git commit -m "Extract ZIP or Folder to Root"
 
           TARGET_BRANCH="$GITHUB_REF_NAME"
 
