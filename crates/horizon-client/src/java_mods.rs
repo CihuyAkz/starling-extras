@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-pub const MODS_DIRECTORY: &str = "mods-java";
+pub const MODS_DIRECTORY: &str = crate::JAVA_MODS_DIRECTORY;
 
 #[derive(Clone, Debug)]
 pub struct JavaModFiles {

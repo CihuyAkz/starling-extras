@@ -21,6 +21,7 @@ static KEPT: Mutex<Kept> = Mutex::new(Kept {
     uuid: None,
     bodies: Vec::new(),
     bytes: 0,
+    overflowed: false,
 });
 
 fn kept() -> std::sync::MutexGuard<'static, Kept> {

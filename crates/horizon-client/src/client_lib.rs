@@ -2,6 +2,7 @@
 //! bindings between the validated simulation pieces and the game loop.
 #![forbid(unsafe_code)]
 extern crate self as horizon_client;
+pub const JAVA_MODS_DIRECTORY: &str = "mods-java";
 pub mod accounts;
 #[cfg(test)]
 #[global_allocator]

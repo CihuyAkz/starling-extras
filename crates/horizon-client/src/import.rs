@@ -286,7 +286,7 @@ pub fn install(path: &Path, name: &str, places: &Places) -> Result<Installed, St
             )
         }
         Kind::JavaMod => {
-            let dir = places.game.join(crate::java_mods::MODS_DIRECTORY);
+            let dir = places.game.join(crate::JAVA_MODS_DIRECTORY);
             fs::create_dir_all(&dir).map_err(fail)?;
             copy_file(path, &unique(&dir, &title, ".jar")).map_err(fail)?;
             format!(
