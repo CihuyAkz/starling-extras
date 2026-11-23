@@ -816,7 +816,9 @@ impl super::Game<'_> {
             .map(|item| item.as_deref().and_then(parse_item))
             .collect::<Vec<_>>();
         let carried = carried.as_deref().and_then(parse_item);
-        host.hub.guests[guest_index].carried = carried;
+        host.hub.guests.update(guest_index, |guest| {
+            guest.carried = carried;
+        });
         let existing = JAVA_MENU_WINDOWS
             .lock()
             .unwrap_or_else(|error| error.into_inner())
