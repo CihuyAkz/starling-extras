@@ -11717,6 +11717,10 @@ pub(crate) fn run_with(
     // Starling: the mods adding blocks or items are those of the world a restart was made for, or
     // the last world's (world_content.rs), so a world plays with the set it was made with.
     let game_dir = std::env::current_dir()?;
+    #[cfg(feature = "java-mods")]
+    if options.execution_role.is_client() {
+        java_gameplay::reset();
+    }
     let java_content = crate::java_mods::prepare_content(&game_dir, &vanilla_root);
     if !java_content.is_empty() {
         for path in java_content {
@@ -11830,6 +11834,10 @@ pub(crate) fn run_with(
         pack_error = Some(e.to_string());
         mods::content_root(&vanilla_root, &options.mods)
     })?;
+    #[cfg(feature = "java-mods")]
+    if options.execution_role.is_client() {
+        crate::java_mods::start_if_present(game_dir.clone());
+    }
     let mut loaded = load_resources(
         selected_root,
         pack_finders::data_packs(&options.mods),
@@ -11879,13 +11887,7 @@ pub(crate) fn run_with(
             game.settings.save(&Game::options_path());
         }
         #[cfg(feature = "java-mods")]
-        if game.options.is_client_start() {
-            java_gameplay::reset();
-            match std::env::current_dir() {
-                Ok(game_home) => crate::java_mods::start_if_present(game_home),
-                Err(error) => log::warn!("Java mods: can't resolve the game directory: {error}"),
-            }
-        }
+        crate::java_mods::wait_for_startup();
         let event_loop_result = run_event_loop(game);
         #[cfg(feature = "java-mods")]
         {

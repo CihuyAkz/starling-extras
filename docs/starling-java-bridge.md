@@ -6,11 +6,15 @@ The Android runtime uses Starling's OpenJDK 25 installation and prepared Minecra
 
 ## Runtime startup
 
-The `java-mods` feature is enabled by the Android app and the desktop game target. When `mods-java/` contains JARs, Starling starts the JVM and Fabric bootstrap on a dedicated thread during startup. The bridge requires the prepared Minecraft metadata and Java 25 runtime. Fabric API is supplied when the installed mod set does not already contain it. Renderer replacements that conflict with Starling's renderer, and mods that depend on those replacements, are excluded from Fabric's load set and reported in the log. The JVM shutdown path runs after Starling's event loop returns.
+The `java-mods` feature is enabled by the Android app and the desktop game target. When `mods-java/` contains JARs, Starling starts the JVM and Fabric bootstrap on a dedicated thread as soon as the startup content root is ready, while the remaining resources load. This also runs on Android's asynchronous loading-screen path when the generated Java-content cache is already present. Starling waits for the startup thread before handing the loaded resources to the game, so Fabric entrypoints do not start after gameplay has begun. Failed startup releases the one-shot startup claim when no JVM was created, allowing a later retry in the same process. The bridge requires the prepared Minecraft metadata and Java 25 runtime. Fabric API is supplied when the installed mod set does not already contain it. Renderer replacements that conflict with Starling's renderer, and mods that depend on those replacements, are excluded from Fabric's load set and reported in the log. The JVM shutdown path runs after Starling's event loop returns.
 
 On Android, `.jar` files opened or shared to Starling are accepted only when their root `fabric.mod.json` contains a non-empty mod id and version, then copied into `mods-java/` without replacing an existing file. The folder is also exposed in the Starling game folder in Android Files. Restart Starling after adding a JAR; the bridge discovers its mod set during startup. Install only JARs from sources you trust. Forge and NeoForge JARs are not compatible with this Fabric-only startup path.
 
 The Modrinth raw-JAR fallback only installs a downloadable Fabric build matching Starling's pinned Minecraft version. Forge and NeoForge JARs are not compatible with this Fabric-only startup path and are not installed into `mods-java/`.
+
+## Mod Menu status
+
+The Java platform contains the Mod Menu API compatibility shim and can enumerate `ConfigScreenFactory` providers through `HorizonClient.configMods()`. Starling 2.0.0 does not yet connect that exported list to its native Options > Mods screen or open those config screens from the native UI. Therefore a `modmenu` JAR reported as loaded by Fabric means the mod is installed in the Java runtime, but it does not imply that Minecraft's original Mod Menu button or every mod's settings screen is reproduced in Starling's UI. The loader now logs whether Fabric actually reports the `modmenu` mod id, separating a JAR-load failure from this remaining UI integration gap.
 
 ## Implemented Java GUI and HUD bridge
 

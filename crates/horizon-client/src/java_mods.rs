@@ -357,6 +357,13 @@ pub fn inspect(_game_home: &Path) -> Result<Option<JavaModFiles>, String> {
 static STARTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+#[cfg(feature = "java-mods")]
+fn release_startup_claim() {
+    if horizon_jvm::get().is_none() {
+        STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Run Horizon's Java registration oracle before Starling freezes its content registries.
 /// The exported folder packages use the same native content loader as ordinary Starling mods.
 #[cfg(feature = "java-mods")]
@@ -382,14 +389,27 @@ pub fn prepare_content(game_home: &Path, resources: &Path) -> Vec<PathBuf> {
         return Vec::new();
     }
 
-    let (content_jars, fabric_loaded) = match start(game_home) {
-        Ok(result) => result,
-        Err(error) => {
+    let startup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        start(game_home)
+    }));
+    let (content_jars, fabric_loaded) = match startup {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            release_startup_claim();
+            crate::lan::packet_tap::want(false);
             log::warn!("Java mods: couldn't prepare registry content: {error}");
+            return Vec::new();
+        }
+        Err(_) => {
+            release_startup_claim();
+            crate::lan::packet_tap::want(false);
+            log::error!("Java mods: registry startup panicked before Fabric became ready");
             return Vec::new();
         }
     };
     if !fabric_loaded || content_jars.is_empty() {
+        release_startup_claim();
+        crate::lan::packet_tap::want(false);
         log::warn!("Java mods: Fabric was not available; custom Java registries are not imported");
         return Vec::new();
     }
@@ -541,16 +561,39 @@ static STARTUP_THREAD: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
 pub fn start_if_present(game_home: PathBuf) {
     use std::sync::atomic::Ordering;
 
-    if installed_jars(&game_home).is_empty() || STARTED.swap(true, Ordering::SeqCst) {
+    let jars = installed_jars(&game_home);
+    if jars.is_empty() || STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
+    log::info!(
+        "Java mods: starting Fabric from {} with {} mod jar(s)",
+        mods_directory(&game_home).display(),
+        jars.len()
+    );
     crate::lan::packet_tap::undecided();
     let spawned = std::thread::Builder::new()
         .name("Starling Java mods".into())
         .spawn(move || {
-            if let Err(error) = start(&game_home) {
-                crate::lan::packet_tap::want(false);
-                log::warn!("Java mods: startup failed: {error}");
+            let startup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                start(&game_home)
+            }));
+            match startup {
+                Ok(Ok((_, true))) => {}
+                Ok(Ok((_, false))) => {
+                    crate::lan::packet_tap::want(false);
+                    release_startup_claim();
+                    log::warn!("Java mods: Fabric did not become available; startup can be retried on the next launch");
+                }
+                Ok(Err(error)) => {
+                    crate::lan::packet_tap::want(false);
+                    release_startup_claim();
+                    log::warn!("Java mods: startup failed: {error}; it can be retried on the next launch");
+                }
+                Err(_) => {
+                    crate::lan::packet_tap::want(false);
+                    release_startup_claim();
+                    log::error!("Java mods: runtime startup thread panicked; it can be retried on the next launch");
+                }
             }
         });
     match spawned {
@@ -573,7 +616,7 @@ pub(super) fn wait_for_startup() {
         .take()
         && thread.join().is_err()
     {
-        log::warn!("Java mods: runtime startup thread panicked");
+        log::warn!("Java mods: runtime startup thread panicked; it can be retried on the next launch");
     }
 }
 
@@ -591,7 +634,7 @@ pub fn shutdown() {
         .take()
         && thread.join().is_err()
     {
-        log::warn!("Java mods: runtime startup thread panicked");
+        log::warn!("Java mods: runtime startup thread panicked; it can be retried on the next launch");
     }
     horizon_jvm::exit(
         0,
@@ -679,6 +722,21 @@ fn start(game_home: &Path) -> Result<(Vec<PathBuf>, bool), String> {
     let fabric_loaded = bridge.fabric();
     if fabric_loaded {
         log::info!("Java mods: Fabric loaded {}", bridge.mods().join(", "));
+        if bridge
+            .mods()
+            .iter()
+            .any(|entry| entry.split_whitespace().next() == Some("modmenu"))
+        {
+            log::info!("Java mods: Mod Menu (modmenu) was loaded by Fabric");
+        } else if files.jars.iter().any(|jar| {
+            jar.file_name().is_some_and(|name| {
+                name.to_string_lossy().to_ascii_lowercase().contains("modmenu")
+            })
+        }) {
+            log::warn!(
+                "Java mods: a Mod Menu JAR is present, but Fabric did not report the mod id 'modmenu'"
+            );
+        }
     }
     let skipped: Vec<String> = left_out.iter().map(|item| item.line()).collect();
     for line in &skipped {

@@ -1087,6 +1087,8 @@ impl Loading {
             ));
         });
         let pack_error = loaded.pack_error.or_else(|| self.pack_error.take());
+        #[cfg(feature = "java-mods")]
+        crate::java_mods::wait_for_startup();
         // The game borrows its shared resources for the process's lifetime,
         // like the single copy an integrated server would share.
         let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));

@@ -411,6 +411,7 @@ pub(super) fn spawn_loader(
     #[cfg(target_os = "android")]
     crate::diagnostics::checkpoint("resource_loading", || serde_json::json!({}));
     let (sender, receiver) = std::sync::mpsc::channel();
+    let game_home = std::env::current_dir()?;
     let settings = settings.clone();
     let vanilla_root = vanilla_root.to_path_buf();
     let mut mod_sources = options.mods.clone();
@@ -449,6 +450,10 @@ pub(super) fn spawn_loader(
                         pack_error = Some(error.to_string());
                         mods::content_root(&vanilla_root, &mod_sources)
                     });
+            #[cfg(feature = "java-mods")]
+            if role.is_client() && root.is_ok() {
+                crate::java_mods::start_if_present(game_home);
+            }
             progress.note(None);
             let result = root
                 .and_then(|root| {
