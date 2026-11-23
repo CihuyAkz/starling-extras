@@ -120,13 +120,16 @@ pub mod points {
 mod host;
 mod native_hooks;
 #[cfg(feature = "java-mods")]
+#[path = "game/java_mods/impl/java_gameplay.rs"]
 mod java_gameplay;
 #[cfg(feature = "java-mods")]
+#[path = "game/java_mods/impl/java_gui.rs"]
 mod java_gui;
 #[cfg(feature = "java-mods")]
+#[path = "game/java_mods/impl/java_entities.rs"]
 mod java_entities;
 #[cfg(not(feature = "java-mods"))]
-#[path = "game/java_entities_disabled.rs"]
+#[path = "game/java_mods/impl/java_entities_disabled.rs"]
 mod java_entities;
 use event_loop::EventLoopCtl;
 use hand::interact_location;
