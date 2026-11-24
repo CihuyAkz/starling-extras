@@ -26,6 +26,11 @@ pub fn set_shared_folder(folder: PathBuf) {
     let _ = SHARED_FOLDER.set(folder);
 }
 
+pub fn shared_game_home(game_home: &Path) -> Option<PathBuf> {
+    let shared = SHARED_FOLDER.get()?;
+    game_home.starts_with(shared).then(|| game_home.to_path_buf())
+}
+
 /// The native mods this start opened from their own libraries (Compile v2's folder, android_lib.rs),
 /// by id: the Mods page's top says them.
 static NATIVE_LIBS_OPENED: OnceLock<Vec<&'static str>> = OnceLock::new();
@@ -691,6 +696,7 @@ fn hide_from_gallery(home: &Path) {
 /// starts after. GameFolder.choose (Java) makes the same choice for the Files app.
 fn game_folder(private: &Path, notes: &mut Vec<String>) -> PathBuf {
     let Some(shared) = SHARED_FOLDER.get() else {
+        notes.push("Horizon: All files access is not enabled for this app; the game is using private storage instead of /storage/emulated/0/StarlingExtras. Enable All files access for this app and restart.".into());
         return private.to_path_buf();
     };
     let earlier = shared.with_file_name("Horizon");

@@ -216,6 +216,7 @@ fn marker_prefix(names: &[String], marker: &str) -> Option<String> {
 #[derive(Clone, Debug)]
 pub struct Places {
     pub game: PathBuf,
+    pub java_mods: Option<PathBuf>,
     pub resources: PathBuf,
 }
 
@@ -286,9 +287,11 @@ pub fn install(path: &Path, name: &str, places: &Places) -> Result<Installed, St
             )
         }
         Kind::JavaMod => {
-            let dir = places.game.join(crate::JAVA_MODS_DIRECTORY);
-            fs::create_dir_all(&dir).map_err(fail)?;
-            copy_file(path, &unique(&dir, &title, ".jar")).map_err(fail)?;
+            let dir = places.java_mods.as_ref().ok_or_else(|| {
+                "Java mods must be installed in shared StarlingExtras storage. Enable All files access for Starling, then restart it.".to_owned()
+            })?;
+            fs::create_dir_all(dir).map_err(fail)?;
+            copy_file(path, &unique(dir, &title, ".jar")).map_err(fail)?;
             format!(
                 "Java mod \"{title}\" added to mods-java. Restart Starling to load it; this bridge supports Fabric mods for its Minecraft version."
             )
@@ -701,8 +704,11 @@ mod tests {
     #[test]
     fn java_mods_land_in_the_bridge_folder_without_overwriting() {
         let dir = scratch("java-mods");
+        let private_game = dir.join("private/game");
+        let public_java_mods = dir.join("shared/StarlingExtras/mods-java");
         let places = Places {
-            game: dir.join("game"),
+            game: private_game.clone(),
+            java_mods: Some(public_java_mods.clone()),
             resources: dir.join("resources"),
         };
         let jar = dir.join("example.jar");
@@ -713,17 +719,40 @@ mod tests {
         let first = install(&jar, "example.jar", &places).unwrap();
         assert_eq!(first.kind, Kind::JavaMod);
         assert!(first.message.contains("Restart Starling"));
-        assert!(places.game.join("mods-java/example.jar").is_file());
+        assert!(public_java_mods.join("example.jar").is_file());
+        assert!(!private_game.join("mods-java/example.jar").exists());
         install(&jar, "example.jar", &places).unwrap();
-        assert!(places.game.join("mods-java/example (2).jar").is_file());
+        assert!(public_java_mods.join("example (2).jar").is_file());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn java_mod_import_never_falls_back_to_private_game_storage() {
+        let dir = scratch("java-mods-no-shared-storage");
+        let private_game = dir.join("private/game");
+        let places = Places {
+            game: private_game.clone(),
+            java_mods: None,
+            resources: dir.join("resources"),
+        };
+        let jar = dir.join("example.jar");
+        zip_of(
+            &jar,
+            &[("fabric.mod.json", br#"{"id":"example_mod","version":"1.0.0"}"#)],
+        );
+        let error = install(&jar, "example.jar", &places).unwrap_err();
+        assert!(error.contains("shared StarlingExtras storage"));
+        assert!(!private_game.join("mods-java/example.jar").exists());
         fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn imports_land_where_the_game_reads_them_without_overwriting() {
         let dir = scratch("install");
+        let game = dir.join("game");
         let places = Places {
-            game: dir.join("game"),
+            game: game.clone(),
+            java_mods: Some(game.join(crate::JAVA_MODS_DIRECTORY)),
             resources: dir.join("private/resources"),
         };
         let pack = dir.join("Faithful 32x.zip");
@@ -792,8 +821,10 @@ mod tests {
     #[test]
     fn a_png_skin_goes_to_the_skins_folder() {
         let dir = scratch("skin");
+        let game = dir.join("game");
         let places = Places {
-            game: dir.join("game"),
+            game: game.clone(),
+            java_mods: Some(game.join(crate::JAVA_MODS_DIRECTORY)),
             resources: dir.join("resources"),
         };
         let image = |width: u32, height: u32| {
@@ -826,8 +857,10 @@ mod tests {
     #[test]
     fn resources_of_another_version_leave_the_old_ones() {
         let dir = scratch("resources");
+        let game = dir.join("game");
         let places = Places {
-            game: dir.join("game"),
+            game: game.clone(),
+            java_mods: Some(game.join(crate::JAVA_MODS_DIRECTORY)),
             resources: dir.join("resources"),
         };
         fs::create_dir_all(&places.resources).unwrap();
@@ -859,8 +892,10 @@ mod tests {
         let dir = scratch("inbox");
         let inbox_dir = dir.join("inbox");
         fs::create_dir_all(&inbox_dir).unwrap();
+        let game = dir.join("game");
         let places = Places {
-            game: dir.join("game"),
+            game: game.clone(),
+            java_mods: Some(game.join(crate::JAVA_MODS_DIRECTORY)),
             resources: dir.join("resources"),
         };
         let mut inbox = Inbox::new(inbox_dir.clone(), places.clone());

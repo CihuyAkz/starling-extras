@@ -15,6 +15,19 @@ pub fn mods_directory(game_home: &Path) -> PathBuf {
     game_home.join(MODS_DIRECTORY)
 }
 
+pub(crate) fn java_game_home(game_home: &Path) -> Result<PathBuf, String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android::shared_game_home(game_home).ok_or_else(|| {
+            "Android Java mods must be stored under shared StarlingExtras storage. Enable All files access for Starling, then restart it.".to_owned()
+        })
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(game_home.to_path_buf())
+    }
+}
+
 #[cfg(feature = "java-mods")]
 pub fn extend_dynamic_levels(
     shapes: horizon_client::chunk::LevelShapes,
@@ -264,7 +277,18 @@ pub fn extend_dynamic_levels(
 pub fn installed_jars(game_home: &Path) -> Vec<PathBuf> {
     #[cfg(feature = "java-mods")]
     {
-        horizon_jvm::jars(&mods_directory(game_home))
+        let game_home = match java_game_home(game_home) {
+            Ok(home) => home,
+            Err(error) => {
+                static WARNED: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::warn!("Java mods: {error}");
+                }
+                return Vec::new();
+            }
+        };
+        horizon_jvm::jars(&mods_directory(&game_home))
     }
     #[cfg(not(feature = "java-mods"))]
     {
@@ -275,7 +299,8 @@ pub fn installed_jars(game_home: &Path) -> Vec<PathBuf> {
 
 #[cfg(feature = "java-mods")]
 pub fn inspect(game_home: &Path) -> Result<Option<JavaModFiles>, String> {
-    let mods_directory = mods_directory(game_home);
+    let game_home = java_game_home(game_home)?;
+    let mods_directory = mods_directory(&game_home);
     let jars = horizon_jvm::jars(&mods_directory);
     if jars.is_empty() {
         return Ok(None);
@@ -340,7 +365,7 @@ pub fn inspect(game_home: &Path) -> Result<Option<JavaModFiles>, String> {
     }
 
     Ok(Some(JavaModFiles {
-        game_home: game_home.to_path_buf(),
+        game_home,
         mods_directory,
         jars,
         java_home,

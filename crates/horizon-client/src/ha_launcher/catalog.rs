@@ -2306,6 +2306,8 @@ fn install_modrinth_jar_fallback(
     home: &Path,
     progress: &dyn Fn(&str, f32),
 ) -> Result<usize, String> {
+    let home = crate::java_mods::java_game_home(home)?;
+    let home = home.as_path();
     let versions = source.versions(project)?;
     let version = versions
         .iter()

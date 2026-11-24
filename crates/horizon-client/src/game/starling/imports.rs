@@ -219,10 +219,23 @@ impl Imports {
         }
         self.polled = Some(Instant::now());
         let inbox = self.inbox.get_or_insert_with(|| {
+            let game = horizon_client::logging::game_home();
+            let java_mods = {
+                #[cfg(target_os = "android")]
+                {
+                    crate::android::shared_game_home(&game)
+                        .map(|home| home.join(crate::JAVA_MODS_DIRECTORY))
+                }
+                #[cfg(not(target_os = "android"))]
+                {
+                    Some(game.join(crate::JAVA_MODS_DIRECTORY))
+                }
+            };
             Inbox::new(
                 import::inbox_dir(),
                 Places {
-                    game: horizon_client::logging::game_home(),
+                    game,
+                    java_mods,
                     resources: resources.to_path_buf(),
                 },
             )

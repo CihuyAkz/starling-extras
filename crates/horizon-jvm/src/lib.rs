@@ -563,8 +563,22 @@ fn create_vm(
     #[cfg(target_os = "android")]
     let create: CreateJavaVm = {
         use libloading::os::unix::{Library, RTLD_GLOBAL, RTLD_LAZY};
+        let jli = home.join("lib/libjli.so");
+        if jli.is_file() {
+            let loaded = unsafe {
+                Library::open(Some(jli.as_os_str()), RTLD_LAZY | RTLD_GLOBAL)
+            }
+            .map_err(|e| format!("could not preload {}: {e}", jli.display()))?;
+            std::mem::forget(loaded);
+        }
+        let loaded = unsafe { Library::open(Some(path.as_os_str()), RTLD_LAZY | RTLD_GLOBAL) }
+            .map_err(|e| format!("could not load {}: {e}", path.display()))?;
+        let symbol = unsafe { loaded.get::<CreateJavaVm>(b"JNI_CreateJavaVM\0") }
+            .map_err(|e| format!("{} has no JNI_CreateJavaVM: {e}", path.display()))?;
+        let create = *symbol;
+        std::mem::forget(loaded);
+        log::info!("Java mods: loaded JVM native library from {}", path.display());
         for relative in [
-            "lib/libjli.so",
             "lib/libverify.so",
             "lib/libjava.so",
             "lib/libnet.so",
@@ -612,12 +626,6 @@ fn create_vm(
                 std::mem::forget(loaded);
             }
         }
-        let loaded = unsafe { Library::open(Some(path.as_os_str()), RTLD_LAZY | RTLD_GLOBAL) }
-            .map_err(|e| format!("could not load {}: {e}", path.display()))?;
-        let symbol = unsafe { loaded.get::<CreateJavaVm>(b"JNI_CreateJavaVM\0") }
-            .map_err(|e| format!("{} has no JNI_CreateJavaVM: {e}", path.display()))?;
-        let create = *symbol;
-        std::mem::forget(loaded);
         create
     };
     #[cfg(not(target_os = "android"))]

@@ -2,8 +2,10 @@ package io.github.juanluci.starling;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ActivityInfo;
 import android.database.Cursor;
 import android.graphics.Canvas;
@@ -13,6 +15,8 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.os.SystemClock;
 import android.provider.OpenableColumns;
 import android.view.View;
@@ -32,6 +36,11 @@ import java.io.OutputStream;
  * its old process has ended.
  */
 public final class LauncherActivity extends Activity {
+    private static final int PUBLIC_STORAGE_PERMISSION = 42;
+    private boolean waitingForStoragePermission;
+    private boolean storageDialogVisible;
+    private boolean gameLaunchStarted;
+
     /** The game's process id: start the game again once it has ended. */
     static final String AFTER = "io.github.juanluci.starling.AFTER";
     /** What the restart screen says while the game starts again (StarlingActivity.restart). */
@@ -87,12 +96,103 @@ public final class LauncherActivity extends Activity {
     }
 
     private void play() {
-        // The game's own task (singleTask): it stays in the recents, this one does not.
+        if (hasPublicStorageAccess()) {
+            startGame();
+            return;
+        }
+        waitingForStoragePermission = true;
+        if (Build.VERSION.SDK_INT >= 30) {
+            openPublicStorageSettings();
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            requestPermissions(
+                    new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    PUBLIC_STORAGE_PERMISSION);
+        } else {
+            waitingForStoragePermission = false;
+            startGame();
+        }
+    }
+
+    private boolean hasPublicStorageAccess() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            return Environment.isExternalStorageManager();
+        }
+        return Build.VERSION.SDK_INT < 23
+                || checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void openPublicStorageSettings() {
+        Intent[] settings = {
+            new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName())),
+            new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+        };
+        for (Intent intent : settings) {
+            try {
+                startActivity(intent);
+                return;
+            } catch (Exception e) {
+                // Try the next Android settings page.
+            }
+        }
+        waitingForStoragePermission = false;
+        showStoragePermissionDialog();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (waitingForStoragePermission && Build.VERSION.SDK_INT >= 30) {
+            waitingForStoragePermission = false;
+            if (hasPublicStorageAccess()) {
+                startGame();
+            } else {
+                showStoragePermissionDialog();
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PUBLIC_STORAGE_PERMISSION) {
+            waitingForStoragePermission = false;
+            if (hasPublicStorageAccess()) {
+                startGame();
+            } else {
+                showStoragePermissionDialog();
+            }
+        }
+    }
+
+    private void showStoragePermissionDialog() {
+        if (storageDialogVisible || isFinishing()) {
+            return;
+        }
+        storageDialogVisible = true;
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Storage access required")
+                .setMessage("Starling stores game files and Java mods in public shared storage at /storage/emulated/0/StarlingExtras. Enable All files access for this app to continue.")
+                .setPositiveButton("Open settings", (dialog, which) -> {
+                    storageDialogVisible = false;
+                    play();
+                })
+                .setNegativeButton("Exit", (dialog, which) -> finish())
+                .setOnCancelListener(dialog -> storageDialogVisible = false)
+                .show();
+    }
+
+    private void startGame() {
+        if (gameLaunchStarted || isFinishing()) {
+            return;
+        }
+        gameLaunchStarted = true;
         Intent game = new Intent(this, GameActivity.class);
         game.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(game);
         finish();
-        // Straight into the game's black first frame, no window animation between.
         overridePendingTransition(0, 0);
     }
 
