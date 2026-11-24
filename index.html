@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080b12">
-  <meta name="description" content="Download Starling/Horizon and view the latest release notes directly from GitHub.">
+  <meta name="description" content="Download Starling/Horizon stable releases and pre-releases directly from GitHub.">
   <title>Starling/Horizon — Download Center</title>
   <style>
     :root {
@@ -118,7 +117,7 @@
       padding: 25px; background: linear-gradient(135deg, rgba(20, 31, 48, .96), rgba(13, 19, 30, .96));
       box-shadow: 0 20px 70px rgba(0,0,0,.18);
     }
-    .release-top { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    .release-top { display: flex; justify-content: space-between; align-items: center; gap: 15px; flex-wrap: wrap; }
     .tag { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 999px; background: rgba(109,224,208,.1); color: var(--cyan); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; }
     .tag[hidden] { display: none; }
     .version { color: #dce8f8; font-size: 12px; font-weight: 700; }
@@ -160,8 +159,79 @@
     .status[hidden] { display: none !important; }
     .error { color: #ffb4a9; }
     .empty { color: var(--muted); font-size: 12px; padding: 15px 0; }
+    .channel-switch {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 6px; margin: 0 0 14px; width: fit-content;
+      border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(16,22,34,.72);
+    }
+    .channel-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      min-height: 38px; padding: 0 14px; border: 1px solid transparent;
+      border-radius: 9px; color: var(--muted); background: transparent;
+      font-size: 12px; font-weight: 750; cursor: pointer;
+      transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
+    }
+    .channel-btn:hover { color: var(--text); background: rgba(255,255,255,.045); }
+    .channel-btn[aria-selected="true"] {
+      color: var(--text); border-color: rgba(109,224,208,.2);
+      background: linear-gradient(110deg, rgba(109,224,208,.13), rgba(102,166,255,.13));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .channel-count {
+      min-width: 21px; padding: 3px 6px; border-radius: 999px;
+      color: var(--muted); background: rgba(255,255,255,.07);
+      font-size: 10px; text-align: center; font-variant-numeric: tabular-nums;
+    }
+    .channel-btn[aria-selected="true"] .channel-count {
+      color: var(--cyan); background: rgba(109,224,208,.12);
+    }
+    #release-content[hidden], #channel-empty[hidden] { display: none !important; }
+    .channel-empty-state {
+      position: relative; overflow: hidden; display: grid; justify-items: center;
+      padding: 34px 22px 30px; text-align: center;
+      border: 1px dashed rgba(109,224,208,.24); border-radius: 17px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(109,224,208,.09), transparent 17rem),
+        rgba(255,255,255,.018);
+    }
+    .channel-empty-icon {
+      width: 62px; height: 62px; display: grid; place-items: center;
+      margin-bottom: 17px; border: 1px solid rgba(109,224,208,.2);
+      border-radius: 19px; color: var(--cyan);
+      background: linear-gradient(145deg, rgba(109,224,208,.13), rgba(102,166,255,.1));
+      box-shadow: 0 12px 35px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .channel-empty-icon svg { width: 29px; height: 29px; }
+    .channel-empty-label {
+      display: inline-flex; align-items: center; gap: 7px;
+      margin-bottom: 11px; padding: 6px 9px; border-radius: 999px;
+      color: var(--cyan); background: rgba(109,224,208,.09);
+      font-size: 9px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
+    }
+    .channel-empty-label .pulse { width: 6px; height: 6px; }
+    .channel-empty-title { margin: 0; color: var(--text); font-size: 21px; letter-spacing: -.04em; }
+    .channel-empty-description {
+      max-width: 470px; margin: 9px 0 0; color: var(--muted);
+      font-size: 12px; line-height: 1.8;
+    }
+    .channel-empty-actions {
+      display: flex; align-items: center; justify-content: center;
+      flex-wrap: wrap; gap: 9px; margin-top: 21px;
+    }
+    .empty-button {
+      min-height: 39px; padding: 0 13px; border: 1px solid var(--line);
+      border-radius: 10px; color: var(--text); background: rgba(255,255,255,.035);
+      font-size: 11px; font-weight: 750; cursor: pointer; transition: .2s ease;
+    }
+    .empty-button.primary {
+      color: #07111d; border-color: transparent;
+      background: linear-gradient(110deg, var(--cyan), #86b9ff);
+    }
+    .empty-button:hover { transform: translateY(-2px); border-color: rgba(109,224,208,.35); }
+    .empty-button.primary:hover { filter: brightness(1.06); }
+    .empty-button[hidden] { display: none !important; }
 
-    /* Motion and touch feedback */
     body { -webkit-tap-highlight-color: transparent; }
     .topbar {
       position: sticky; top: 0; z-index: 20;
@@ -248,7 +318,7 @@
     .info:hover .info-icon { transform: translateY(-2px) scale(1.12); color: #a4f3e7; }
     .nav a, .text-link { transition: color .2s ease; }
     .btn:active, .credit-link:active, .repo-link:active,
-    .asset:active, .history-item:active {
+    .asset:active, .history-item:active, .channel-btn:active {
       transform: scale(.975);
       filter: brightness(1.12);
       box-shadow: inset 0 2px 8px rgba(0,0,0,.2);
@@ -303,6 +373,8 @@
       .release-title { font-size: 21px; }
       .info-grid { grid-template-columns: 1fr; margin-bottom: 48px; }
       .section-head { align-items: start; flex-direction: column; }
+      .channel-switch { width: 100%; }
+      .channel-btn { flex: 1; padding: 0 10px; }
       footer { flex-direction: column; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -364,44 +436,69 @@
     <section id="download">
       <div class="section-head">
         <div>
-          <h2>Latest Release</h2>
-          <div class="sub">Release information is fetched directly from GitHub.</div>
+          <h2>Download Center</h2>
+          <div class="sub">Choose a release channel to view its downloads and version history.</div>
         </div>
         <div class="status" id="sync-status">Connecting to GitHub…</div>
       </div>
-      <article class="release-card">
-        <div class="release-top">
-          <span class="tag"><span class="pulse"></span> Latest stable</span>
-          <span class="tag" id="recently-updated" hidden>Recently Updated!</span>
-          <span class="version" id="version">v0.7.8</span>
+      <div class="channel-switch" role="tablist" aria-label="Release channel">
+        <button class="channel-btn" id="release-tab" type="button" role="tab" aria-selected="true" aria-controls="release-panel" data-channel="release">
+          Release <span class="channel-count" id="release-count">0</span>
+        </button>
+        <button class="channel-btn" id="prerelease-tab" type="button" role="tab" aria-selected="false" aria-controls="release-panel" data-channel="prerelease" tabindex="-1">
+          Pre-release <span class="channel-count" id="prerelease-count">0</span>
+        </button>
+      </div>
+      <article class="release-card" id="release-panel" role="tabpanel" aria-labelledby="release-tab">
+        <div id="release-content">
+          <div class="release-top">
+            <span class="tag"><span class="pulse"></span><span id="release-channel-label">Latest stable</span></span>
+            <span class="tag" id="recently-updated" hidden>Recently Updated!</span>
+            <span class="version" id="version">v0.7.8</span>
+          </div>
+          <div class="release-title" id="release-title">Updating to 0.7.8</div>
+          <div class="release-meta">
+            <span id="published">8 November 2026</span>
+            <span id="asset-count">1 files available</span>
+          </div>
+          <div class="release-body" id="release-body">
+            <strong>What’s New?</strong>
+            <ul><li>Updating Launcher Version to 0.7.8</li><li>No new mods being added yet.</li></ul>
+          </div>
+          <div class="assets">
+            <div class="assets-title">Download files</div>
+            <div id="assets-list">
+              <a class="asset" href="https://github.com/CihuyAkz/horizon-android-more-mods/releases/download/v0.7.8/horizon-android-dev-arm64-v8a.zip">
+                <div><div class="asset-name">horizon-android-dev-arm64-v8a.zip</div><div class="asset-info">ZIP · 36.5 MB</div></div>
+                <span class="asset-download">Download ↓</span>
+              </a>
+            </div>
+          </div>
+          <div class="notice">Note: release files may be ZIP archives rather than APKs. Check the archive contents and the developer’s installation instructions before using them.</div>
         </div>
-        <div class="release-title" id="release-title">Updating to 0.7.8</div>
-        <div class="release-meta">
-          <span id="published">8 November 2026</span>
-          <span id="asset-count">1 files available</span>
-        </div>
-        <div class="release-body" id="release-body">
-          <strong>What’s New?</strong>
-          <ul><li>Updating Launcher Version to 0.7.8</li><li>No new mods being added yet.</li></ul>
-        </div>
-        <div class="assets">
-          <div class="assets-title">Download files</div>
-          <div id="assets-list">
-            <a class="asset" href="https://github.com/CihuyAkz/horizon-android-more-mods/releases/download/v0.7.8/horizon-android-dev-arm64-v8a.zip">
-              <div><div class="asset-name">horizon-android-dev-arm64-v8a.zip</div><div class="asset-info">ZIP · 36.5 MB</div></div>
-              <span class="asset-download">Download ↓</span>
-            </a>
+        <div class="channel-empty-state" id="channel-empty" hidden aria-live="polite">
+          <div class="channel-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3h8M10 3v5l-5.2 8.7A2.2 2.2 0 0 0 6.7 20h10.6a2.2 2.2 0 0 0 1.9-3.3L14 8V3"/>
+              <path d="M8 14h8M9.3 11h5.4"/>
+            </svg>
+          </div>
+          <span class="channel-empty-label" id="channel-empty-label"><span class="pulse"></span> PRE-RELEASE · 0 AVAILABLE</span>
+          <h3 class="channel-empty-title" id="channel-empty-title">No pre-releases yet</h3>
+          <p class="channel-empty-description" id="channel-empty-description">Belum ada build pre-release yang dipublikasikan. Kalau developer merilis build testing baru, versinya akan muncul otomatis di sini.</p>
+          <div class="channel-empty-actions">
+            <button class="empty-button primary" id="empty-switch-release" type="button">Browse stable releases</button>
+            <a class="empty-button" href="https://github.com/CihuyAkz/horizon-android-more-mods/releases" target="_blank" rel="noopener noreferrer">View GitHub Releases ↗</a>
           </div>
         </div>
-        <div class="notice">Note: the latest release available when this website was created contains a ZIP archive, not an APK. Check the archive contents and the developer’s installation instructions before using it.</div>
       </article>
     </section>
 
     <section id="releases" style="padding-top:38px">
       <div class="section-head">
         <div>
-          <h2>Previous Releases</h2>
-          <div class="sub">Version history from the same repository.</div>
+          <h2>Previous Versions</h2>
+          <div class="sub" id="history-subtitle">Version history for the selected channel.</div>
         </div>
         <a class="text-link" style="font-size:11px;color:var(--blue)" href="https://github.com/CihuyAkz/horizon-android-more-mods/releases" target="_blank" rel="noopener noreferrer">All releases ↗</a>
       </div>
@@ -433,22 +530,40 @@
   <script>
     const OWNER = "CihuyAkz";
     const REPO = "horizon-android-more-mods";
-    const API = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=10`;
+    const API = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=100`;
 
     const $ = (id) => document.getElementById(id);
 
-    // Hide Recently Updated after a download is clicked.
-    let recentlyUpdatedDismissed = false;
+    let activeReleaseChannel = "release";
+    let allReleases = [];
+    let releaseDataLoaded = false;
+    let releaseLoadFailed = false;
+    const recentlyUpdatedDismissed = new Set();
+
+    function selectReleaseChannel(channel) {
+      activeReleaseChannel = channel;
+      renderActiveChannel();
+    }
+
+    document.querySelectorAll(".channel-btn").forEach(button => {
+      button.addEventListener("click", () => {
+        selectReleaseChannel(button.dataset.channel);
+      });
+    });
+
+    $("empty-switch-release").addEventListener("click", () => {
+      selectReleaseChannel("release");
+      $("release-tab").focus();
+    });
 
     document.addEventListener("click", (event) => {
       const downloadLink = event.target.closest("#assets-list .asset");
       if (!downloadLink) return;
 
-      recentlyUpdatedDismissed = true;
+      recentlyUpdatedDismissed.add(activeReleaseChannel);
       $("recently-updated").hidden = true;
     });
 
-    // Top-page scroll indicator
     const progressBar = document.createElement("div");
     progressBar.className = "scroll-progress";
     progressBar.setAttribute("aria-hidden", "true");
@@ -469,7 +584,6 @@
     window.addEventListener("resize", updateScrollProgress);
     updateScrollProgress();
 
-    // Reveal sections gently as they enter the viewport.
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let revealObserver = null;
     if (!reduceMotion && "IntersectionObserver" in window) {
@@ -482,7 +596,7 @@
         });
       }, { threshold: 0.12, rootMargin: "0px 0px -35px 0px" });
 
-      document.querySelectorAll(".hero > div, .hero-art, #download .section-head, .release-card, #releases .section-head, #about .section-head, .info, footer")
+      document.querySelectorAll(".hero > div, .hero-art, #download .section-head, .channel-switch, .release-card, #releases .section-head, #about .section-head, .info, footer")
         .forEach((element, index) => {
           element.classList.add("reveal");
           element.style.setProperty("--reveal-delay", `${(index % 4) * 75}ms`);
@@ -500,9 +614,8 @@
       });
     }
 
-    // Small ripple feedback on tap/click.
     document.addEventListener("pointerdown", event => {
-      const target = event.target.closest(".btn, .credit-link, .repo-link, .asset, .history-item");
+      const target = event.target.closest(".btn, .credit-link, .repo-link, .asset, .history-item, .channel-btn");
       if (!target) return;
       const rect = target.getBoundingClientRect();
       const diameter = Math.max(rect.width, rect.height) * 1.7;
@@ -525,9 +638,11 @@
 
     function formatDate(value) {
       if (!value) return "Date unavailable";
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return "Date unavailable";
       return new Intl.DateTimeFormat("id-ID", {
         day: "numeric", month: "long", year: "numeric"
-      }).format(new Date(value));
+      }).format(date);
     }
 
     function formatSize(bytes) {
@@ -557,6 +672,35 @@
         .replace(/\n/g, "<br>");
     }
 
+    function getChannelReleases() {
+      return allReleases.filter(release => {
+        if (release.draft) return false;
+        return activeReleaseChannel === "prerelease"
+          ? release.prerelease === true
+          : release.prerelease !== true;
+      });
+    }
+
+    function updateChannelCounts() {
+      const releases = allReleases.filter(release => !release.draft);
+      const stableCount = releases.filter(release => !release.prerelease).length;
+      const prereleaseCount = releases.filter(release => release.prerelease).length;
+      $("release-count").textContent = stableCount;
+      $("prerelease-count").textContent = prereleaseCount;
+    }
+
+    function updateChannelTabs() {
+      document.querySelectorAll(".channel-btn").forEach(button => {
+        const isSelected = button.dataset.channel === activeReleaseChannel;
+        button.setAttribute("aria-selected", String(isSelected));
+        button.tabIndex = isSelected ? 0 : -1;
+      });
+      $("release-panel").setAttribute(
+        "aria-labelledby",
+        activeReleaseChannel === "prerelease" ? "prerelease-tab" : "release-tab"
+      );
+    }
+
     function renderAssets(assets) {
       const list = $("assets-list");
       const available = (assets || []).filter(asset => asset.state === "uploaded" && asset.browser_download_url);
@@ -578,7 +722,7 @@
     }
 
     function renderHistory(releases) {
-      const older = releases.filter(release => !release.draft).slice(1);
+      const older = releases.slice(1);
       $("history-list").innerHTML = older.length ? older.map(release => `
         <a class="history-item" href="${escapeHtml(release.html_url)}" target="_blank" rel="noopener noreferrer">
           <div>
@@ -587,8 +731,84 @@
           </div>
           <span class="history-version">${escapeHtml(release.tag_name)} ↗</span>
         </a>
-      `).join("") : '<div class="empty">No previous releases are available.</div>';
+      `).join("") : '<div class="empty">No previous versions are available in this channel.</div>';
       observeDynamicReveals($("history-list"));
+    }
+
+    function renderActiveChannel() {
+      updateChannelTabs();
+      const channelReleases = getChannelReleases();
+      const latest = channelReleases[0];
+      const releaseContent = $("release-content");
+      const channelEmpty = $("channel-empty");
+
+      if (!latest) {
+        releaseContent.hidden = true;
+        channelEmpty.hidden = false;
+
+        const isPrerelease = activeReleaseChannel === "prerelease";
+        const emptyLabel = $("channel-empty-label");
+        const emptyTitle = $("channel-empty-title");
+        const emptyDescription = $("channel-empty-description");
+        const switchButton = $("empty-switch-release");
+
+        if (!releaseDataLoaded && !releaseLoadFailed) {
+          emptyLabel.innerHTML = '<span class="pulse"></span> CONNECTING TO GITHUB';
+          emptyTitle.textContent = "Checking release availability…";
+          emptyDescription.textContent = "Sedang memeriksa GitHub untuk mencari versi yang tersedia. Informasi akan muncul otomatis setelah data selesai dimuat.";
+          switchButton.hidden = true;
+        } else if (releaseLoadFailed && !releaseDataLoaded) {
+          emptyLabel.innerHTML = '<span class="pulse"></span> CONNECTION ISSUE';
+          emptyTitle.textContent = "Couldn't load release data";
+          emptyDescription.textContent = "GitHub belum bisa dihubungi, jadi ketersediaan " + (isPrerelease ? "pre-release" : "stable release") + " belum dapat dipastikan. Coba buka halaman GitHub Releases secara langsung.";
+          switchButton.hidden = true;
+        } else if (isPrerelease) {
+          emptyLabel.innerHTML = '<span class="pulse"></span> PRE-RELEASE · 0 AVAILABLE';
+          emptyTitle.textContent = "No pre-releases yet";
+          emptyDescription.textContent = "Belum ada build pre-release yang dipublikasikan. Build testing terbaru akan muncul otomatis di sini setelah developer merilisnya.";
+          switchButton.textContent = "Browse stable releases";
+          switchButton.hidden = false;
+        } else {
+          emptyLabel.innerHTML = '<span class="pulse"></span> RELEASE · 0 AVAILABLE';
+          emptyTitle.textContent = "No stable releases yet";
+          emptyDescription.textContent = "Belum ada stable release yang dipublikasikan untuk project ini.";
+          switchButton.hidden = true;
+        }
+
+        $("history-list").innerHTML = isPrerelease
+          ? '<div class="empty">No previous pre-release versions are available.</div>'
+          : '<div class="empty">No previous stable versions are available.</div>';
+        $("history-subtitle").textContent = isPrerelease
+          ? "Pre-release version history."
+          : "Stable release version history.";
+        return;
+      }
+
+      releaseContent.hidden = false;
+      channelEmpty.hidden = true;
+
+      const publishedAt = Date.parse(latest.published_at || "");
+      const releaseAge = Date.now() - publishedAt;
+      const twoDays = 2 * 24 * 60 * 60 * 1000;
+
+      $("recently-updated").hidden =
+        recentlyUpdatedDismissed.has(activeReleaseChannel) ||
+        !Number.isFinite(publishedAt) ||
+        releaseAge < 0 ||
+        releaseAge >= twoDays;
+
+      $("release-channel-label").textContent = activeReleaseChannel === "prerelease"
+        ? "Latest pre-release"
+        : "Latest stable";
+      $("version").textContent = latest.tag_name || "Latest";
+      $("release-title").textContent = latest.name || latest.tag_name || "Latest Release";
+      $("published").textContent = formatDate(latest.published_at);
+      $("release-body").innerHTML = markdownToSafeHtml(latest.body);
+      renderAssets(latest.assets);
+      renderHistory(channelReleases);
+      $("history-subtitle").textContent = activeReleaseChannel === "prerelease"
+        ? "Pre-release version history, separate from stable builds."
+        : "Stable release version history, separate from pre-release builds.";
     }
 
     const RELEASE_CACHE_KEY = "horizon-android-releases-cache";
@@ -598,27 +818,12 @@
     let lastReleaseRequest = 0;
 
     function renderReleases(releases) {
-      const published = releases.filter(release => !release.draft && !release.prerelease);
-      if (!published.length) throw new Error("No public releases are available.");
-
-      const latest = published[0];
-
-      const publishedAt = Date.parse(latest.published_at || "");
-      const releaseAge = Date.now() - publishedAt;
-      const twoDays = 2 * 24 * 60 * 60 * 1000;
-
-      $("recently-updated").hidden =
-        recentlyUpdatedDismissed ||
-        !Number.isFinite(publishedAt) ||
-        releaseAge < 0 ||
-        releaseAge >= twoDays;
-
-      $("version").textContent = latest.tag_name || "Latest";
-      $("release-title").textContent = latest.name || latest.tag_name || "Latest Release";
-      $("published").textContent = formatDate(latest.published_at);
-      $("release-body").innerHTML = markdownToSafeHtml(latest.body);
-      renderAssets(latest.assets);
-      renderHistory(published);
+      if (!Array.isArray(releases)) throw new Error("GitHub returned an invalid release list.");
+      allReleases = releases;
+      releaseDataLoaded = true;
+      releaseLoadFailed = false;
+      updateChannelCounts();
+      renderActiveChannel();
     }
 
     function readCachedReleases() {
@@ -689,13 +894,15 @@
         status.style.color = "var(--green)";
         status.title = "Release information was refreshed from GitHub.";
       } catch (error) {
-        // Keep the last rendered or cached release details, but do not leave
-        // a permanent "last available data" warning on the page.
         status.textContent = "";
         status.hidden = true;
         status.title = error.name === "AbortError"
           ? "GitHub did not respond before the request timed out."
           : error.message;
+        if (!releaseDataLoaded) {
+          releaseLoadFailed = true;
+          renderActiveChannel();
+        }
         console.warn("GitHub Releases could not be refreshed:", error);
       } finally {
         releaseRequestRunning = false;
@@ -703,7 +910,6 @@
       }
     }
 
-    // Show the most recently saved release list immediately, then refresh it.
     const cachedReleases = readCachedReleases();
     if (cachedReleases) {
       try {
@@ -711,12 +917,13 @@
       } catch (error) {
         console.warn("The saved GitHub release cache is invalid:", error);
       }
+    } else {
+      renderActiveChannel();
     }
 
     $("year").textContent = new Date().getFullYear();
     loadReleases();
 
-    // Retry promptly when connectivity returns or when the tab becomes active.
     window.addEventListener("online", () => {
       window.clearTimeout(releaseRefreshTimer);
       loadReleases();
