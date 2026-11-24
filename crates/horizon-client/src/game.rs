@@ -117,7 +117,6 @@ pub mod points {
         log::warn!("point {point}: a value has no API form; its listeners were skipped");
     }
 }
-mod bedrock;
 mod host;
 mod native_hooks;
 #[cfg(feature = "java-mods")]
