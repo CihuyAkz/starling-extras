@@ -141,7 +141,7 @@ public final class HorizonPackets {
 
     public static void effect(ServerPlayer player, net.minecraft.world.effect.MobEffectInstance effect) {
         if (HorizonServer.isMirror(player)) {
-            send(player, new net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket(player.getId(), effect));
+            send(player, new net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket(player.getId(), effect, false));
         }
     }
 

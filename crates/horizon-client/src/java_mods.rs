@@ -384,8 +384,10 @@ static STARTED: std::sync::atomic::AtomicBool =
 
 #[cfg(feature = "java-mods")]
 fn release_startup_claim() {
-    if horizon_jvm::get().is_none() {
+    if !horizon_jvm::vm_started() {
         STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    } else {
+        log::warn!("Java mods: the JVM is already running but the Fabric bridge did not finish; restart Starling instead of creating another JVM");
     }
 }
 

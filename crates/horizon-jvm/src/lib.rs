@@ -35,6 +35,7 @@ use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::{JNIEnv, JavaVM, NativeMethod, sys};
 use std::ffi::{CString, c_void};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 /// The folder of Java mods, beside `options.txt`.
@@ -66,6 +67,7 @@ const PLATFORM_JAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/horizon-pl
 const PLATFORM_SRC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/horizon-platform-src.zip"));
 
 static BRIDGE: OnceLock<Bridge> = OnceLock::new();
+static JVM_CREATED: AtomicBool = AtomicBool::new(false);
 /// Held while a JVM is being made, so two threads never both try.
 static STARTING: Mutex<()> = Mutex::new(());
 /// Launcher session, handed directly to Java in memory before mod initialization.
@@ -196,6 +198,10 @@ impl Bridge {
 /// The running bridge, if [`start`] succeeded.
 pub fn get() -> Option<&'static Bridge> {
     BRIDGE.get()
+}
+
+pub fn vm_started() -> bool {
+    JVM_CREATED.load(Ordering::SeqCst)
 }
 
 /// Ends the process through the JVM (`System.exit(code)`) when one runs, so it exits as
@@ -388,6 +394,9 @@ pub fn start(config: &Config) -> Result<&'static Bridge, String> {
     if let Some(bridge) = BRIDGE.get() {
         return Ok(bridge);
     }
+    if vm_started() {
+        return Err("a JVM was already created in this process but the Java bridge did not finish initializing; restart Starling".into());
+    }
     let bridge_jar = bridge_jar(&config.work, &config.home)?;
     let mut class_path = vec![bridge_jar.clone()];
     let mut fabric_libs = Vec::new();
@@ -396,6 +405,15 @@ pub fn start(config: &Config) -> Result<&'static Bridge, String> {
         class_path.extend(fabric_libs.iter().cloned());
     }
     class_path.extend(config.class_path.iter().cloned());
+    let mut add_mods = Vec::new();
+    let mut platform = false;
+    if let Some(fabric) = config.fabric.as_ref() {
+        add_mods = fabric.add_mods.clone();
+        platform = fabric.platform && has_platform();
+        if platform {
+            add_mods.push(platform_jar(config, fabric, &bridge_jar, &fabric_libs)?);
+        }
+    }
     let log_config = write_jar(&config.work, "log4j2-horizon.xml", LOG4J_CONFIG.as_bytes())?;
     let vm = create_vm(
         &config.home,
@@ -411,11 +429,6 @@ pub fn start(config: &Config) -> Result<&'static Bridge, String> {
     let java_version = boot(&mut env, &config.jars).map_err(|e| describe(&mut env, e))?;
     let mods = match &config.fabric {
         Some(fabric) => {
-            let mut add_mods = fabric.add_mods.clone();
-            let platform = fabric.platform && has_platform();
-            if platform {
-                add_mods.push(platform_jar(config, fabric, &bridge_jar, &fabric_libs)?);
-            }
             let mods =
                 start_fabric(&mut env, fabric, &add_mods).map_err(|e| describe(&mut env, e))?;
             if platform {
@@ -714,6 +727,7 @@ fn create_vm(
             home.display()
         ));
     }
+    JVM_CREATED.store(true, Ordering::SeqCst);
     // SAFETY: `vm` is the JVM just created.
     unsafe { JavaVM::from_raw(vm) }.map_err(|e| format!("JavaVM: {e}"))
 }
