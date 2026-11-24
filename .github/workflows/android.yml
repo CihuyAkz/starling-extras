@@ -1,7 +1,7 @@
 name: android
 on:
   push:
-    branches: [android, starling, integration]
+    branches: [android, starling, integration, 2.0.0-extras]
     tags: ['v*']
   pull_request:
     types: [opened, synchronize, reopened]

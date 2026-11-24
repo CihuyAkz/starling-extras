@@ -305,6 +305,30 @@ pub fn load(skins: &Path, file: &str) -> Result<Vec<u8>, String> {
         std::fs::read(skins.join(file)).map_err(|e| format!("could not read {file}: {e}"))?;
     decode(&bytes).map_err(|e| format!("{file} is not a skin: {e}"))
 }
+pub fn decode_raw(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if !is_png(bytes) {
+        return Err("it is not a PNG image".into());
+    }
+    if let Some(error) = png_size(bytes).and_then(|(w, h)| size_error(w, h)) {
+        return Err(error);
+    }
+    let (width, height, rgba) =
+        crate::hud::decode_bytes(bytes).map_err(|e| format!("it could not be read ({e})"))?;
+    if let Some(error) = size_error(width, height) {
+        return Err(error);
+    }
+    crate::skins::process_skin_raw(width, height, &rgba)
+        .ok_or_else(|| format!("it is {width}x{height}, and a skin is 64x64 (or 64x32)"))
+}
+
+pub fn load_raw(skins: &Path, file: &str) -> Result<Vec<u8>, String> {
+    if !is_file_name(file) {
+        return Err(format!("{file} is not a file of the skins folder"));
+    }
+    let bytes =
+        std::fs::read(skins.join(file)).map_err(|e| format!("could not read {file}: {e}"))?;
+    decode_raw(&bytes).map_err(|e| format!("{file} is not a skin: {e}"))
+}
 
 /// The file `file` of `skins` as an account's service takes a skin: checked as [`load`] checks
 /// it, then written anew at its own size (64x64, or a legacy 64x32 kept so, which the services

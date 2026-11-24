@@ -18,6 +18,33 @@ const BOARDING_COOLDOWN: i32 = 60;
 /// `Piglin.startRiding`: how many baby piglins stack on one hoglin.
 const MAX_PASSENGERS_ON_ONE_HOGLIN: i32 = 3;
 
+static MOUNT_KINDS: std::sync::RwLock<Vec<(u32, String)>> = std::sync::RwLock::new(Vec::new());
+pub fn set_mount_kinds(kinds: Vec<(u32, String)>) {
+    if let Ok(mut current) = MOUNT_KINDS.write() {
+        *current = kinds;
+    }
+}
+static PLAYER_MOUNT: std::sync::RwLock<Option<(u32, String)>> = std::sync::RwLock::new(None);
+pub fn set_player_mount(mount: Option<(u32, String)>) {
+    if let Ok(mut current) = PLAYER_MOUNT.write() {
+        *current = mount;
+    }
+}
+pub fn mount_kind(rider: u32) -> Option<String> {
+    if let Ok(current) = PLAYER_MOUNT.read()
+        && let Some((id, kind)) = current.as_ref()
+        && *id == rider
+    {
+        return Some(kind.clone());
+    }
+    MOUNT_KINDS
+        .read()
+        .ok()?
+        .iter()
+        .find(|(id, _)| *id == rider)
+        .map(|(_, kind)| kind.clone())
+}
+
 /// `LivingEntity.getScale`: the `minecraft:scale` the server sent on any
 /// living entity, 1 when unset (`Mob::model_scale`).
 pub(super) fn scale(m: &Mob) -> f64 {

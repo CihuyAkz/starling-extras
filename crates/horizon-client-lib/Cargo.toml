@@ -43,6 +43,7 @@ horizon-perf-format = { path = "../horizon-perf-format" }
 rayon = "1.10"
 horizon-hdr = { path = "../horizon-hdr" }
 horizon-world = { path = "../horizon-world" }
+horizon-bedrock = { path = "../horizon-bedrock" }
 horizon-protocol = { path = "../horizon-protocol" }
 # server.properties, eula.txt and the user lists, shared with horizon-server.
 horizon-server-files = { path = "../horizon-server-files" }

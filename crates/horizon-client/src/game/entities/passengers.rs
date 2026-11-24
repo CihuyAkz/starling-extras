@@ -95,6 +95,7 @@ impl Game<'_> {
     pub(super) fn sync_riders(&mut self) {
         if !self.persist.off_level.is_empty() || !self.persist.removed_vehicles.is_empty() {
             self.sync_retained_riders();
+            self.sync_mount_kinds();
             self.position_riders();
             if !self.persist.removed_vehicles.is_empty()
                 || self
@@ -159,7 +160,19 @@ impl Game<'_> {
         for m in &mut self.mobs {
             m.extra.rider = riding.get(&m.id).map(|&(_, id)| id);
         }
+        self.sync_mount_kinds();
         self.position_riders();
+    }
+    fn sync_mount_kinds(&self) {
+        let kinds = self
+            .mob_objects()
+            .filter_map(|mob| {
+                let vehicle = mob.extra.mount?;
+                let kind = self.native_vehicle_kind(vehicle);
+                (!kind.is_empty()).then_some((mob.id, kind))
+            })
+            .collect();
+        riders::set_mount_kinds(kinds);
     }
     fn sync_retained_riders(&mut self) {
         let invalid: Vec<_> = self

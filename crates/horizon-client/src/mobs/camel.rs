@@ -23,6 +23,24 @@ const SIT_DOWN: i64 = 40;
 const STAND_UP: i64 = 52;
 pub const DASH_COOLDOWN: i32 = 55;
 
+static MODEL_DROP: std::sync::Mutex<Vec<(u32, f32)>> = std::sync::Mutex::new(Vec::new());
+pub fn set_model_drop(id: u32, drop: f32) {
+    if let Ok(mut all) = MODEL_DROP.lock() {
+        match all.iter_mut().find(|(i, _)| *i == id) {
+            Some(entry) => entry.1 = drop,
+            None => all.push((id, drop)),
+        }
+    }
+}
+fn model_drop(id: u32) -> Option<f32> {
+    MODEL_DROP
+        .lock()
+        .ok()?
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|entry| entry.1)
+}
+
 pub fn register(m: &mut Mob) {
     m.extra.tame = true;
     let tempt = m.kind.tempt.clone();
@@ -223,7 +241,11 @@ pub fn passenger_attachment(m: &Mob) -> [f64; 3] {
 pub fn passenger_attachment_at(m: &Mob, index: usize, count: usize, animal: bool) -> [f64; 3] {
     let scale = if m.is_baby() { 0.6 } else { 1.0 };
     let driver = index == 0;
-    let height = body_anchor_y(m, driver, m.height(), scale) as f32;
+    let mut height = body_anchor_y(m, driver, m.height(), scale) as f32;
+    if let Some(drop) = model_drop(m.id) {
+        let standing = 2.375 * scale - if m.is_baby() { 0.09375 } else { 0.375 };
+        height = standing + drop * scale;
+    }
     let mut offset = 0.5_f32;
     if count > 1 {
         if !driver {

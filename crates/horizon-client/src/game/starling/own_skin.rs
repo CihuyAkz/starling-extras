@@ -29,7 +29,8 @@ use std::time::{Duration, Instant};
 mod wardrobe;
 
 /// The own skin's name in the atlas: one skin slot, written again when the skin changes.
-const LOCATION: &str = "horizon/own_skin";
+const LOCATION: &str = horizon_client::skins::OWN_SKIN;
+const LOCATION_RAW: &str = horizon_client::skins::OWN_SKIN_RAW;
 
 /// How far the title screen's player is turned toward the menu, in degrees, as Bedrock's stands.
 const TITLE_TURN: f32 = 25.0;
@@ -45,8 +46,10 @@ pub(in crate::game) struct OwnSkin {
     choice: SkinChoice,
     /// The chosen skin's 64x64 RGBA; None for the default one.
     image: Option<Vec<u8>>,
+    raw_image: Option<Vec<u8>>,
     /// Whether the slot holds `image` as it is now.
     uploaded: bool,
+    raw_uploaded: bool,
     /// The title screen's player, its skin and name looked at every frame.
     title: Option<TitlePlayer>,
     /// Before the world's resources: the player's type read on a thread of its own, and the mob
@@ -144,16 +147,20 @@ impl Game<'_> {
     /// Wear `choice`: its image read now; why not, for a file that is no skin (the default skin
     /// shows then).
     fn put_on_skin(&mut self, choice: SkinChoice) -> Result<(), String> {
-        let image = choice
-            .file
-            .as_deref()
-            .map(|file| own_skin::load(&Self::skins_dir(), file))
-            .transpose()?;
+        let (image, raw_image) = match choice.file.as_deref() {
+            Some(file) => (
+                Some(own_skin::load(&Self::skins_dir(), file)?),
+                Some(own_skin::load_raw(&Self::skins_dir(), file)?),
+            ),
+            None => (None, None),
+        };
         self.skin_3d.borrow_mut().forget(LOCATION);
         let skin = &mut self.own_skin;
         skin.loaded = true;
         skin.image = image;
+        skin.raw_image = raw_image;
         skin.uploaded = false;
+        skin.raw_uploaded = false;
         skin.choice = choice;
         Ok(())
     }
@@ -178,6 +185,16 @@ impl Game<'_> {
             let rgba = self.own_skin.image.clone()?;
             self.store_skin(LOCATION.to_owned(), rgba);
             self.own_skin.uploaded = true;
+        }
+        if self.own_skin.raw_image.is_some()
+            && (!self.own_skin.raw_uploaded
+                || !self.skin_slots.contains(LOCATION_RAW)
+                || !self.gui.atlas.sprites.contains_key(LOCATION_RAW)
+                || !self.show_skin(LOCATION_RAW))
+            && let Some(raw) = self.own_skin.raw_image.clone()
+        {
+            self.store_skin(LOCATION_RAW.to_owned(), raw);
+            self.own_skin.raw_uploaded = true;
         }
         Some((LOCATION.to_owned(), self.own_skin.choice.slim))
     }

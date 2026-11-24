@@ -58,7 +58,7 @@ impl Game<'_> {
     }
 
     /// The type of the vehicle with entity id `id`.
-    fn native_vehicle_kind(&self, id: u32) -> String {
+    pub(crate) fn native_vehicle_kind(&self, id: u32) -> String {
         if let Some(b) = self.boat_object(id) {
             b.entity_type()
         } else if let Some(c) = self.cart_object(id) {

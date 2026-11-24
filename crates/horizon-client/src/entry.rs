@@ -180,6 +180,7 @@ pub fn start<G>(
     {
         after_log();
     }
+    horizon_threads::memory_watch::start();
     if horizon_world::native_load_hooks::install(
         horizon_world::native_load_hooks::NativeLoadHooks {
             item_ability_default: horizon_items::item_abilities::vanilla_can_perform,

@@ -560,6 +560,12 @@ impl Game<'_> {
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
         let spectator = self.spectator();
         let ridden = self.ridden_body();
+        let mount_type = self.riding.map(|id| self.native_vehicle_kind(id));
+        let player_mount = self
+            .player_model
+            .as_ref()
+            .and_then(|m| mount_type.map(|kind| (m.id, kind)));
+        horizon_client::mobs::riders::set_player_mount(player_mount);
         let Some(m) = self.player_model.as_mut() else {
             return;
         };

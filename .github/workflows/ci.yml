@@ -7,7 +7,7 @@ on:
   push:
     # starling and integration in starling-client/starling (android: Horizon Android's, and JuanLuci/starling's);
     # sync-horizon-7, where Starling's pull requests go now, so its runs save the Rust cache they read.
-    branches: [android, starling, integration, sync-horizon-7]
+    branches: [android, starling, integration, sync-horizon-7, 2.0.0-extras]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -80,7 +80,7 @@ jobs:
         if: steps.rust.outputs.required != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: lint
-          save-if: ${{ github.ref == 'refs/heads/android' || github.ref == 'refs/heads/starling' || github.ref == 'refs/heads/sync-horizon-7' }}
+          save-if: ${{ github.ref == 'refs/heads/android' || github.ref == 'refs/heads/starling' || github.ref == 'refs/heads/sync-horizon-7' || github.ref == 'refs/heads/2.0.0-extras' }}
       - name: Check formatting and lint
         if: steps.rust.outputs.required != 'false'
         run: |
@@ -125,7 +125,7 @@ jobs:
         if: steps.rust.outputs.required != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: verify
-          save-if: ${{ github.ref == 'refs/heads/android' || github.ref == 'refs/heads/starling' || github.ref == 'refs/heads/sync-horizon-7' }}
+          save-if: ${{ github.ref == 'refs/heads/android' || github.ref == 'refs/heads/starling' || github.ref == 'refs/heads/sync-horizon-7' || github.ref == 'refs/heads/2.0.0-extras' }}
       # Libraries, binaries and integration tests, then doc tests: not the ~275 examples, which clippy in lint already
       # type-checks and Horizon's parity jobs build and run (they were most of this step's build and link time).
       # cargo test, not nextest: nextest's process per test reloads each binary's shared tables for every test, and on

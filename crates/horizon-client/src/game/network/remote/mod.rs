@@ -6381,14 +6381,22 @@ impl Game<'_> {
         if !resolved.iter().any(|(u, _)| *u == local)
             && let Some((rgba, is_slim)) = horizon_client::skins::offline_skin()
         {
-            const OFFLINE: &str = "horizon/offline_skin";
-            if !self.skin_slots.contains(OFFLINE) || !self.gui.atlas.sprites.contains_key(OFFLINE) {
-                self.store_skin(OFFLINE.into(), rgba.clone());
+            let offline = horizon_client::skins::OFFLINE_SKIN;
+            if !self.skin_slots.contains(offline) || !self.gui.atlas.sprites.contains_key(offline) {
+                self.store_skin(offline.into(), rgba.clone());
+            }
+            if let Some(raw) = horizon_client::skins::offline_skin_raw() {
+                let raw_location = horizon_client::skins::OFFLINE_SKIN_RAW;
+                if !self.skin_slots.contains(raw_location)
+                    || !self.gui.atlas.sprites.contains_key(raw_location)
+                {
+                    self.store_skin(raw_location.into(), raw.to_vec());
+                }
             }
             if *is_slim {
                 slim.insert(local);
             }
-            resolved.push((local, OFFLINE.into()));
+            resolved.push((local, offline.into()));
         }
         // An offline name's cape from the launcher, where the profile has none.
         if !capes.contains_key(&local)
@@ -6588,6 +6596,12 @@ impl Game<'_> {
         let shown =
             self.skin_slots.contains(location) && self.gui.atlas.sprites.contains_key(location);
         if shown {
+            let raw = horizon_client::skins::raw_skin_location(location);
+            if raw != location
+                && (!self.skin_slots.contains(&raw) || !self.gui.atlas.sprites.contains_key(&raw))
+            {
+                self.skin_downloads.borrow_mut().again_raw(location);
+            }
             self.skin_downloads.borrow_mut().drawn(location);
         }
         shown

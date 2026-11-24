@@ -539,12 +539,19 @@ pub struct Frame {
     /// The glint's colour ([`Tweaks::glint_texel`]), 0 for vanilla's.
     pub glint: u32,
 }
+pub static PACK_GLINT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 impl Pvp {
     pub fn frame(&self) -> Frame {
+        let own = self.tweaks.glint_texel();
         Frame {
             outline: self.outline.stroke(),
             hurt_texel: self.hit.texel(),
-            glint: self.tweaks.glint_texel(),
+            glint: if own != 0 {
+                own
+            } else {
+                PACK_GLINT.load(std::sync::atomic::Ordering::Relaxed)
+            },
         }
     }
 }

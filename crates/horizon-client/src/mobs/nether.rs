@@ -31,6 +31,20 @@ pub fn register_blaze(m: &mut Mob) {
     m.ai.targets.add(1, HurtByTarget::new().alert());
     m.ai.targets.add(2, NearestTarget::player(true));
 }
+pub fn set_blaze_charged(m: &mut Mob, on: bool) {
+    if m.extra.flag == on {
+        return;
+    }
+    m.extra.flag = on;
+    m.extra.ints[if on { 0 } else { 1 }] = m.age as i32 + 1;
+}
+pub fn blaze_charging(m: &Mob) -> bool {
+    m.extra.flag && (m.extra.ints[0] <= 0 || (m.age as i32) - m.extra.ints[0] < 60)
+}
+pub fn blaze_attacking(m: &Mob) -> bool {
+    let fell = m.extra.ints[1];
+    m.extra.flag || m.ai.target.is_some() || (fell > 0 && (m.age as i32) - fell < 100)
+}
 /// `Blaze.BlazeAttackGoal`: melee up close, otherwise a 3-second charge and
 /// three small fireballs, then a five-second rest.
 #[derive(Clone, Debug, Default)]
@@ -53,7 +67,7 @@ impl Goal for BlazeAttack {
         self.step = 0;
     }
     fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        m.extra.flag = false;
+        set_blaze_charged(m, false);
         self.last_seen = 0;
     }
     fn every_tick(&self) -> bool {
@@ -95,13 +109,13 @@ impl Goal for BlazeAttack {
                 self.step += 1;
                 if self.step == 1 {
                     self.time = 60;
-                    m.extra.flag = true;
+                    set_blaze_charged(m, true);
                 } else if self.step <= 4 {
                     self.time = 6;
                 } else {
                     self.time = 100;
                     self.step = 0;
-                    m.extra.flag = false;
+                    set_blaze_charged(m, false);
                 }
                 if self.step > 1 {
                     let sqd = d2.sqrt().sqrt() * 0.5;

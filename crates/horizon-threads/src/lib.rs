@@ -13,6 +13,7 @@ pub mod heap_census;
 #[cfg(target_os = "linux")]
 pub mod heap_sample;
 pub mod jobs;
+pub mod memory_watch;
 pub mod process_memory;
 #[cfg(target_os = "linux")]
 pub mod profile;

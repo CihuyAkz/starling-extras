@@ -177,6 +177,23 @@ pub fn jeb_wool_rgb(age: f32) -> u32 {
 pub const VILLAGER_TYPES: [&str; 7] = [
     "plains", "desert", "jungle", "savanna", "snow", "swamp", "taiga",
 ];
+pub const PROFESSIONS: [&str; 15] = [
+    "none",
+    "armorer",
+    "butcher",
+    "cartographer",
+    "cleric",
+    "farmer",
+    "fisherman",
+    "fletcher",
+    "leatherworker",
+    "librarian",
+    "mason",
+    "nitwit",
+    "shepherd",
+    "toolsmith",
+    "weaponsmith",
+];
 fn baby_or<'a>(
     m: &Mob,
     adult: impl Into<Cow<'a, str>>,
@@ -1445,6 +1462,226 @@ fn draw_normals(
     }
     for c in &part.children {
         draw_normals(c, m, normals, poses, uv, scroll, color, light, overlay, out);
+    }
+}
+fn draw_polygons(
+    part: &Part,
+    m: glam::Mat4,
+    normals: ModelNormals,
+    uv: [f32; 4],
+    scroll: f32,
+    color: u32,
+    light: u32,
+    overlay: u32,
+    poses: &Poses,
+    out: &mut Vec<Vertex>,
+) {
+    if !poses.skips(part) {
+        for poly in &part.polygons {
+            let normal = poly.vertex_normal(normals);
+            for v in poly.vertices {
+                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
+                let glint_uv = if overlay == ARMOR_GLINT {
+                    [v[3], v[4]]
+                } else {
+                    [0.0, 0.0]
+                };
+                out.push(Vertex {
+                    normal,
+                    pos: pos.to_array(),
+                    uv: [
+                        uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
+                        uv[1] + (uv[3] - uv[1]) * v[4],
+                    ],
+                    layer: overlay,
+                    color,
+                    light,
+                    glint_uv,
+                });
+            }
+        }
+    }
+}
+pub fn bone_matrices(
+    part: &Part,
+    poses: &Poses,
+    out: &mut std::collections::HashMap<String, (glam::Mat4, glam::Mat4)>,
+) {
+    fn walk(
+        part: &Part,
+        posed_parent: glam::Mat4,
+        rest_parent: glam::Mat4,
+        poses: &Poses,
+        out: &mut std::collections::HashMap<String, (glam::Mat4, glam::Mat4)>,
+    ) {
+        let now = posed(posed_parent, poses.pose(part));
+        let rest = posed(rest_parent, part.pose);
+        out.insert(part.name.clone(), (now, rest));
+        for child in &part.children {
+            walk(child, now, rest, poses, out);
+        }
+    }
+    walk(part, glam::Mat4::IDENTITY, glam::Mat4::IDENTITY, poses, out);
+}
+pub fn holder_matrices(
+    part: &Part,
+    poses: &Poses,
+    out: &mut std::collections::HashMap<String, (glam::Mat4, glam::Mat4)>,
+) {
+    fn flat(matrix: &glam::Mat4) -> bool {
+        matrix.determinant().abs() < 1e-12
+    }
+    fn walk(
+        part: &Part,
+        (posed_parent, upright_parent): (glam::Mat4, glam::Mat4),
+        rest_parent: glam::Mat4,
+        poses: &Poses,
+        out: &mut std::collections::HashMap<String, (glam::Mat4, glam::Mat4)>,
+    ) {
+        let pose = poses.pose(part);
+        let now = posed(posed_parent, pose);
+        let rest = posed(rest_parent, part.pose);
+        let own_flat = (6..9).any(|i| pose[i].abs() < 1e-6);
+        let mut unit = pose;
+        for value in &mut unit[6..9] {
+            if value.abs() < 1e-6 {
+                *value = 1.0;
+            }
+        }
+        let mut upright = posed(upright_parent, unit);
+        upright.w_axis = now.w_axis;
+        let shown = if own_flat || !flat(&now) { now } else { upright };
+        out.insert(part.name.clone(), (shown, rest));
+        let carried = if flat(&now) { upright } else { now };
+        for child in &part.children {
+            walk(child, (now, carried), rest, poses, out);
+        }
+    }
+    walk(
+        part,
+        (glam::Mat4::IDENTITY, glam::Mat4::IDENTITY),
+        glam::Mat4::IDENTITY,
+        poses,
+        out,
+    );
+}
+pub fn held_anchor(bone: glam::Mat4, scale: f32) -> glam::Mat4 {
+    bone * glam::Mat4::from_scale(glam::Vec3::splat(scale))
+        * glam::Mat4::from_translation(glam::Vec3::new(0.0, -MODEL_FEET, 0.0))
+}
+pub fn held_anchor_at(bone: glam::Mat4, scale: f32, pivot: glam::Vec3) -> glam::Mat4 {
+    bone * glam::Mat4::from_scale(glam::Vec3::splat(scale))
+        * glam::Mat4::from_translation(-pivot)
+}
+pub fn rest_pivot(part: &Part, name: &str) -> Option<glam::Vec3> {
+    fn walk(part: &Part, from: glam::Vec3, name: &str) -> Option<glam::Vec3> {
+        let here = from + glam::Vec3::new(part.pose[0], part.pose[1], part.pose[2]) / 16.0;
+        if part.name == name {
+            return Some(here);
+        }
+        part.children.iter().find_map(|child| walk(child, here, name))
+    }
+    walk(part, glam::Vec3::ZERO, name)
+}
+pub fn rest_floor(part: &Part, name: &str) -> Option<f32> {
+    fn lowest(part: &Part, y: f32) -> Option<f32> {
+        let here = y + part.pose[1];
+        let own = part
+            .polygons
+            .iter()
+            .flat_map(|polygon| polygon.vertices.iter().map(|vertex| here + vertex[1]))
+            .reduce(f32::max);
+        part.children
+            .iter()
+            .filter_map(|child| lowest(child, here))
+            .chain(own)
+            .reduce(f32::max)
+    }
+    fn find(part: &Part, y: f32, name: &str) -> Option<f32> {
+        if part.name == name {
+            return lowest(part, y);
+        }
+        let here = y + part.pose[1];
+        part.children.iter().find_map(|child| find(child, here, name))
+    }
+    find(part, 0.0, name).map(|y| 24.0 - y)
+}
+const MODEL_FEET: f32 = 24.0 / 16.0;
+#[allow(clippy::too_many_arguments)]
+pub fn draw_attached(
+    part: &Part,
+    chain: glam::Mat4,
+    base: glam::Mat4,
+    bound_only: bool,
+    base_of: &dyn Fn(&str) -> Option<glam::Mat4>,
+    poses: &Poses,
+    uv: [f32; 4],
+    color: u32,
+    light: u32,
+    overlay: u32,
+    out: &mut Vec<Vertex>,
+) {
+    draw_attached_under(
+        part, chain, base, bound_only, None, base_of, poses, uv, color, light, overlay, out,
+    );
+}
+#[allow(clippy::too_many_arguments)]
+fn draw_attached_under(
+    part: &Part,
+    chain: glam::Mat4,
+    base: glam::Mat4,
+    bound_only: bool,
+    inherited: Option<glam::Mat4>,
+    base_of: &dyn Fn(&str) -> Option<glam::Mat4>,
+    poses: &Poses,
+    uv: [f32; 4],
+    color: u32,
+    light: u32,
+    overlay: u32,
+    out: &mut Vec<Vertex>,
+) {
+    let pose = poses.pose(part);
+    if poses.is_hidden(part) || pose[6] == 0.0 && pose[7] == 0.0 && pose[8] == 0.0 {
+        return;
+    }
+    let mine = posed(chain, pose);
+    let bound = base_of(&part.name);
+    let under = match bound.or(inherited) {
+        Some(bound) => bound,
+        None if bound_only => glam::Mat4::ZERO,
+        None => base,
+    };
+    let matrix = under * mine;
+    let skip = under == glam::Mat4::ZERO || poses.skips(part);
+    if !skip {
+        draw_polygons(
+            part,
+            matrix,
+            ModelNormals::new(matrix),
+            uv,
+            0.0,
+            color,
+            light,
+            overlay,
+            poses,
+            out,
+        );
+    }
+    for child in &part.children {
+        draw_attached_under(
+            child,
+            mine,
+            base,
+            bound_only,
+            bound.or(inherited),
+            base_of,
+            poses,
+            uv,
+            color,
+            light,
+            overlay,
+            out,
+        );
     }
 }
 /// A part's matrix under `base` for its pose (`ModelPart.translateAndRotate`

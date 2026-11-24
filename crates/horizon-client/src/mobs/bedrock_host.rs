@@ -1267,9 +1267,9 @@ pub(super) const HISTORY_NAMES: [[&str; 2]; super::super::HISTORY] = [
     ["historical_frame_15.pos_y", "historical_frame_15.rot_y"],
 ];
 
-pub(super) fn pose_stand(
+pub(crate) fn pose_stand(
     pose: &mut horizon_bedrock::animation::Pose,
-    stand: &super::StandPose,
+    stand: &super::super::StandPose,
 ) {
     const DEFAULT: [[f32; 3]; 6] = crate::entities::ArmorStand::DEFAULT_POSE;
     const BONES: [&[&str]; 6] = [
