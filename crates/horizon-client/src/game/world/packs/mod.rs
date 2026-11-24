@@ -480,6 +480,7 @@ impl Game<'_> {
             pack,
             textures,
             cem,
+            bedrock,
             block_entity_shapes,
             waypoint_styles,
             armor_stand_assets,
@@ -611,6 +612,13 @@ impl Game<'_> {
             .cem
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = cem;
+        horizon_client::mobs::bedrock::reset_surroundings();
+        *self
+            .res
+            .mob_data()
+            .bedrock
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = bedrock;
         self.res
             .block_entity_render()
             .set_shapes(block_entity_shapes);
@@ -775,6 +783,7 @@ pub(super) fn stage_pack(
         &source,
         res.mob_types(),
     ));
+    let bedrock = Arc::new(horizon_client::mobs::bedrock::BedrockMobs::load(&root));
     let block_entity_shapes = res.block_entity_render().shapes_for(&source);
     let waypoint_styles = horizon_client::locator_bar::WaypointStyles::load(&source);
     let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
@@ -787,6 +796,7 @@ pub(super) fn stage_pack(
         pack,
         textures,
         cem,
+        bedrock,
         block_entity_shapes,
         waypoint_styles,
         armor_stand_assets,
@@ -812,6 +822,7 @@ pub(super) struct StagedPack {
     pub textures: PreparedTextures,
     /// The packs' custom entity models (OptiFine CEM).
     pub cem: Arc<horizon_client::mobs::cem::CemModels>,
+    pub bedrock: Arc<horizon_client::mobs::bedrock::BedrockMobs>,
     /// The block entities' models, the packs' custom entity models over vanilla's.
     pub block_entity_shapes: Arc<horizon_client::block_entity_render::BlockEntityShapes>,
     /// The root's sound events, GUI sprite metadata and current language.

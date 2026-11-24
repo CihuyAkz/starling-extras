@@ -604,7 +604,10 @@ impl Launcher {
                 .id("launcher-version")
                 .px(px(8.))
                 .pt(px(8.))
-                .child(trf("Launcher {version}", &[("version", backend::VERSION)])),
+                .child(trf("Launcher {version}", &[("version", backend::VERSION)]))
+                .child(identity::EXTRAS_VERSION)
+                .child(" · ")
+                .child(identity::BASE_VERSION),
         );
 
         crate::glass::plate(radius::PANEL)

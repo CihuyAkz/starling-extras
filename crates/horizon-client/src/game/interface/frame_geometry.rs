@@ -257,8 +257,48 @@ impl Game<'_> {
                     .is_some_and(|s| &*s.item == "minecraft:shield"),
                 Some(Hand::Main) => false,
             };
+        let held = [0, 1].map(|i| {
+            items[i]
+                .as_ref()
+                .filter(|_| shown[i] && !java_hide[i] && (i == 0 || !legacy_block))
+        });
+        let dressed_hands = held.map(|s| s.is_some_and(|s| self.first_person_pack_dresses(&s.item)));
+        let mut view_model = false;
+        if dressed_hands.contains(&true) {
+            let left = self.settings.main_hand_left;
+            let rest = to_world
+                * horizon_client::first_person::item_pose(
+                    left,
+                    horizon_client::first_person::equip_displacement(heights[0], 1.0),
+                    0.0,
+                    horizon_client::first_person::ItemPose::Using,
+                );
+            let mut dressed = Vec::new();
+            if self.first_person_pack_item(
+                held[0].map(|s| &*s.item),
+                held[1].map(|s| &*s.item),
+                a,
+                rest,
+                packed,
+                &mut dressed,
+            ) {
+                let first = if dressed_hands[0] { held[0] } else { held[1] };
+                let item_id = first.map_or(0, |s| self.rendered_item_id(&s.item));
+                runs.push((out.len() as u32, item_id));
+                let mut skin = self.skin_frame.borrow_mut();
+                if !skin.hand_jobs.is_empty() {
+                    skin.hand_first += out.len() as u32;
+                }
+                drop(skin);
+                out.append(&mut dressed);
+                view_model = true;
+            }
+        }
         for (i, (hand, item)) in Hand::BOTH.into_iter().zip(items).enumerate() {
             if !shown[i] || java_hide[i] {
+                continue;
+            }
+            if view_model && (dressed_hands[i] || item.is_none()) {
                 continue;
             }
             let scale = item.as_ref().map_or(1.0, |stack| {

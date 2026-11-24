@@ -416,6 +416,196 @@ pub enum Action {
     Catalog,
 }
 
+const ADDON_BUTTON: i32 = 70;
+const ROW_W: i32 = 310;
+const ROW_STEP: i32 = 24;
+const VIEW_TOP: i32 = 32;
+const VIEW_BOTTOM: i32 = 36;
+
+#[derive(Clone, Debug)]
+struct Addon {
+    dir: std::path::PathBuf,
+    file: String,
+    subpacks: Vec<crate::packs::bedrock::Subpack>,
+    chosen: Option<String>,
+    defs: Vec<horizon_bedrock::settings::Def>,
+    values: HashMap<String, horizon_bedrock::settings::Choice>,
+}
+
+impl Addon {
+    fn label(&self) -> Text {
+        let name = self
+            .chosen
+            .as_ref()
+            .and_then(|c| self.subpacks.iter().find(|s| &s.folder == c))
+            .map_or_else(
+                || tr("horizon.pack.subpack.base"),
+                |s| Text::literal(s.name.clone()),
+            );
+        Text::translate("horizon.pack.subpack", &[name])
+    }
+
+    fn next(&self) -> Option<String> {
+        let at = self
+            .chosen
+            .as_ref()
+            .and_then(|c| self.subpacks.iter().position(|s| &s.folder == c));
+        match at {
+            None if self.chosen.is_none() => self.subpacks.first().map(|s| s.folder.clone()),
+            Some(i) => self.subpacks.get(i + 1).map(|s| s.folder.clone()),
+            None => None,
+        }
+    }
+
+    fn value(&self, i: usize) -> horizon_bedrock::settings::Choice {
+        let d = &self.defs[i];
+        self.values
+            .get(&d.name)
+            .cloned()
+            .unwrap_or_else(|| d.default.clone())
+    }
+
+    fn rows(&self) -> Vec<SettingRow> {
+        use horizon_bedrock::settings::Kind;
+        let mut rows = Vec::new();
+        if !self.subpacks.is_empty() {
+            rows.push(SettingRow::Mode);
+        }
+        for (i, d) in self.defs.iter().enumerate() {
+            rows.push(SettingRow::Setting(i));
+            if d.kind == Kind::Multiselect {
+                rows.extend((0..d.options.len()).map(|o| SettingRow::Option(i, o)));
+            }
+        }
+        rows
+    }
+
+    fn row_label(&self, row: SettingRow) -> Text {
+        use horizon_bedrock::settings::{Choice, Kind, title_of};
+        let on_off = |v: bool| tr(if v { "options.on" } else { "options.off" });
+        let pair = |title: &str, value: Text| {
+            Text::translate(
+                "options.generic_value",
+                &[Text::literal(title.to_owned()), value],
+            )
+        };
+        match row {
+            SettingRow::Mode => self.label(),
+            SettingRow::Setting(i) => {
+                let d = &self.defs[i];
+                let title = d.title();
+                match (d.kind, self.value(i)) {
+                    (Kind::Toggle, Choice::Flag(v)) => pair(title, on_off(v)),
+                    (Kind::Dropdown, Choice::One(o)) => {
+                        let label = d
+                            .options
+                            .iter()
+                            .find(|x| x.0 == o)
+                            .map_or(o.as_str(), |x| title_of(&x.1));
+                        pair(title, Text::literal(label.to_owned()))
+                    }
+                    (Kind::Slider, Choice::Number(n)) => pair(title, Text::literal(format!("{n}"))),
+                    _ => Text::literal(title.to_owned()),
+                }
+            }
+            SettingRow::Option(i, o) => {
+                let d = &self.defs[i];
+                let (name, label) = &d.options[o];
+                let on = matches!(self.value(i), Choice::Many(v) if v.contains(name));
+                pair(&format!("  {}", title_of(label)), on_off(on))
+            }
+        }
+    }
+
+    fn press(&mut self, row: SettingRow) -> bool {
+        use horizon_bedrock::settings::Kind;
+        match row {
+            SettingRow::Mode => {
+                let next = self.next();
+                if crate::packs::bedrock::choose_subpack(&self.dir, &self.file, next.as_deref())
+                    .is_ok()
+                {
+                    self.chosen = next;
+                    true
+                } else {
+                    false
+                }
+            }
+            SettingRow::Setting(i) | SettingRow::Option(i, _) => {
+                let d = self.defs[i].clone();
+                let now = self.value(i);
+                let next = match row {
+                    SettingRow::Option(_, o) => d.flip(&now, &d.options[o].0),
+                    _ if d.kind == Kind::Multiselect => return false,
+                    _ => d.press(&now),
+                };
+                if crate::packs::bedrock::choose_setting(&self.dir, &self.file, &d.name, &next)
+                    .is_ok()
+                {
+                    self.values.insert(d.name, next);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingRow {
+    Mode,
+    Setting(usize),
+    Option(usize, usize),
+}
+
+#[derive(Clone, Debug)]
+struct SettingsView {
+    id: String,
+    scroll: f64,
+}
+
+fn addons_of(packs: &[PackInfo]) -> HashMap<String, Addon> {
+    let dir = std::env::current_dir().unwrap_or_default().join("resourcepacks");
+    packs
+        .iter()
+        .filter_map(|p| {
+            let file = p.id.strip_prefix("file/")?;
+            let path = dir.join(file);
+            if !(crate::packs::bedrock::is_bedrock_file(file)
+                || path.join("manifest.json").is_file())
+            {
+                return None;
+            }
+            let subpacks = crate::packs::bedrock::subpacks(&path);
+            let defs = crate::packs::bedrock::settings(&path);
+            if subpacks.is_empty() && defs.is_empty() {
+                return None;
+            }
+            let values = defs
+                .iter()
+                .filter_map(|d| {
+                    Some((
+                        d.name.clone(),
+                        crate::packs::bedrock::chosen_setting(&dir, file, &d.name)?,
+                    ))
+                })
+                .collect();
+            Some((
+                p.id.clone(),
+                Addon {
+                    chosen: crate::packs::bedrock::chosen_subpack(&dir, file),
+                    dir: dir.clone(),
+                    file: file.to_owned(),
+                    subpacks,
+                    defs,
+                    values,
+                },
+            ))
+        })
+        .collect()
+}
+
 /// The pack screen and its state.
 #[derive(Clone, Debug)]
 pub struct PackScreen {
@@ -455,6 +645,8 @@ pub struct PackScreen {
     /// The browser's own search box, separate from the one that filters the
     /// player's installed packs.
     browser_search: TextField,
+    addons: HashMap<String, Addon>,
+    settings: Option<SettingsView>,
     /// The browser's search box has the keyboard.
     browser_focus: bool,
     /// Data packs and world mods (Create New World's) rather than resource packs.
@@ -576,11 +768,14 @@ impl PackScreen {
             .iter()
             .filter_map(|p| Some((icon_texture(&p.id), p.icon.clone()?)))
             .collect();
+        let addons = addons_of(&packs);
         let mut s = Self {
             title,
             width,
             height,
             in_world,
+            addons,
+            settings: None,
             packs,
             icons,
             model,
@@ -634,6 +829,126 @@ impl PackScreen {
     fn hidden(&self, id: &str) -> bool {
         self.info(id).is_some_and(|p| p.hidden)
     }
+    fn addon_button(&self, side: usize, i: usize) -> Option<(i32, i32, i32, i32)> {
+        let l = &self.lists[side];
+        let Row::Pack(id) = &l.entries.get(i)?.row else {
+            return None;
+        };
+        self.addons.get(id)?;
+        let narrow = if l.scrollable() { 6 } else { 0 };
+        let (cx, cy) = (l.row_left() + 2, l.entries[i].y + 2);
+        Some((cx + 34 + 157 - narrow - ADDON_BUTTON, cy, ADDON_BUTTON, 12))
+    }
+
+    fn addon_click(&mut self, id: &str) {
+        if self.addons.contains_key(id) {
+            self.settings = Some(SettingsView {
+                id: id.to_owned(),
+                scroll: 0.0,
+            });
+            self.set_focus(Focus::None);
+        }
+    }
+
+    fn settings_layout(&self, v: &SettingsView) -> (Vec<(i32, i32, SettingRow)>, (i32, i32)) {
+        let x = self.width / 2 - ROW_W / 2;
+        let rows = self
+            .addons
+            .get(&v.id)
+            .map(Addon::rows)
+            .unwrap_or_default()
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| (x, VIEW_TOP + 4 + i as i32 * ROW_STEP - v.scroll as i32, r))
+            .filter(|(_, y, _)| *y + 20 > VIEW_TOP && *y < self.height - VIEW_BOTTOM)
+            .collect();
+        (rows, (self.width / 2 - 100, self.height - 28))
+    }
+
+    fn settings_max_scroll(&self, v: &SettingsView) -> f64 {
+        let n = self.addons.get(&v.id).map_or(0, |a| a.rows().len()) as i32;
+        f64::from((n * ROW_STEP + 8 - (self.height - VIEW_TOP - VIEW_BOTTOM)).max(0))
+    }
+
+    fn settings_click(&mut self, x: f64, y: f64) -> Action {
+        let Some(v) = self.settings.clone() else {
+            return Action::None;
+        };
+        let (rows, (dx, dy)) = self.settings_layout(&v);
+        if x >= dx as f64 && y >= dy as f64 && x < (dx + 200) as f64 && y < (dy + 20) as f64 {
+            self.settings = None;
+            return Action::None;
+        }
+        if y < VIEW_TOP as f64 || y >= (self.height - VIEW_BOTTOM) as f64 {
+            return Action::None;
+        }
+        for (bx, by, row) in rows {
+            if x >= bx as f64 && y >= by as f64 && x < (bx + ROW_W) as f64 && y < (by + 20) as f64 {
+                if let Some(a) = self.addons.get_mut(&v.id) {
+                    self.changed |= a.press(row);
+                }
+                break;
+            }
+        }
+        Action::None
+    }
+
+    fn draw_settings(
+        &self,
+        out: &mut Vec<Draw>,
+        m: &Measure,
+        v: &SettingsView,
+        mouse: (i32, i32),
+        now_ms: i64,
+    ) {
+        let Some(addon) = self.addons.get(&v.id) else {
+            return;
+        };
+        let title = self
+            .info(&v.id)
+            .map_or_else(|| Text::literal(v.id.clone()), |p| p.title.clone());
+        let tw = m.width(&title);
+        d::string_widget(out, m, &title, self.width / 2 - tw / 2, 12, 0);
+        d::fill(
+            out,
+            0,
+            VIEW_TOP,
+            self.width,
+            self.height - VIEW_BOTTOM,
+            -1072689136,
+        );
+        out.push(Draw::Scissor {
+            x0: 0,
+            y0: VIEW_TOP,
+            x1: self.width,
+            y1: self.height - VIEW_BOTTOM,
+        });
+        let (rows, (dx, dy)) = self.settings_layout(v);
+        for (x, y, row) in rows {
+            let hover = d::inside(mouse, x, y, ROW_W, 20)
+                && mouse.1 >= VIEW_TOP
+                && mouse.1 < self.height - VIEW_BOTTOM;
+            let header = matches!(row, SettingRow::Setting(i)
+                if addon.defs[i].kind == horizon_bedrock::settings::Kind::Multiselect);
+            d::button(
+                out,
+                m,
+                &addon.row_label(row),
+                x,
+                y,
+                ROW_W,
+                20,
+                !header,
+                hover && !header,
+                now_ms,
+            );
+        }
+        out.push(Draw::NoScissor);
+        let hover = d::inside(mouse, dx, dy, 200, 20);
+        crate::widgets::widget_cursor(hover, true);
+        d::button(out, m, &tr("gui.done"), dx, dy, 200, 20, true, hover, now_ms);
+    }
+
     /// The header layout: title, drop info and search box, centred.
     fn header(&self, m: &Measure) -> [(i32, i32); 3] {
         let tw = m.width(&self.title());
@@ -812,6 +1127,9 @@ impl PackScreen {
         if let Some(action) = self.browser_click(m, x, y) {
             return action;
         }
+        if self.settings.is_some() {
+            return self.settings_click(x, y);
+        }
         if self.search.contains(x, y) {
             self.search.click(m, x, false, false);
             self.set_focus(Focus::Search);
@@ -844,6 +1162,17 @@ impl PackScreen {
             let mut took = false;
             if let Some(i) = hit {
                 took = true;
+                if let (Some((bx, by, bw, bh)), Row::Pack(id)) =
+                    (self.addon_button(side, i), l.entries[i].row.clone())
+                    && x >= bx as f64
+                    && y >= by as f64
+                    && x < (bx + bw) as f64
+                    && y < (by + bh) as f64
+                {
+                    self.addon_click(&id);
+                    self.set_focus(Focus::List(side));
+                    return Action::None;
+                }
                 match l.entries[i].row.clone() {
                     Row::Header => {
                         let l = &mut self.lists[side];
@@ -1051,10 +1380,13 @@ impl PackScreen {
     }
     /// Whether the confirmation screen is shown.
     pub fn confirming(&self) -> bool {
-        self.confirm.is_some()
+        self.confirm.is_some() || self.settings.is_some()
     }
-    /// Escape on the confirmation screen answers no.
     pub fn cancel_confirm(&mut self, m: &Measure) -> bool {
+        if self.settings.take().is_some() {
+            self.reposition(m);
+            return true;
+        }
         if self.confirm.take().is_some() {
             self.reposition(m);
             return true;
@@ -1075,6 +1407,13 @@ impl PackScreen {
         }
     }
     pub fn scroll(&mut self, x: f64, y: f64, amount: f64) {
+        if let Some(v) = self.settings.clone() {
+            let max = self.settings_max_scroll(&v);
+            if let Some(v) = &mut self.settings {
+                v.scroll = (v.scroll - amount * 18.0).clamp(0.0, max);
+            }
+            return;
+        }
         if self.confirm.is_some() || self.search.contains(x, y) {
             return;
         }
@@ -1240,8 +1579,15 @@ impl PackScreen {
                 "packs/confirm",
                 crate::widgets::join_for_narration(&[&c.title.plain(), &c.message.plain()]),
             ),
+            None if self.settings.is_some() => {
+                crate::widgets::ScreenInfo::new("packs/settings", self.title().plain())
+            }
             None => crate::widgets::ScreenInfo::new("packs", self.title().plain()),
         });
+        if let Some(v) = &self.settings {
+            self.draw_settings(&mut out, m, v, mouse, now_ms);
+            return out;
+        }
         if let Some(c) = &self.confirm {
             let ((tx, ty), (lines, mx, my), buttons) = self.confirm_layout(m, c);
             d::string_widget(&mut out, m, &c.title, tx, ty, 0);
@@ -1920,7 +2266,26 @@ impl PackScreen {
                         }
                         max -= OPTIONS_SIZE + 2;
                     }
+                    let gear = self.addon_button(side, i);
+                    if gear.is_some() {
+                        max -= ADDON_BUTTON + 2;
+                    }
                     d::string_widget(out, m, &name, cx + 34, cy + 1, max);
+                    if let Some((bx, by, bw, bh)) = gear {
+                        let hover = d::inside(mouse, bx, by, bw, bh);
+                        d::button(
+                            out,
+                            m,
+                            &tr("horizon.pack.settings"),
+                            bx,
+                            by,
+                            bw,
+                            bh,
+                            true,
+                            hover,
+                            now_ms,
+                        );
+                    }
                     let lines = d::label_lines(m, &desc, max, 2, &desc_style);
                     d::label(out, &lines, cx + 34, cy + 12, max, false);
                 }

@@ -29,8 +29,8 @@ fn main() {
         let mut resource = winresource::WindowsResource::new();
         resource.set_icon(&ico);
         if repository == "arismoko/horizon" {
-            resource.set("FileDescription", "Horizon Fork Launcher (arismoko)");
-            resource.set("ProductName", "Horizon Fork Launcher (arismoko)");
+            resource.set("FileDescription", "Starling Extras");
+            resource.set("ProductName", "Starling Extras");
             resource.set("InternalName", "horizon-fork-launcher");
             resource.set("OriginalFilename", "horizon-fork-launcher.exe");
         }

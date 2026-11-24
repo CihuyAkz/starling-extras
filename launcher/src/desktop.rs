@@ -137,7 +137,7 @@ pub fn launcher_entry(exe: &Path) -> String {
     );
     if cfg!(horizon_fork_launcher) {
         entry
-            .replace("Name=Horizon\n", "Name=Horizon Fork Launcher (arismoko)\n")
+            .replace("Name=Horizon\n", "Name=Starling Extras\n")
             .replace("Icon=horizon\n", "Icon=horizon-fork-arismoko\n")
             .replace(
                 "StartupWMClass=horizon-launcher\n",

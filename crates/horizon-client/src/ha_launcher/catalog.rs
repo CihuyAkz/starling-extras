@@ -108,6 +108,8 @@ pub struct Config {
     pub shader_source: crate::ha_launcher::shader_catalog::Origin,
     pub mod_source: crate::ha_launcher::shader_catalog::Origin,
     #[serde(default)]
+    pub java_mods_compatibility: bool,
+    #[serde(default)]
     pub ui_scale_percent: u32,
     #[serde(default)]
     pub super_perf_mode: bool,
@@ -2445,6 +2447,22 @@ fn clean_markdown_body(raw: &str) -> String {
 mod package_id_tests {
     use super::package_mod_id;
     use std::io::Write;
+
+    #[test]
+    fn java_mod_compatibility_is_opt_in_and_persisted() {
+        let defaults: super::Config = serde_json::from_str("{}").unwrap();
+        assert!(!defaults.java_mods_compatibility);
+
+        let mut enabled = defaults;
+        enabled.java_mods_compatibility = true;
+        let encoded = serde_json::to_value(&enabled).unwrap();
+        assert_eq!(
+            encoded["java_mods_compatibility"],
+            serde_json::Value::Bool(true)
+        );
+        let decoded: super::Config = serde_json::from_value(encoded).unwrap();
+        assert!(decoded.java_mods_compatibility);
+    }
 
     /// A catalog download is named with its version: the switch is keyed by the manifest's id.
     #[test]

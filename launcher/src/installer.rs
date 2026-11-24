@@ -451,7 +451,7 @@ pub fn uninstall(remove_data: bool, progress: impl Fn(Step, f32)) -> Result<Vec<
     let dir = registered()
         .ok_or_else(|| {
             crate::i18n::tr(if cfg!(horizon_fork_launcher) {
-                "Horizon Fork Launcher (arismoko) is not installed for this account."
+                "Starling Extras is not installed for this account."
             } else {
                 "Horizon Launcher is not installed for this account."
             })

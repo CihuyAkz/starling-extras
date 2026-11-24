@@ -1593,5 +1593,8 @@
   "Automatic": "Automatic",
   "Inverted automatic": "Inverted automatic",
   "Fixed": "Fixed",
-  "Fixed reversed": "Fixed reversed"
+  "Fixed reversed": "Fixed reversed",
+  "horizon.pack.subpack": "Mode: %s",
+  "horizon.pack.settings": "Settings",
+  "horizon.pack.subpack.base": "Default"
 }

@@ -592,6 +592,11 @@ pub fn resume_after_consumption(
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
         let kept = super::ai::resume_after_consumption(m, w, level, was_on_fire, events);
         super::neutral_anger::after_tick(m, w.game_time);
+        if super::bedrock::wants_surroundings()
+            && m.age.wrapping_add(m.id).is_multiple_of(4)
+        {
+            super::bedrock::set_surroundings(m.id, super::bedrock::sample_surroundings(m, w));
+        }
         kept
     })
 }

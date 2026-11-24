@@ -31,6 +31,7 @@ horizon-assets = { path = "../horizon-assets" }
 horizon-client-core = { path = "../horizon-client-core" }
 horizon-client-input = { path = "../horizon-client-input" }
 horizon-client-render = { path = "../horizon-client-render" }
+horizon-bedrock = { path = "../horizon-bedrock" }
 horizon-command = { path = "../horizon-command" }
 horizon-items = { path = "../horizon-items" }
 horizon-core = { path = "../horizon-core" }

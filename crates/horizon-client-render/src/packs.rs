@@ -5,6 +5,7 @@
 //! vanilla resources (later packs win), so every loader sees one tree.
 mod cache;
 mod import;
+pub mod bedrock;
 use crate::resource_source::stays_inside;
 use crate::text::Style;
 use crate::text::Text;
@@ -672,32 +673,66 @@ pub(crate) fn folder_with(
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            let path = match detected_pack_path(&e.path(), validator) {
+            let entry = e.path();
+            let path = match detected_pack_path(&entry, validator) {
                 Ok(Some(path)) => path,
                 Ok(None) => return None,
                 Err(err) => {
                     log::warn!(
                         "Failed to read properties of '{}', ignoring: {err}",
-                        e.path().display()
+                        entry.display()
                     );
                     return None;
                 }
             };
+            let bedrock_file = bedrock::is_bedrock_file(&name);
             let source = if path.is_dir() {
-                Source::Dir(path)
+                Source::Dir(path.clone())
             } else if path
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
             {
-                Source::Zip(path)
+                Source::Zip(path.clone())
+            } else if bedrock_file {
+                let converted = bedrock_pack(dir, &path, &name, format)?;
+                return Some(converted);
             } else {
                 return None;
             };
-            pack_for(format!("file/{name}"), Text::literal(name), source, format)
+            if let Some(pack) = pack_for(
+                format!("file/{name}"),
+                Text::literal(name.clone()),
+                source,
+                format,
+            ) {
+                return Some(pack);
+            }
+            let has_manifest = path.is_dir() && path.join("manifest.json").is_file();
+            (bedrock_file || has_manifest || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")))
+                .then(|| bedrock_pack(dir, &path, &name, format))?
         })
         .collect();
     user.sort_by(|a, b| a.id.cmp(&b.id));
     user
+}
+
+
+fn bedrock_pack(dir: &Path, path: &Path, name: &str, format: (i64, i64)) -> Option<Pack> {
+    let cache = dir
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(".horizon-cache/bedrock");
+    let subpack = bedrock::chosen_subpack(dir, name);
+    let converted = {
+        let _memory = horizon_threads::memory_watch::phase("bedrock-convert");
+        bedrock::convert(path, &cache, format, subpack.as_deref())?
+    };
+    pack_for(
+        format!("file/{name}"),
+        Text::literal(name),
+        Source::Dir(converted),
+        format,
+    )
 }
 
 /// `LevelStorageSource.ALLOWED_SYMLINKS_CONFIG_NAME`: the game folder's list of
@@ -1215,6 +1250,7 @@ fn build_overlay_uncached(
         dependencies,
         &mut extract,
     )?;
+    write_bedrock_order(&files, out)?;
     // What the zips may unpack to, all threads together: a server's pack is a download the
     // player only accepts, and a gigabyte of zeros deflates to a megabyte, so without it a pack
     // at the download limit wrote hundreds of gigabytes here. Vanilla never unpacks a pack.
@@ -1245,6 +1281,45 @@ fn build_overlay_uncached(
     }
     extracted
 }
+fn write_bedrock_order(
+    files: &BTreeMap<String, (usize, Provided)>,
+    out: &Path,
+) -> io::Result<()> {
+    const DATA: [&str; 9] = [
+        "entity",
+        "attachables",
+        "animations",
+        "animation_controllers",
+        "render_controllers",
+        "models",
+        "particles",
+        "materials",
+        "sounds",
+    ];
+    let prefix = "assets/horizon_bedrock/";
+    let mut folders: BTreeMap<&str, usize> = BTreeMap::new();
+    for (name, (owner, _)) in files.range(prefix.to_owned()..) {
+        let Some(rest) = name.strip_prefix(prefix) else {
+            break;
+        };
+        if let Some((folder, _)) = rest.split_once('/')
+            && !DATA.contains(&folder)
+        {
+            let slot = folders.entry(folder).or_insert(*owner);
+            *slot = (*slot).max(*owner);
+        }
+    }
+    if folders.is_empty() {
+        return Ok(());
+    }
+    let mut order: Vec<(&str, usize)> = folders.into_iter().collect();
+    order.sort_by_key(|(folder, owner)| (*owner, *folder));
+    let text: String = order.iter().map(|(folder, _)| format!("{folder}\n")).collect();
+    let dir = out.join("assets/horizon_bedrock");
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join("order.txt"), text)
+}
+
 /// `SingleFile` with a `sprite`: the atlas holds the resource's pixels, and the resource's
 /// `.mcmeta`, under the sprite's id. Every other sprite of the blocks and items atlases is its
 /// texture's own id, and the loaders read a model's sprite from `textures/<sprite>.png`, so the

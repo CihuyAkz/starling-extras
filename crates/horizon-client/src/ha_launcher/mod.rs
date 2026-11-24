@@ -288,6 +288,7 @@ pub fn start(private: &Path, home: &Path) -> Start {
         acknowledge_play(private);
     }
     let config = catalog::Config::load(home);
+    crate::java_mods::set_compatibility_enabled(config.java_mods_compatibility);
     display::migrate_preferences(&config, home);
     if !open
         && (play || config.open_directly || config.onboarding == catalog::OnboardingState::Chosen)

@@ -117,6 +117,7 @@ pub mod points {
         log::warn!("point {point}: a value has no API form; its listeners were skipped");
     }
 }
+mod bedrock;
 mod host;
 mod native_hooks;
 #[cfg(feature = "java-mods")]
@@ -6294,9 +6295,6 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         self.apply_mod_particle_clear();
-        if self.client_particle_count() == 0 {
-            return;
-        }
         let first = out.len();
         let skin = self.skin_frame.borrow().mark();
         let outline_jobs = self.skin_frame.borrow().outline_jobs.len();
@@ -6305,8 +6303,13 @@ impl Game<'_> {
         let motion = self.entity_motion.borrow().len();
         let glowing = self.glowing_vertices.borrow().len();
         self.mark_motion(out.len(), 0);
-        // Particles (ParticleEngine.extract): camera-facing quads.
         self.mark_stage(out.len(), "PARTICLES");
+        self.bedrock_effects(camera, out);
+        if self.client_particle_count() == 0 {
+            self.mark_motion(out.len(), 0);
+            self.mark_stage(out.len(), "NONE");
+            return;
+        }
         let world = &self.world;
         let particle_mode = self.settings.horizon.particle_culling;
         if particle_mode == horizon_client::graphics::ParticleCullingMode::Off {
@@ -8851,6 +8854,7 @@ impl Game<'_> {
         // Particles blended additively (resource packs' Polytone ones, #11486), from the
         // render that built `entities`.
         let mut additive = self.particles.take_additive();
+        additive.extend(horizon_client_render::bedrock_particles::take_additive());
         // The dragon is drawn in every dimension, as any entity: a dragon
         // summoned outside the End (the server's AddEntity) is shown too.
         if !title {

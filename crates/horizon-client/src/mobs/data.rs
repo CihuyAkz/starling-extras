@@ -146,6 +146,7 @@ pub struct MobData {
     pub equipment: std::sync::RwLock<crate::equipment::Layers>,
     /// The packs' custom entity models (OptiFine CEM); replaced when the resource packs change.
     pub cem: std::sync::RwLock<std::sync::Arc<super::cem::CemModels>>,
+    pub bedrock: std::sync::RwLock<std::sync::Arc<super::bedrock::BedrockMobs>>,
     /// The packs' random entity textures, replaced with them too.
     pub random_textures: std::sync::RwLock<horizon_optifine::random_textures::RandomTextures>,
     /// The packs' emissive overlays of entity textures, replaced with them too.
@@ -322,6 +323,7 @@ impl MobData {
             armor_atlases: Default::default(),
             equipment: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -387,6 +389,7 @@ impl MobData {
             armor_atlases: Default::default(),
             equipment: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),

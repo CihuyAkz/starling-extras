@@ -1930,7 +1930,8 @@ impl HudAtlas {
                             | "gui/title/background/panorama_3"
                             | "gui/presets/isles"
                     )
-                    || name.starts_with("font/")))
+                    || name.starts_with("font/")
+                    || (gh <= 1024 && name.starts_with("entity/bedrock/"))))
             .then_some(((name, w, h, pixels), flags, gui_size, animated, maps))
         };
         let threads = std::thread::available_parallelism().map_or(2, |n| n.get());

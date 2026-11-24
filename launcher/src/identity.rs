@@ -7,9 +7,9 @@ macro_rules! identity {
 identity! {
     VERSION_PREFIX: "horizon-launcher " => "horizon-fork-launcher ",
     DESKTOP_ENTRY: "horizon-launcher.desktop" => "io.github.arismoko.horizonfork.launcher.desktop",
-    WINDOW_TITLE: "Horizon" => "Horizon Fork Launcher (arismoko)",
-    QUIT_LABEL: "Quit Horizon Launcher" => "Quit Horizon Fork Launcher (arismoko)",
-    DISPLAY_NAME: "Horizon Launcher" => "Horizon Fork Launcher (arismoko)",
+    WINDOW_TITLE: "Horizon" => "Starling Extras",
+    QUIT_LABEL: "Quit Horizon Launcher" => "Quit Starling Extras",
+    DISPLAY_NAME: "Horizon Launcher" => "Starling Extras",
     EXECUTABLE: "horizon-launcher" => "horizon-fork-launcher",
     WINDOWS_EXECUTABLE: "horizon-launcher.exe" => "horizon-fork-launcher.exe",
     WINDOWS_EXECUTABLE_PREFIX: "horizon-launcher.exe." => "horizon-fork-launcher.exe.",
@@ -26,6 +26,9 @@ identity! {
     SETUP_PREFIX: "horizon-launcher-setup" => "horizon-fork-launcher-setup",
     PROCESS_FILTER: "IMAGENAME eq horizon-launcher.exe" => "IMAGENAME eq horizon-fork-launcher.exe",
 }
+
+pub const EXTRAS_VERSION: &str = "2.0.0-Extras";
+pub const BASE_VERSION: &str = "0.9.0-base";
 
 /// Product home used by the Windows installer's About link.
 pub const ABOUT_URL: &str = if cfg!(horizon_fork_launcher) {

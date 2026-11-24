@@ -24,6 +24,34 @@ assets, paletted textures, entity and block entity renderers, particles, the gam
 renderer, clouds, GPU warn list, regional compliance, splashes and waypoint styles. Every row below comes from one
 of them.
 
+## Bedrock resource packs in Starling
+
+Starling accepts Bedrock resource-pack folders and `.mcpack`, `.mcaddon`, `.mcworld` and `.mctemplate` files in
+`resourcepacks/`. Pack discovery reads manifests, selects resource-pack modules (not behaviour packs or scripts),
+orders dependencies, and converts resource layers into a cached Java-format resource pack for the ordinary
+resource pipeline. The original Bedrock files are retained under `assets/horizon_bedrock/` for the Bedrock runtime.
+Subpack and manifest-setting choices are exposed through the resource-pack Settings screen and stored in
+`config/horizon-addons.json`. Conversion cache fingerprints the source tree and target format so edits to models,
+textures, sounds or manifests invalidate the cached output.
+
+The Bedrock runtime is ported alongside that conversion layer. It loads and reloads the active Bedrock bundle,
+feeds entity geometry, Molang, animation and animation controllers, render controllers, materials and per-bone
+render state into the mob renderer, and routes Bedrock particles and sound events through the client runtime.
+Attachables are handled for mob equipment and first-person rendering. The renderer includes the special depth and
+additive material paths and the Bedrock stencil pass for world and hand rendering. Bedrock entity replacements are
+also connected for player/mannequin appearances, armor stands, projectiles, minecarts and the Ender Dragon; the
+Dragon adapter supplies its flight-history samples to Molang, and armor-stand pose queries use the current pose.
+World sampling for Molang uses Starling's block, biome, weather and time data.
+
+This port targets the features that `Horizon-Bedrock-2.0-1` itself implements. It does not add features that the
+upstream engine marks unsupported or only reads without drawing. In particular, Behavior Pack scripts, JSON UI,
+compiled Bedrock shaders, RTX/PBR, Persona/premium skins and encrypted Marketplace content are outside the scope.
+The upstream engine also documents limitations for first-person context queries, fog/client-biome/block-culling
+rendering, some render-controller approximations, long-lived particle snapshots and pixel-depth attachable meshes.
+See `docs/bedrock-coverage.md` for the detailed upstream feature matrix. The Starling port
+has received static source validation, but has not yet been compiled or exercised in-game in this environment;
+resource-pack compatibility must therefore be confirmed with the same test packs in a Rust build and game session.
+
 ## The table
 
 **Works**: Horizon reads it from the pack and draws or plays it like vanilla. **Partly**: some of it.

@@ -2,6 +2,17 @@ use std::path::{Path, PathBuf};
 
 pub const MODS_DIRECTORY: &str = crate::JAVA_MODS_DIRECTORY;
 
+static COMPATIBILITY_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_compatibility_enabled(enabled: bool) {
+    COMPATIBILITY_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn compatibility_enabled() -> bool {
+    COMPATIBILITY_ENABLED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 #[derive(Clone, Debug)]
 pub struct JavaModFiles {
     pub game_home: PathBuf,
@@ -32,7 +43,7 @@ pub(crate) fn java_game_home(game_home: &Path) -> Result<PathBuf, String> {
 pub fn extend_dynamic_levels(
     shapes: horizon_client::chunk::LevelShapes,
 ) -> horizon_client::chunk::LevelShapes {
-    if !horizon_jvm::events::enabled() {
+    if !compatibility_enabled() || !horizon_jvm::events::enabled() {
         return shapes;
     }
     let levels = match horizon_jvm::events::extra_levels() {
@@ -397,6 +408,9 @@ fn release_startup_claim() {
 pub fn prepare_content(game_home: &Path, resources: &Path) -> Vec<PathBuf> {
     use std::sync::atomic::Ordering;
 
+    if !compatibility_enabled() {
+        return Vec::new();
+    }
     let jars = installed_jars(game_home);
     if jars.is_empty() {
         return Vec::new();
@@ -459,6 +473,9 @@ pub fn prepare_content(_game_home: &Path, _resources: &Path) -> Vec<PathBuf> {
 
 #[cfg(feature = "java-mods")]
 pub fn apply_generated_metadata(prepared_root: &Path) {
+    if !compatibility_enabled() {
+        return;
+    }
     let cache = horizon_client::logging::cache_dir().join("java-mod-content");
     if let Some(source) = horizon_jvm::content::creative(&cache) {
         let target = prepared_root.join(horizon_jvm::content::CREATIVE);
@@ -588,6 +605,9 @@ static STARTUP_THREAD: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
 pub fn start_if_present(game_home: PathBuf) {
     use std::sync::atomic::Ordering;
 
+    if !compatibility_enabled() {
+        return;
+    }
     let jars = installed_jars(&game_home);
     if jars.is_empty() || STARTED.swap(true, Ordering::SeqCst) {
         return;
@@ -956,5 +976,18 @@ mod dynamic_level_tests {
         assert_eq!(result.extra.len(), 1);
         assert_eq!(result.extra[0].seed, Some(42));
         assert_eq!(result.extra[0].dimension_type, "mod:native_type");
+    }
+}
+
+#[cfg(test)]
+mod compatibility_gate_tests {
+    #[test]
+    fn compatibility_gate_is_off_by_default_and_can_be_toggled() {
+        super::set_compatibility_enabled(false);
+        assert!(!super::compatibility_enabled());
+        super::set_compatibility_enabled(true);
+        assert!(super::compatibility_enabled());
+        super::set_compatibility_enabled(false);
+        assert!(!super::compatibility_enabled());
     }
 }

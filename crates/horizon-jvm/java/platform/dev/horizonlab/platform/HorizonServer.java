@@ -1954,8 +1954,9 @@ public final class HorizonServer {
     private static ItemStack menuPageButton(boolean previous) {
         ItemStack stack = new ItemStack(previous ? net.minecraft.world.item.Items.ARROW
                 : net.minecraft.world.item.Items.SPECTRAL_ARROW);
-        stack.setHoverName(net.minecraft.network.chat.Component.literal(
-                previous ? "Previous page" : "Next page"));
+        stack.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME,
+                net.minecraft.network.chat.Component.literal(
+                        previous ? "Previous page" : "Next page"));
         return stack;
     }
 

@@ -692,6 +692,14 @@ impl Game<'_> {
             [self.selected, super::shield::OFFHAND_SLOT].map(|slot| self.stack_in(slot)),
         );
         self.player_model.as_mut().unwrap().extra.held_arm_pose = poses;
+        if horizon_client::mobs::bedrock::wants_surroundings() {
+            let sample = self.player_model.as_ref().map(|m| {
+                horizon_client::mobs::bedrock::sample_surroundings(m, &self.mob_world_base(&[]))
+            });
+            if let (Some(sample), Some(m)) = (sample, self.player_model.as_ref()) {
+                horizon_client::mobs::bedrock::set_surroundings(m.id, sample);
+            }
+        }
     }
     /// `Entity.turn` for the player, by the mouse, a pad, the arrow keys or an
     /// agent's `turn`.
@@ -2059,6 +2067,7 @@ mod preview_tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),

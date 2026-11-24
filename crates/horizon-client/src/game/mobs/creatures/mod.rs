@@ -7816,6 +7816,7 @@ impl Game<'_> {
         alpha: f64,
         out: &mut Vec<Vertex>,
     ) {
+        horizon_client::mobs::bedrock::begin_frame();
         let atlas = &self.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         let scale = self.view_scale();
@@ -8167,6 +8168,12 @@ impl Game<'_> {
             // own override); the sky light stays the level's.
             if let Some(block) = a.block_light_override() {
                 packed = (packed & 0xFF) | (u32::from(block) * 16) << 8;
+            }
+            if let Some(burning) = self.pack_projectile(a, at, c, camera, alpha, packed, out) {
+                if burning {
+                    flame_geometry(atlas, c, 0.5, 0.5, self.yaw, light, out);
+                }
+                continue;
             }
             if a.is_arrow() {
                 let Some(model) = self.arrow_model.as_ref() else {

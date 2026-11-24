@@ -12,6 +12,7 @@ pub mod autotune;
 pub mod ban_notice;
 pub mod bidi;
 pub mod biome;
+pub mod bedrock_particles;
 pub mod block_edit;
 pub mod block_entities;
 pub mod block_entity_anim;

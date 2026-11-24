@@ -407,6 +407,9 @@ impl Game<'_> {
             let Some(item) = mob.extra.slot_stack(slot).map(|s| &s.item) else {
                 continue;
             };
+            if render::held_item_replaced(mob, self.res.mob_data(), off_hand) {
+                continue;
+            }
             let left = off_hand != mob.main_arm_left();
             // PlayerItemInHandLayer.submitArmWithItem (avatars only): a spyglass
             // in use, with no swing in progress, is held to the eye (`heldOnHead`).

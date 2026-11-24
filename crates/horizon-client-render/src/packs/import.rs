@@ -27,7 +27,7 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Copies a zip or a folder with root `pack.mcmeta` into `dir`. Existing entries are
+/// Copies a Java or Bedrock resource pack into `dir`. Existing entries are
 /// never overwritten; a failed copy removes only the destination this call created.
 pub fn copy_pack(from: &Path, dir: &Path) -> io::Result<()> {
     let kind = fs::symlink_metadata(from)?.file_type();
@@ -35,16 +35,29 @@ pub fn copy_pack(from: &Path, dir: &Path) -> io::Result<()> {
         return Err(invalid());
     }
     if kind.is_dir() {
-        if !from.join("pack.mcmeta").is_file() {
+        if !from.join("pack.mcmeta").is_file() && !from.join("manifest.json").is_file() {
             return Err(invalid());
         }
-    } else if !kind.is_file()
-        || !from
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
-        || !crate::zip::Zip::open(from)?.contains("pack.mcmeta")
-    {
-        return Err(invalid());
+    } else {
+        let extension = from.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let accepted = ["zip", "mcpack", "mcaddon", "mcworld", "mctemplate"]
+            .iter()
+            .any(|e| extension.eq_ignore_ascii_case(e));
+        if !kind.is_file()
+            || !accepted
+            || {
+                let zip = crate::zip::Zip::open(from)?;
+                let has_manifest = zip.names().any(|name| {
+                    name == "manifest.json"
+                        || (name.ends_with("/manifest.json") && name.matches('/').count() <= 2)
+                        || name.ends_with(".mcpack")
+                        || name.ends_with(".mcaddon")
+                });
+                !zip.contains("pack.mcmeta") && !has_manifest
+            }
+        {
+            return Err(invalid());
+        }
     }
     let name = from.file_name().ok_or_else(invalid)?;
     fs::create_dir_all(dir)?;
@@ -100,6 +113,21 @@ mod tests {
         )
         .unwrap();
         fs::write(path.join("assets/example/test.txt"), b"texture").unwrap();
+    }
+
+    #[test]
+    fn imports_bedrock_archives_with_nested_resource_pack_manifests() {
+        let root = scratch("bedrock-nested");
+        let mcaddon = root.join("Horizon.mcaddon");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&mcaddon).unwrap());
+        zip.start_file("resource_packs/Demo/manifest.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(br#"{"format_version":2,"header":{}}"#).unwrap();
+        zip.finish().unwrap();
+        let destination = root.join("resourcepacks");
+        copy_pack(&mcaddon, &destination).unwrap();
+        assert!(destination.join("Horizon.mcaddon").is_file());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

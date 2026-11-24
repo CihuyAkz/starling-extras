@@ -111,6 +111,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use theme::Theme;
 
+const DONATION_URL: &str = "https://trakteer.id/cihuyakz";
+
 #[derive(Clone, Copy, PartialEq)]
 enum Page {
     Play,
@@ -2793,6 +2795,16 @@ impl Launcher {
                     .gap(px(8.))
                     .children(build_log)
                     .child(account)
+                    .child(
+                        shell::action("topbar-donation", shell::Action::Raised, &t)
+                            .child(div().relative().child(blocks::icon(
+                                "heart",
+                                14.,
+                                shell::c(n.accent),
+                            )))
+                            .child(shell::label("Donasi"))
+                            .on_click(move |_, _, cx| cx.open_url(DONATION_URL)),
+                    )
                     .child(settings),
             )
     }
@@ -3050,22 +3062,37 @@ impl Launcher {
                 .pt(px(6.))
                 .child(trf("Launcher {version}", &[("version", backend::VERSION)])),
         );
-        // Custom title bars carry the mark and name already.
-        let brand = (!titlebar::draws_brand(window)).then(|| {
+        let brand = Some(
             div()
                 .flex()
                 .flex_none()
-                .items_center()
-                .gap(px(10.))
-                .h(px(theme::TOPBAR))
+                .flex_col()
+                .gap(px(2.))
                 .px(px(8.))
-                .child(mark(24., &t))
+                .py(px(10.))
                 .child(
-                    shell::text(theme::night::TITLE, shell::c(n.ink))
-                        .font_family(theme::DISPLAY_FONT)
-                        .child(tr(identity::WINDOW_TITLE)),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(mark(24., &t))
+                        .child(
+                            shell::text(theme::night::TITLE, shell::c(n.ink))
+                                .font_family(theme::DISPLAY_FONT)
+                                .child(tr(identity::WINDOW_TITLE)),
+                        ),
                 )
-        });
+                .child(
+                    shell::text(theme::night::CAPTION, shell::c(n.muted))
+                        .px(px(34.))
+                        .child(identity::EXTRAS_VERSION),
+                )
+                .child(
+                    shell::text(theme::night::CAPTION, shell::c(n.muted))
+                        .px(px(34.))
+                        .child(identity::BASE_VERSION),
+                ),
+        );
         shell::sidebar_plate(&t)
             .id("sidebar")
             .flex()
@@ -5732,11 +5759,7 @@ mod tests {
         let menus = super::menus();
         assert_eq!(
             menus[0].name,
-            if cfg!(horizon_fork_launcher) {
-                "Horizon Fork Launcher (arismoko)"
-            } else {
-                "Horizon Launcher"
-            }
+            identity::DISPLAY_NAME
         );
         assert!(matches!(
             &menus[0].items[0],

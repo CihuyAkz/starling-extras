@@ -21,6 +21,7 @@ fn vanilla_models_and_animations_stay_inside_the_precheck_envelope() {
         animations: MobData::load_animations(&root),
         villager_hats: Default::default(),
         cem: Default::default(),
+            bedrock: Default::default(),
         random_textures: Default::default(),
         emissive: Default::default(),
         blinks: Default::default(),

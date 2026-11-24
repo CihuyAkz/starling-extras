@@ -207,6 +207,9 @@ pub(crate) fn worldgen_terrain(
 ) -> Option<JavaWorldgenTerrain> {
     #[cfg(feature = "java-mods")]
     {
+        if !crate::java_mods::compatibility_enabled() {
+            return None;
+        }
         crate::java_mods::wait_for_startup();
         if !horizon_jvm::events::ready() {
             return None;

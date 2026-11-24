@@ -239,12 +239,12 @@ mod world_text;
 use cull::occlusion_culling_requested;
 use entity_batch::EntityBatch;
 pub use entity_batch::{
-    ADDITIVE_PARTICLE_OVERLAY, DISSOLVE_OVERLAY, DRAGON_RAYS_OVERLAY, ENERGY_SWIRL_OVERLAY,
-    FLUID_OVERLAY, OIT_ENTITY, SHADOW_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
-    TERRAIN_MODEL_CUTOUT_OVERLAY, TERRAIN_MODEL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY,
-    TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
-    WATER_MASK_OVERLAY, WORLD_TEXT_OVERLAY, WORLD_TEXT_POLYGON_OFFSET_OVERLAY, is_native_terrain,
-    mark_oit,
+    ADDITIVE, ADDITIVE_PARTICLE_OVERLAY, DISSOLVE_OVERLAY, DRAGON_RAYS_OVERLAY,
+    ENERGY_SWIRL_OVERLAY, FLUID_OVERLAY, NO_DEPTH_TEST, NO_DEPTH_WRITE, OIT_ENTITY,
+    SHADOW_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
+    TERRAIN_MODEL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY,
+    TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY,
+    WORLD_TEXT_OVERLAY, WORLD_TEXT_POLYGON_OFFSET_OVERLAY, is_native_terrain, mark_oit,
 };
 use external::{shadow_box, shadow_runs};
 pub use frustum::{Cull, Frusta, JoinedFrusta, ShadowCull};
@@ -407,6 +407,7 @@ mod dx12_compiler;
 mod emissive_lookup;
 mod end_sky;
 pub mod entity_skin;
+pub mod bedrock_stencil;
 mod entity_source;
 pub mod external;
 mod flat;
@@ -1385,6 +1386,7 @@ pub struct Renderer {
     world_views: world_views::Kept,
     world_view_side: u32,
     entity_pipeline: wgpu::RenderPipeline,
+    bedrock_stencil: bedrock_stencil::Stencil,
     static_entity_pipeline: wgpu::RenderPipeline,
     static_entity_group: wgpu::BindGroup,
     static_entity_transform: wgpu::Buffer,
@@ -1400,6 +1402,9 @@ pub struct Renderer {
     crumbling_pipeline: wgpu::RenderPipeline,
     shadow_blob_pipeline: wgpu::RenderPipeline,
     translucent_item_pipeline: wgpu::RenderPipeline,
+    no_depth_write_pipeline: wgpu::RenderPipeline,
+    no_depth_test_pipeline: wgpu::RenderPipeline,
+    glow_pipeline: wgpu::RenderPipeline,
     /// `RenderPipelines.WATER_MASK`: depth writes only, no colour.
     water_mask_pipeline: wgpu::RenderPipeline,
     cloud_pipeline: wgpu::RenderPipeline,
@@ -4376,6 +4381,56 @@ impl Renderer {
             alpha_blend,
             false,
         );
+        let no_depth_write_pipeline = entity_pipeline(
+            "Entities without depth writes",
+            None,
+            false,
+            wgpu::CompareFunction::GreaterEqual,
+            wgpu::DepthBiasState {
+                constant: 128,
+                slope_scale: 0.0,
+                clamp: 0.0,
+            },
+            alpha_blend,
+            false,
+        );
+        let glow_blend = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::SrcAlpha,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let glow_pipeline = entity_pipeline_with(EntityPipelineOptions {
+            label: "Entity glows",
+            cull_mode: None,
+            depth_write: false,
+            compare: wgpu::CompareFunction::GreaterEqual,
+            bias: wgpu::DepthBiasState {
+                constant: 128,
+                slope_scale: 0.0,
+                clamp: 0.0,
+            },
+            blend: wgpu::BlendState {
+                color: glow_blend,
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::Zero,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            },
+            clouds: false,
+            vertex: "vs_entity",
+            fragment: "fs_entity_glow",
+            write_mask: wgpu::ColorWrites::ALL,
+        });
+        let no_depth_test_pipeline = entity_pipeline(
+            "Entities without depth tests",
+            None,
+            false,
+            wgpu::CompareFunction::Always,
+            Default::default(),
+            alpha_blend,
+            false,
+        );
         let cloud_pipeline = entity_pipeline(
             "Clouds",
             Some(wgpu::Face::Back),
@@ -4459,6 +4514,13 @@ impl Renderer {
             entity_bias,
             alpha_blend,
             false,
+        );
+        let bedrock_stencil = bedrock_stencil::Stencil::new(
+            &device,
+            &entity_shader,
+            &entity_layout,
+            entity_bias,
+            f64::from(u8::from(frame_format == LINEAR_FRAME)),
         );
         // The hand as `entity_pipeline` draws it, in the overlays' format.
         let overlay_hand = (overlay_format != frame_format || linear_light).then(|| {
@@ -5438,6 +5500,7 @@ impl Renderer {
             world_views: views,
             world_view_side: max_side,
             entity_pipeline,
+            bedrock_stencil,
             static_entity_pipeline,
             hdr_mark_pipeline,
             hdr_entity_mark_pipeline,
@@ -5447,6 +5510,9 @@ impl Renderer {
             crumbling_pipeline,
             shadow_blob_pipeline,
             translucent_item_pipeline,
+            no_depth_write_pipeline,
+            no_depth_test_pipeline,
+            glow_pipeline,
             water_mask_pipeline,
             cloud_pipeline,
             hdr_cloud_mark_pipeline,
@@ -9887,8 +9953,12 @@ impl Renderer {
         }
         // GameRenderer.useImprovedTransparency. A shader pack keeps its own
         // path.
+        let bedrock_special_materials = entities.as_chunks::<4>().0.iter().any(|quad| {
+            quad[0].layer & (NO_DEPTH_WRITE | NO_DEPTH_TEST | ADDITIVE) != 0
+        });
         let oit_on = self.improved_transparency
             && !frame.title
+            && !bedrock_special_materials
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
             && self.native.is_none()
             && oit::supported(&self.device);
@@ -9909,6 +9979,9 @@ impl Renderer {
             native_solid_quads,
             native_cutout_quads,
             native_cutout_mipped_quads,
+            no_depth_write_quads,
+            no_depth_test_quads,
+            glow_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -9940,7 +10013,10 @@ impl Renderer {
             + world_text_offset_quads
             + native_solid_quads
             + native_cutout_quads
-            + native_cutout_mipped_quads;
+            + native_cutout_mipped_quads
+            + no_depth_write_quads
+            + no_depth_test_quads
+            + glow_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -10013,7 +10089,7 @@ impl Renderer {
         // material (the outline pass draws them from there).
         let outline_base = posed + all_entities.len() as u32;
         let outlined = skin.map_or(0, |s| s.outline_vertices);
-        let entity_vertices = u64::from(outline_base) + u64::from(outlined);
+        let entity_vertices = u64::from(outline_base) + u64::from(skin.map_or(0, |s| s.tail()));
         if entity_vertices > self.entity_capacity {
             self.entity_capacity = entity_vertices.next_power_of_two();
             self.entity_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -10109,7 +10185,7 @@ impl Renderer {
                     skin,
                     &self.entity_buffer,
                     0,
-                    outline_base,
+                    (outline_base, (world_quads + additive_quads) * 4),
                 );
             }
         }
@@ -10481,7 +10557,10 @@ impl Renderer {
         // Post effects (a resource pack's chains, `use_depth_buffer`) read the world's depth
         // after the world pass, as `GameRenderer.render` hands them the main target's.
         let post_reads_depth = !frame.title && !frame.post_effects.effects.is_empty();
+        self.bedrock_stencil.set_active(!pack_post);
+        self.bedrock_stencil.begin_frame(&self.queue);
         let keep_depth = pack_reads_world
+            || self.bedrock_stencil.has_world()
             || post_reads_depth
             || (taa && self.world_post.taa)
             || oit_on
@@ -10550,6 +10629,8 @@ impl Renderer {
         // `world_drawn`): one render pass fewer, ~10 Âµs of wgpu's encoding a frame.
         let hand_in_world = (frame.hand.len() / 4) > 0
             && !pack_draws_hand
+            && !self.bedrock_stencil.has_hand()
+            && !self.bedrock_stencil.has_world()
             && scaled.is_none()
             && self.hdr.is_none()
             // Frame generation draws the hand over the real and the made frame after the world.
@@ -11722,6 +11803,47 @@ impl Renderer {
                 );
                 pass.set_bind_group(0, &self.group, &[]);
             }
+            if glow_quads > 0 {
+                let first = (entity_quads
+                    + text_quads
+                    + crumbling_quads
+                    + translucent_crumbling_quads
+                    + water_mask_quads
+                    + swirl_quads
+                    + no_depth_write_quads
+                    + no_depth_test_quads)
+                    * 4;
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.set_pipeline(&self.glow_pipeline);
+                pass.draw_indexed(0..glow_quads * 6, first as i32, 0..1);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if no_depth_write_quads + no_depth_test_quads > 0 && !oit_on {
+                let first = (entity_quads
+                    + text_quads
+                    + crumbling_quads
+                    + translucent_crumbling_quads
+                    + water_mask_quads
+                    + swirl_quads)
+                    * 4;
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                for (pipeline, quads, from) in [
+                    (&self.no_depth_write_pipeline, no_depth_write_quads, first),
+                    (
+                        &self.no_depth_test_pipeline,
+                        no_depth_test_quads,
+                        first + no_depth_write_quads * 4,
+                    ),
+                ] {
+                    if quads > 0 {
+                        pass.set_pipeline(pipeline);
+                        pass.draw_indexed(0..quads * 6, from as i32, 0..1);
+                    }
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if additive_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "additive entities");
                 pass.set_bind_group(0, &self.entity_group, &[]);
@@ -12191,6 +12313,16 @@ impl Renderer {
                 pass.draw(0..3, 0..1);
                 self.draw_hand(&mut pass, hand_quads, world_quads + additive_quads);
             }
+        }
+        if self.bedrock_stencil.has_world() {
+            self.bedrock_stencil.draw_world(
+                &mut encoder,
+                world_view,
+                world_depth,
+                &self.entity_group,
+                &self.indices,
+                (&self.entity_buffer, outline_base + outlined),
+            );
         }
         if let Some((color, depth)) = &scaled
             && pack_post
@@ -12813,6 +12945,15 @@ impl Renderer {
                 hdr.keep_world(encoder, timing.as_mut());
             }
         }
+        if overlay.hand_quads == 0 && self.bedrock_stencil.has_hand() {
+            self.bedrock_stencil.draw_hand_alone(
+                encoder,
+                view_target,
+                &self.depth,
+                &self.hand_group,
+                &self.indices,
+            );
+        }
         if overlay.hand_quads > 0 {
             let attachments = [Some(wgpu::RenderPassColorAttachment {
                 view: view_target,
@@ -12832,7 +12973,7 @@ impl Renderer {
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
                         // HDR output's hand marks test against it (below).
-                        store: if self.hdr.is_some() {
+                        store: if self.hdr.is_some() || self.bedrock_stencil.has_hand() {
                             wgpu::StoreOp::Store
                         } else {
                             wgpu::StoreOp::Discard
@@ -12848,6 +12989,15 @@ impl Renderer {
             pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
             pass.draw_indexed(0..overlay.hand_quads * 6, overlay.first_hand_vertex, 0..1);
             drop(pass);
+            if self.bedrock_stencil.has_hand() {
+                self.bedrock_stencil.draw_hand(
+                    encoder,
+                    view_target,
+                    &self.depth,
+                    &self.hand_group,
+                    &self.indices,
+                );
+            }
             if let Some(hdr) = &self.hdr
                 && !no_pack_hdr_gain(layered, self.shader_pack_kind().is_some(), !frame.title)
             {

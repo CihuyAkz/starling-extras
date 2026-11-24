@@ -74,6 +74,11 @@ pub struct SkinJob {
     pub cull: u32,
     /// Always 0: the shader reads it as a zero it cannot fold away.
     pub spare: u32,
+    /// How far (blocks) each vertex moves toward the camera: a Bedrock pack's later layers
+    /// over the faces they share with the ones below (`lift_toward_camera` on the CPU path).
+    pub bias: f32,
+    /// Always 0: the job stays 16-byte aligned.
+    pub reserved: [u32; 3],
 }
 
 impl SkinJob {
@@ -91,7 +96,7 @@ impl SkinJob {
 const _: () = assert!(std::mem::size_of::<Vertex>() == 44);
 const _: () = assert!(std::mem::size_of::<SkinVertex>() == 7 * 4);
 const _: () = assert!(std::mem::size_of::<SkinPart>() == 25 * 4);
-const _: () = assert!(std::mem::size_of::<SkinJob>() == 16 * 4);
+const _: () = assert!(std::mem::size_of::<SkinJob>() == 20 * 4);
 
 /// What the game hands the renderer for one frame.
 #[derive(Default)]
@@ -114,6 +119,19 @@ pub struct SkinFrame {
     pub outline_jobs: Vec<SkinJob>,
     /// Vertices the outline jobs write.
     pub outline_vertices: u32,
+    /// Bedrock pieces for the stencil pass posed here (`gfx::bedrock_stencil`'s posed batches):
+    /// `dst` counts from the first.
+    pub stencil_jobs: Vec<SkinJob>,
+    /// Vertices the stencil jobs write.
+    pub stencil_vertices: u32,
+    /// A Bedrock pack's first-person view model posed here, into room the game left for it in
+    /// the hand's own vertices (`Frame::hand`, from `hand_first`): every draw of the hand
+    /// (its pass, the world's end, HDR marks) takes it with the rest. `dst` counts from there.
+    pub hand_jobs: Vec<SkinJob>,
+    /// Vertices the hand jobs write.
+    pub hand_vertices: u32,
+    /// Where in the hand's vertices their room starts.
+    pub hand_first: u32,
 }
 
 impl SkinFrame {
@@ -125,6 +143,11 @@ impl SkinFrame {
         self.vertices = 0;
         self.outline_jobs.clear();
         self.outline_vertices = 0;
+        self.stencil_jobs.clear();
+        self.stencil_vertices = 0;
+        self.hand_jobs.clear();
+        self.hand_vertices = 0;
+        self.hand_first = 0;
     }
 
     /// Copies the draws since job `first` into the glowing entities' outline
@@ -143,6 +166,49 @@ impl SkinFrame {
         }
     }
 
+    /// Copies the draws since job `first` for the stencil pass (a piece drawn in the scene that
+    /// also writes the stencil): where their vertices start in the stencil jobs' output, and how
+    /// many.
+    pub fn stencil_copy_since(&mut self, first: usize) -> (u32, u32) {
+        let start = self.stencil_vertices;
+        for i in first..self.jobs.len() {
+            let job = self.jobs[i];
+            self.stencil_jobs.push(SkinJob {
+                dst: self.stencil_vertices,
+                ..job
+            });
+            self.stencil_vertices += job.count;
+        }
+        (start, self.stencil_vertices - start)
+    }
+    /// Moves the draws since job `first` (`vertices` the frame had before them) to the stencil
+    /// pass alone (a piece only the pass draws), as [`SkinFrame::stencil_copy_since`] says.
+    pub fn stencil_move_since(&mut self, first: usize, vertices: u32) -> (u32, u32) {
+        let placed = self.stencil_copy_since(first);
+        self.jobs.truncate(first);
+        self.vertices = vertices;
+        placed
+    }
+    /// Moves the draws since job `first` (`vertices` the frame had before them) to the
+    /// first-person hand's range (`hand_jobs`): the caller leaves them that many vertices of
+    /// room in the hand's.
+    pub fn hand_move_since(&mut self, first: usize, vertices: u32) {
+        for i in first..self.jobs.len() {
+            let job = self.jobs[i];
+            self.hand_jobs.push(SkinJob {
+                dst: self.hand_vertices,
+                ..job
+            });
+            self.hand_vertices += job.count;
+        }
+        self.jobs.truncate(first);
+        self.vertices = vertices;
+    }
+    /// The vertices the posed copies write past the ordinary entities: the glowing silhouettes,
+    /// then the Bedrock stencil pass's pieces.
+    pub fn tail(&self) -> u32 {
+        self.outline_vertices + self.stencil_vertices
+    }
     /// The renderer took the new models.
     pub fn handed(&mut self) {
         self.base += self.new_model.len() as u32;
@@ -161,6 +227,17 @@ impl SkinFrame {
         self.parts.truncate(parts);
         self.vertices = vertices;
         self.spans.retain(|s| s.start <= vertices);
+        // The mob's pieces for the stencil pass go too (they read its parts), and the pass
+        // forgets them.
+        if let Some(cut) = self
+            .stencil_jobs
+            .iter()
+            .position(|j| j.part as usize >= parts)
+        {
+            self.stencil_vertices = self.stencil_jobs[cut].dst;
+            self.stencil_jobs.truncate(cut);
+            super::bedrock_stencil::forget_posed_from(self.stencil_vertices);
+        }
     }
 
     /// Whether the renderer has anything to take.
@@ -169,6 +246,17 @@ impl SkinFrame {
             || !self.new_model.is_empty()
             || !self.jobs.is_empty()
             || !self.outline_jobs.is_empty()
+            || !self.stencil_jobs.is_empty()
+            || !self.hand_jobs.is_empty()
+    }
+}
+
+impl super::Renderer {
+    /// Whether the game may pose a Bedrock pack's first-person view model on the GPU, into the
+    /// hand's vertices (`SkinFrame::hand_jobs`): with entity skinning and no shader pack, whose
+    /// own path (`dispatch_pack`) does not write them.
+    pub fn skins_hand(&self) -> bool {
+        self.skins_entities() && self.pack_post.is_none()
     }
 }
 
@@ -324,7 +412,8 @@ impl EntitySkin {
 
     /// Records the frame's jobs: they write `frame.vertices` vertices into
     /// `out` from vertex `base` on, and the outline jobs `frame.outline_vertices`
-    /// from vertex `outline_base` on. Call after the CPU vertices' upload.
+    /// from vertex `outline_base` on; the hand's, into its room (`hand`: where the hand's
+    /// vertices start in `out`). Call after the CPU vertices' upload.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn dispatch(
         &mut self,
@@ -334,8 +423,11 @@ impl EntitySkin {
         frame: &SkinFrame,
         out: &wgpu::Buffer,
         base: u32,
-        outline_base: u32,
+        (outline_base, hand): (u32, u32),
     ) {
+        // The stencil pass's pieces right after the silhouettes (`SkinFrame::tail`).
+        let stencil_base = outline_base + frame.outline_vertices;
+        let hand_base = hand + frame.hand_first;
         self.dispatch_jobs(
             device,
             uploads,
@@ -350,6 +442,14 @@ impl EntitySkin {
                 })
                 .chain(frame.outline_jobs.iter().map(|job| SkinJob {
                     dst: job.dst + outline_base,
+                    ..*job
+                }))
+                .chain(frame.stencil_jobs.iter().map(|job| SkinJob {
+                    dst: job.dst + stencil_base,
+                    ..*job
+                }))
+                .chain(frame.hand_jobs.iter().map(|job| SkinJob {
+                    dst: job.dst + hand_base,
                     ..*job
                 })),
             out,
@@ -469,6 +569,26 @@ pub fn expand(model: &[SkinVertex], frame: &SkinFrame) -> Vec<Vertex> {
 }
 
 /// [`expand`] of the frame's outline jobs: the silhouettes they write.
+pub fn expand_stencil(model: &[SkinVertex], frame: &SkinFrame) -> Vec<Vertex> {
+    expand_jobs(model, frame, &frame.stencil_jobs, frame.stencil_vertices)
+}
+
+/// The first-person hand's range as the shader writes it (`SkinFrame::hand_jobs`).
+pub fn expand_hand(model: &[SkinVertex], frame: &SkinFrame) -> Vec<Vertex> {
+    expand_jobs(model, frame, &frame.hand_jobs, frame.hand_vertices)
+}
+
+/// `p` moved `bias` toward the camera (the origin), as `lift_toward_camera` moves a Bedrock
+/// layer's vertices: each operation as glam's.
+pub fn lifted(p: glam::Vec3, bias: f32) -> glam::Vec3 {
+    let length = p.length();
+    if bias == 0.0 || length <= 1e-4 {
+        p
+    } else {
+        p - p / length * bias
+    }
+}
+
 pub fn expand_outline(model: &[SkinVertex], frame: &SkinFrame) -> Vec<Vertex> {
     expand_jobs(model, frame, &frame.outline_jobs, frame.outline_vertices)
 }
@@ -485,7 +605,7 @@ fn expand_jobs(
             let v = model[(job.first + k) as usize];
             let part = &frame.parts[(job.part + v.part) as usize];
             let m = glam::Mat4::from_cols_array(&part.matrix);
-            let pos = m.transform_point3(glam::Vec3::from_array(v.pos));
+            let pos = lifted(m.transform_point3(glam::Vec3::from_array(v.pos)), job.bias);
             let c = (v.axis % 3) as usize * 3;
             let column = glam::Vec3::from_slice(&part.normal[c..c + 3]);
             let n = if v.axis >= 3 { -column } else { column };
@@ -567,7 +687,6 @@ mod tests {
     /// `expand` does, to the bit, after the vertices before them.
     #[test]
     fn the_shader_writes_what_the_cpu_reference_computes() {
-        let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
             eprintln!("no GPU adapter: skipped");
             return;
@@ -671,6 +790,11 @@ mod tests {
             vertices: 120,
             outline_jobs: Vec::new(),
             outline_vertices: 0,
+            stencil_jobs: Vec::new(),
+            stencil_vertices: 0,
+            hand_jobs: Vec::new(),
+            hand_vertices: 0,
+            hand_first: 0,
         };
         // A glowing entity's silhouette: the item job and the first job again,
         // in its team colour with no normal.
@@ -684,15 +808,40 @@ mod tests {
         frame.vertices = 192;
         frame.outline_since(4, 0xff20_c0e0);
         assert_eq!(frame.outline_vertices, 72);
+        // A Bedrock pack's later layer, lifted toward the camera, and its copy for the stencil
+        // pass (`stencil_copy_since`).
+        let lifted_at = frame.vertices;
+        frame.jobs.push(SkinJob {
+            dst: lifted_at,
+            bias: 0.002,
+            ..frame.jobs[0]
+        });
+        frame.vertices += frame.jobs[0].count;
+        let (stencil_at, stenciled) = frame.stencil_copy_since(frame.jobs.len() - 1);
+        assert_eq!((stencil_at, stenciled), (0, frame.jobs[0].count));
         let expected = expand(&model, &frame);
         let outline = expand_outline(&model, &frame);
+        let stencil = expand_stencil(&model, &frame);
+        // The lift moves each vertex, and only along its line to the camera.
+        for (lifted, plain) in expected[lifted_at as usize..].iter().zip(&expected) {
+            let (a, b) = (
+                glam::Vec3::from_array(lifted.pos),
+                glam::Vec3::from_array(plain.pos),
+            );
+            assert!(
+                (b.length() - a.length() - 0.002).abs() < 1e-5,
+                "{a} from {b}"
+            );
+            assert!(a.normalize().dot(b.normalize()) > 0.999_999);
+        }
         // The posed vertices land after 5 others, which they leave alone, and the
         // silhouettes 3 past them.
         let before = 5u32;
         let outline_base = before + frame.vertices + 3;
+        let stencil_base = outline_base + frame.outline_vertices;
         let out = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: u64::from(outline_base + frame.outline_vertices) * 44,
+            size: u64::from(stencil_base + frame.stencil_vertices) * 44,
             usage: EntitySkin::usage(true) | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -708,7 +857,7 @@ mod tests {
             &frame,
             &out,
             before,
-            outline_base,
+            (outline_base, 0),
         );
         let read = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
@@ -732,8 +881,17 @@ mod tests {
                 "vertex {i}: {got:?} != {want:?}"
             );
         }
-        let silhouettes = &got[(outline_base - before) as usize..];
+        let silhouettes = &got[(outline_base - before) as usize..(stencil_base - before) as usize];
         assert_eq!(silhouettes.len(), outline.len());
+        let pieces = &got[(stencil_base - before) as usize..];
+        assert_eq!(pieces.len(), stencil.len());
+        for (i, (got, want)) in pieces.iter().zip(&stencil).enumerate() {
+            assert_eq!(
+                bytemuck::bytes_of(got),
+                bytemuck::bytes_of(want),
+                "stencil piece vertex {i}: {got:?} != {want:?}"
+            );
+        }
         for (i, (got, want)) in silhouettes.iter().zip(&outline).enumerate() {
             assert_eq!(
                 bytemuck::bytes_of(got),

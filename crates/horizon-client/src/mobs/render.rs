@@ -46,6 +46,8 @@ pub const FULL_BRIGHT: u32 = 240 | 240 << 8;
 /// HDR output, as `mesher::hdr_tier`.
 const EYES_TIER: u8 = crate::mesher::BRIGHT;
 
+include!("bedrock_render/render_01.rs");
+
 /// Tags quads as drawn by a render type vanilla gives an `OitPipelineSet`
 /// (`gfx::OIT_ENTITY`): improved transparency draws them in its stages.
 fn mark_oit(quads: &mut [Vertex]) {
@@ -53,6 +55,8 @@ fn mark_oit(quads: &mut [Vertex]) {
         vertex.layer |= crate::gfx::OIT_ENTITY;
     }
 }
+
+include!("bedrock_render/render_02.rs");
 /// Whether the species' model is built with `RenderTypes::entityTranslucent`
 /// (`Model.renderType`, which `LivingEntityRenderer.getRenderType` uses for the
 /// body): the allay, the piglins, the breeze, the vex, the player model and the
@@ -2107,6 +2111,8 @@ fn report_unknown_hidden_part(kind: &str, name: &str) {
 }
 
 #[allow(clippy::too_many_arguments)]
+include!("bedrock_render/render_03.rs");
+
 fn render_visible(
     m: &Mob,
     alpha: f32,
@@ -2125,6 +2131,10 @@ fn render_visible(
     let extra = if layers_shown(m) { extra } else { &[] };
     let overlay = u32::from(red_overlay(m));
     let s = anim::state(m, alpha);
+    let mut skin = skin;
+    if body_visible && render_bedrock(m, alpha, base, atlas, light, data, out, skin.as_deref_mut()) {
+        return;
+    }
     let (model_key, texture) = body(m);
     // The packs' custom entity models replace a layer's parts and maybe its texture. The read
     // guard, not a clone of the Arc: one uncontended lock per mob, nothing else without a pack.
@@ -2227,7 +2237,6 @@ fn render_visible(
     // order: only plain draws of models it can pose (no custom models,
     // translucent body or energy swirl, which the CPU path changes after
     // drawing), and with improved transparency off the tagged layers too.
-    let mut skin = skin;
     let posable = match skin.as_deref_mut() {
         Some(skin) => {
             custom_body.is_none()
@@ -2798,6 +2807,30 @@ pub fn held_item_transform(
     data: &MobData,
     left: bool,
 ) -> Option<glam::Mat4> {
+    let held = data
+        .bedrock
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .held(m)
+        .unwrap_or_default();
+    if held.hidden {
+        return None;
+    }
+    let t = held_item_transform_in_hand(m, alpha, camera, data, left)?;
+    Some(if (held.scale - 1.0).abs() > 1e-4 {
+        t * glam::Mat4::from_scale(glam::Vec3::splat(held.scale))
+    } else {
+        t
+    })
+}
+
+fn held_item_transform_in_hand(
+    m: &Mob,
+    alpha: f32,
+    camera: glam::DVec3,
+    data: &MobData,
+    left: bool,
+) -> Option<glam::Mat4> {
     // PandaHoldsItemLayer: the main hand's item in its mouth.
     if m.species() == Species::Panda {
         return super::panda::item_offset(m, alpha)
@@ -2856,7 +2889,10 @@ pub fn held_item_transform(
         }
         return crossed_arms_matrix(&model, base, &poses);
     }
-    let mut t = hand_base(m, &model, base, &poses, &anchors, left)?;
+    let mut t = match bedrock_hand(m, alpha, camera, data, left) {
+        Some(t) => t,
+        None => hand_base(m, &model, base, &poses, &anchors, left)?,
+    };
     // ItemInHandLayer: a STAB swing of this arm thrusts its item out
     // (SpearAnimations.thirdPersonAttackItem, the main hand's forward
     // movement), and a spear in use moves with it (ArmPose.SPEAR's
@@ -2895,6 +2931,8 @@ pub fn held_item_stack(extra: &super::Extra, off_hand: bool) -> Option<crate::it
         .slot_stack(if off_hand { OFFHAND } else { MAINHAND })
         .cloned()
 }
+
+include!("bedrock_render/render_04.rs");
 
 #[cfg(test)]
 mod tests {
@@ -3015,6 +3053,7 @@ mod tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -3359,6 +3398,7 @@ mod tests {
             armor_atlases: Default::default(),
             equipment: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -3454,6 +3494,7 @@ mod tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -3515,6 +3556,7 @@ mod tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -3635,6 +3677,7 @@ mod tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -3945,6 +3988,7 @@ mod scroll_tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
@@ -4115,6 +4159,7 @@ mod emissive_tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: RwLock::new(random),
             emissive: RwLock::new(Arc::new(emissive)),
             blinks: RwLock::new(blinks),
@@ -4397,6 +4442,7 @@ mod random_texture_tests {
             animations: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: RwLock::new(random),
             emissive: Default::default(),
             blinks: Default::default(),

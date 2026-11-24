@@ -16,7 +16,8 @@ use super::Vertex;
 /// ignored and they stay in the first one, in their order.
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
 /// NORMAL and POLYGON_OFFSET. Material storage order is independent of their draw stages.
-const MATERIALS: usize = 16;
+const MATERIALS: usize = 19;
+const LAYOUT_HEAD: [usize; 13] = [0, 1, 2, 3, 4, 5, 16, 17, 18, 6, 7, 8, 9];
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
@@ -41,6 +42,9 @@ pub const FLUID_OVERLAY: u32 = 41;
 /// (`RenderTypes.entityTranslucent`, `entityTranslucentEmissive`, `eyes`,
 /// `breezeWind`). Only the improved transparency path reads it.
 pub const OIT_ENTITY: u32 = 1 << 24;
+pub const NO_DEPTH_WRITE: u32 = 1 << 25;
+pub const NO_DEPTH_TEST: u32 = 1 << 26;
+pub const ADDITIVE: u32 = 1 << 27;
 /// `RenderPipelines.DRAGON_RAYS`: untextured colour, additive with depth writes.
 pub const DRAGON_RAYS_OVERLAY: u32 = 37;
 /// `RenderPipelines.ENTITY_CUTOUT_DISSOLVE` (the dying dragon): a pixel is dropped where the
@@ -118,6 +122,9 @@ pub(super) fn ordinary_vertices_at_cuts(
 /// The material of a quad by its overlay (`MATERIALS` order). The overlay is the
 /// layer's low 16 bits, as entity.wgsl reads it; the HDR tier rides above that.
 fn material(layer: u32, oit: bool) -> usize {
+    if layer & ADDITIVE != 0 {
+        return 18;
+    }
     match layer & 0xffff {
         TERRAIN_MODEL_SOLID_OVERLAY => return 13,
         TERRAIN_MODEL_CUTOUT_OVERLAY => return 14,
@@ -129,6 +136,12 @@ fn material(layer: u32, oit: bool) -> usize {
     }
     if oit && layer & OIT_ENTITY != 0 {
         return 9;
+    }
+    if layer & NO_DEPTH_TEST != 0 {
+        return 17;
+    }
+    if layer & NO_DEPTH_WRITE != 0 {
+        return 16;
     }
     match layer & 0xffff {
         WORLD_TEXT_OVERLAY => 11,
@@ -192,8 +205,8 @@ impl EntityBatch {
         self.combined.clear();
         self.combined
             .reserve(entity_vertices + additive.len() + hand.len() + see_through.len());
-        for runs in &self.runs[..10] {
-            for &(first, count) in runs {
+        for kind in LAYOUT_HEAD {
+            for &(first, count) in &self.runs[kind] {
                 self.combined
                     .extend_from_slice(&entities[first * 4..(first + count) * 4]);
             }

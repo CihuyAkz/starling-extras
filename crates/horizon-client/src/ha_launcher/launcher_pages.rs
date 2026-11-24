@@ -244,6 +244,7 @@ pub(super) enum Action {
     Search,
     ShaderSource(crate::ha_launcher::shader_catalog::Origin),
     ModSource(crate::ha_launcher::shader_catalog::Origin),
+    ToggleJavaModsCompatibility,
     Field(&'static str),
     FinishNameEdit,
     Install(usize),
@@ -1570,8 +1571,50 @@ impl Launcher {
                 }
             }
 
+            if page == Page::Mods {
+                let toggle_y = 96.0 + slide_y;
+                ui.rounded(content_x, toggle_y, content_w, 46.0, 14.0, my3_card_bg());
+                ui.border(content_x, toggle_y, content_w, 46.0, 14.0, my3_card_border());
+                let text_max = (content_w - 154.0).max(100.0);
+                let toggle_title = ui.fit_text(
+                    Face::SemiBold,
+                    14.0,
+                    "Java Mods Compatibility",
+                    text_max,
+                );
+                let toggle_subtitle = ui.fit_text(
+                    Face::Regular,
+                    11.0,
+                    "Experimental • Java 25 + Fabric bridge",
+                    text_max,
+                );
+                ui.text(
+                    Face::SemiBold,
+                    14.0,
+                    content_x + 12.0,
+                    toggle_y + 6.0,
+                    my3_text(),
+                    &toggle_title,
+                );
+                ui.text(
+                    Face::Regular,
+                    11.0,
+                    content_x + 12.0,
+                    toggle_y + 26.0,
+                    my3_muted(),
+                    &toggle_subtitle,
+                );
+                toggle(
+                    &mut ui,
+                    &mut self.targets,
+                    [content_x + content_w - 116.0, toggle_y + 4.0, 108.0, 38.0],
+                    self.catalog.config.java_mods_compatibility,
+                    Action::ToggleJavaModsCompatibility,
+                );
+            }
+
             // Search bar + Search button + Open folder / Import file pills
-            let search_y = 98.0 + slide_y;
+            let search_y = (if page == Page::Mods { 148.0 } else { 98.0 }) + slide_y;
             let search_btn_w = 98.0;
             let field_w = (content_w - search_btn_w - 8.0).max(120.0);
             let search_hint = if page == Page::Mods {
@@ -1609,7 +1652,7 @@ impl Launcher {
                 Page::Shaders => crate::ha_launcher::client::content_files::Kind::Shaders,
                 _ => crate::ha_launcher::client::content_files::Kind::Packs,
             };
-            let sub_y = 140.0 + slide_y;
+            let sub_y = (if page == Page::Mods { 190.0 } else { 140.0 }) + slide_y;
             button(
                 &mut ui,
                 &mut self.targets,
@@ -1658,9 +1701,6 @@ impl Launcher {
             } else {
                 Vec::new()
             };
-            let server_side_placeholder = page == Page::Mods
-                && self.catalog.config.mod_source
-                    == crate::ha_launcher::shader_catalog::Origin::Horizon;
             let catalog_rows: Vec<_> = self
                 .catalog
                 .results
@@ -1675,9 +1715,8 @@ impl Launcher {
                 })
                 .collect();
             let row_h = 72.0;
-            let server_side_rows = server_side_placeholder as usize;
-            let row_count = bundled.len() + server_side_rows + catalog_rows.len();
-            let top = 176.0 + slide_y;
+            let row_count = bundled.len() + catalog_rows.len();
+            let top = (if page == Page::Mods { 228.0 } else { 176.0 }) + slide_y;
             let bottom = h - 46.0;
             self.catalog.scroll = self
                 .catalog
@@ -1782,55 +1821,8 @@ impl Launcher {
                 );
             }
 
-            if server_side_placeholder {
-                let y = top + bundled.len() as f32 * row_h - self.catalog.scroll;
-                if y + 64.0 >= top && y <= bottom {
-                    ui.rounded(content_x, y, content_w, 64.0, 14.0, my3_card_bg());
-                    ui.border(content_x, y, content_w, 64.0, 14.0, my3_card_border());
-                    ui.rounded(
-                        content_x + 10.0,
-                        y + 10.0,
-                        44.0,
-                        44.0,
-                        12.0,
-                        my3_accent_soft(),
-                    );
-                    ui.icon(
-                        fallback_icon,
-                        content_x + 21.0,
-                        y + 21.0,
-                        22.0,
-                        my3_accent(),
-                    );
-                    ui.text(
-                        Face::SemiBold,
-                        15.0,
-                        content_x + 64.0,
-                        y + 8.0,
-                        my3_text(),
-                        "Server Side",
-                    );
-                    ui.text(
-                        Face::Regular,
-                        12.5,
-                        content_x + 64.0,
-                        y + 29.0,
-                        my3_muted(),
-                        "Nobody here but us chickens!",
-                    );
-                    ui.text(
-                        Face::Medium,
-                        11.0,
-                        content_x + 64.0,
-                        y + 45.0,
-                        my3_accent(),
-                        "Not migrated",
-                    );
-                }
-            }
-
             for (row, (i, p)) in catalog_rows.into_iter().enumerate() {
-                let y = top + (row + bundled.len() + server_side_rows) as f32 * row_h
+                let y = top + (row + bundled.len()) as f32 * row_h
                     - self.catalog.scroll;
                 let download = self.catalog.download_label(p);
                 let card_rect = [content_x, y, content_w - 118.0, 64.0];
@@ -6068,6 +6060,20 @@ impl Launcher {
                 crate::ha_launcher::device_runtime::configure(self.catalog.config.device);
             }
 
+            Some(Action::ToggleJavaModsCompatibility) => {
+                self.catalog.config.java_mods_compatibility =
+                    !self.catalog.config.java_mods_compatibility;
+                self.catalog.config.save(&self.home)?;
+                crate::java_mods::set_compatibility_enabled(
+                    self.catalog.config.java_mods_compatibility,
+                );
+                self.catalog.status = if self.catalog.config.java_mods_compatibility {
+                    "Java Mods Compatibility enabled. The JVM and Fabric bridge will start on the next Play."
+                } else {
+                    "Java Mods Compatibility disabled. Starling will skip JVM and Fabric startup."
+                }
+                .into();
+            }
             Some(Action::ModSource(origin)) => {
                 self.catalog.config.mod_source = origin;
                 self.catalog.config.save(&self.home)?;

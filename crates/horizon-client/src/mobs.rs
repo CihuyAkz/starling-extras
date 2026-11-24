@@ -13,6 +13,9 @@ pub mod armadillo;
 pub mod armor;
 pub mod axolotl;
 pub mod bat;
+pub mod bedrock;
+pub mod bedrock_debug;
+pub mod bedrock_stencil;
 pub mod bee;
 pub mod body_anim;
 pub mod brain;
@@ -965,6 +968,15 @@ pub struct Attrs {
 }
 /// `minecraft:wolf_armor`'s maximum damage.
 pub const WOLF_ARMOR_DURABILITY: i32 = 64;
+pub const HISTORY: usize = 16;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StandPose {
+    pub pose: [[f32; 3]; 6],
+    pub arms: bool,
+    pub base_plate: bool,
+    pub hurt_direction: f32,
+}
 /// Species-specific persistent state (variants, colours, taming, ageing...).
 #[derive(Clone, Debug, Default)]
 pub struct Extra {
@@ -977,6 +989,8 @@ pub struct Extra {
     pub spawn_tags: Vec<String>,
     /// Command-created armor instances, shared by commands and runtime damage.
     pub armor_attributes: Option<Box<horizon_world::attributes::entity::EntityAttributes>>,
+    pub stand_pose: Option<Box<StandPose>>,
+    pub history: Option<Box<[[f32; 2]; HISTORY]>>,
     /// `Mob.lootTable`: the table its death rolls instead of its type's
     /// (saved as `DeathLootTable`).
     pub death_loot_table: Option<String>,
@@ -4349,7 +4363,11 @@ impl Mob {
         events: &mut Vec<MobEvent>,
     ) -> bool {
         self.prepare_tick();
-        neutral_anger::around_tick(self, w.game_time, |m| ai::tick(m, w, level, events))
+        let keep = neutral_anger::around_tick(self, w.game_time, |m| ai::tick(m, w, level, events));
+        if bedrock::wants_surroundings() && self.age.wrapping_add(self.id).is_multiple_of(4) {
+            bedrock::set_surroundings(self.id, bedrock::sample_surroundings(self, w));
+        }
+        keep
     }
     /// A game-owned tick may pause before fox consumption to release its loans.
     pub fn tick_until_consumption(
@@ -4359,7 +4377,14 @@ impl Mob {
         events: &mut Vec<MobEvent>,
     ) -> ai::TickProgress {
         self.prepare_tick();
-        neutral_anger::tick_until_consumption(self, w, level, events)
+        let progress = neutral_anger::tick_until_consumption(self, w, level, events);
+        if matches!(&progress, ai::TickProgress::Complete(_))
+            && bedrock::wants_surroundings()
+            && self.age.wrapping_add(self.id).is_multiple_of(4)
+        {
+            bedrock::set_surroundings(self.id, bedrock::sample_surroundings(self, w));
+        }
+        progress
     }
     fn prepare_tick(&mut self) {
         self.track_section();

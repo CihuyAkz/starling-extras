@@ -2786,7 +2786,24 @@ impl Game<'_> {
                 c.position.z.floor() as i32,
             );
             let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            if let Some(state) = shown.unwrap_or_else(|| self.display_state(c)) {
+            let pack_block = c.custom_display.is_none()
+                && matches!(
+                    c.kind,
+                    CartKind::Chest | CartKind::Hopper | CartKind::Tnt | CartKind::CommandBlock
+                )
+                && self.pack_draws(c.kind.id());
+            let pack_entity = if pack_block {
+                Some(c.kind.id())
+            } else {
+                self.pack_draws("minecraft:minecart")
+                    .then_some("minecraft:minecart")
+            };
+            let shown_block = if pack_block {
+                None
+            } else {
+                shown.unwrap_or_else(|| self.display_state(c))
+            };
+            if let Some(state) = shown_block {
                 let display = base
                     * glam::Mat4::from_scale(glam::Vec3::splat(0.75))
                     * glam::Mat4::from_translation(glam::Vec3::new(
@@ -2826,8 +2843,33 @@ impl Game<'_> {
                 }
             }
             let m = base * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-            let poses = Poses::new(model);
-            horizon_client::mobs::render::draw(model, m, &poses, uv, 0xFFFF_FFFF, packed, 0, out);
+            let pack = pack_entity.is_some_and(|entity| {
+                self.pack_cart(
+                    entity,
+                    c.id,
+                    glam::DVec3::new(x, y, z),
+                    (yaw, pitch),
+                    m,
+                    packed,
+                    |proxy| proxy.hurt_time = c.hurt_time,
+                    camera,
+                    alpha,
+                    out,
+                )
+            });
+            if !pack {
+                let poses = Poses::new(model);
+                horizon_client::mobs::render::draw(
+                    model,
+                    m,
+                    &poses,
+                    uv,
+                    0xFFFF_FFFF,
+                    packed,
+                    0,
+                    out,
+                );
+            }
             self.finish_entity_occlusion(culling, c, out, entity_start);
         }
     }

@@ -494,6 +494,8 @@ impl Paint {
             mode: SkinJob::MODEL,
             cull,
             spare: 0,
+            bias: 0.0,
+            reserved: [0; 3],
         }
     }
 }
@@ -876,6 +878,7 @@ mod tests {
             entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
+            bedrock: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),

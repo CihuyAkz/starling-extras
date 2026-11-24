@@ -155,6 +155,12 @@ pub(super) fn load_world_rest(
         } else {
             horizon_client::mobs::cem::CemModels::default()
         }));
+        horizon_client::mobs::bedrock::reset_surroundings();
+        mob_data.bedrock = std::sync::RwLock::new(Arc::new(if draws {
+            horizon_client::mobs::bedrock::BedrockMobs::load(resource_root.prepared())
+        } else {
+            horizon_client::mobs::bedrock::BedrockMobs::default()
+        }));
         horizon_client::mobs::trial_spawner::load_registry(root);
         Ok((mob_types, mob_data))
     };

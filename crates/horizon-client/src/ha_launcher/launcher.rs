@@ -131,6 +131,9 @@ impl Launcher {
             }
         });
         let mut catalog = Catalog::new(&home);
+        crate::java_mods::set_compatibility_enabled(
+            catalog.config.java_mods_compatibility,
+        );
         if crate::ha_launcher::diagnostics::previous_unclean(&home) {
             catalog.status = crate::ha_launcher::diagnostics::summary(&home);
         }
@@ -442,6 +445,9 @@ impl Launcher {
         crate::ha_launcher::device_runtime::configure(self.catalog.config.device);
         crate::ha_launcher::platform::hide();
         self.catalog.config.save(&self.home)?;
+        crate::java_mods::set_compatibility_enabled(
+            self.catalog.config.java_mods_compatibility,
+        );
         if installed {
             self.catalog.config.apply_experimental_to_game(&self.home);
             let game_home = self.catalog.config.game_home(&self.home);

@@ -720,6 +720,22 @@ impl Game<'_> {
             self.swing_arm();
             return true;
         }
+        if self.keys.held(horizon_client::actions::Action::Sneak)
+            && self.pack_draws("minecraft:armor_stand")
+        {
+            let stand = &mut self.armor_stands[i];
+            let poses = horizon_client::entities::ArmorStand::BEDROCK_POSES;
+            let next = horizon_client::entities::ArmorStand::bedrock_pose_index(&stand.pose)
+                .map_or(1, |index| (index + 1) % poses.len());
+            stand.pose = poses[next];
+            let position = stand.position;
+            self.world.modified.insert((
+                (position.x.floor() as i32) >> 4,
+                (position.z.floor() as i32) >> 4,
+            ));
+            self.swing_arm();
+            return true;
+        }
         let a = &self.armor_stands[i];
         let slot = match &held {
             Some(h) => {
@@ -1688,6 +1704,9 @@ impl Game<'_> {
             let probe = a.light_probe(alpha, |x, y, z| self.world.light(x, y, z));
             let light = self.world.light(probe[0], probe[1], probe[2]);
             let packed = a.render_light(light);
+            if !a.invisible && self.pack_stand(a, camera, alpha, packed, out) {
+                continue;
+            }
             let skinned = if skinning {
                 let mut models = self.skin_models.borrow_mut();
                 let mut frame = self.skin_frame.borrow_mut();
@@ -1704,6 +1723,71 @@ impl Game<'_> {
             }
         }
     }
+    fn pack_stand(
+        &self,
+        stand: &ArmorStand,
+        camera: glam::DVec3,
+        alpha: f64,
+        packed: u32,
+        out: &mut Vec<Vertex>,
+    ) -> bool {
+        let at = super::entity_culling::at(stand.render_position(alpha));
+        static HITS: std::sync::Mutex<Option<HashMap<u32, (i64, u32)>>> = std::sync::Mutex::new(None);
+        let hurt_direction = {
+            let mut hits = HITS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let map = hits.get_or_insert_with(HashMap::new);
+            if map.len() > 4096 {
+                map.clear();
+            }
+            let entry = map.entry(stand.id).or_insert((stand.last_hit, 0));
+            if entry.0 != stand.last_hit {
+                *entry = (stand.last_hit, entry.1 + 1);
+            }
+            match entry.1 {
+                0 => 0.0,
+                n if n % 2 == 1 => 1.0,
+                _ => -1.0,
+            }
+        };
+        let proxy = super::pack_proxy::Proxy {
+            entity: "minecraft:armor_stand",
+            id: stand.id,
+            at,
+            yaw: stand.render_yaw(alpha as f32),
+            head_yaw: stand.render_yaw(alpha as f32),
+            pitch: 0.0,
+            base: None,
+            packed,
+        };
+        self.pack_proxy(
+            &proxy,
+            camera,
+            alpha,
+            |mob| {
+                mob.on_ground = stand.on_ground;
+                mob.extra.age = if stand.small { -1 } else { 0 };
+                for (slot, index) in [
+                    horizon_items::equipment::MAINHAND,
+                    horizon_items::equipment::OFFHAND,
+                    horizon_items::equipment::FEET,
+                    horizon_items::equipment::LEGS,
+                    horizon_items::equipment::CHEST,
+                    horizon_items::equipment::HEAD,
+                ].into_iter().zip(0..6) {
+                    mob.extra.set_slot_stack(slot, stand.equipment[index].clone());
+                }
+                mob.custom_name = stand.custom_name.as_ref().map(|name| name.plain());
+                mob.extra.stand_pose = Some(Box::new(horizon_client::mobs::StandPose {
+                    pose: stand.pose,
+                    arms: true,
+                    base_plate: !stand.no_base_plate,
+                    hurt_direction,
+                }));
+            },
+            out,
+        )
+    }
+
     /// `ArmorStandRenderer.submit` for stand `a` under `base` (its
     /// `setupRotations`): the body, the hand and head items, the armour and
     /// the wings, at packed light `packed`. With `skin`, the stand's own models

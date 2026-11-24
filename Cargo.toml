@@ -23,6 +23,7 @@ members = [
     "crates/horizon-threads",
     "crates/horizon-hdr",
     "crates/horizon-world",
+    "crates/horizon-bedrock",
     "crates/horizon-client",
     # Starling: the game as a NativeActivity library; empty on other targets.
     "crates/horizon-android",
@@ -150,6 +151,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.wasmparser]
 opt-level = 3
+
+[profile.dev.package.horizon-bedrock]
+opt-level = 2
 
 [profile.dev.package.horizon-mod-api-gen]
 opt-level = 3
