@@ -1614,7 +1614,7 @@ impl PackScreen {
             crate::widgets::text_cursor(true, true);
         }
         for side in 0..2 {
-            self.draw_list(&mut out, m, side, mouse);
+            self.draw_list(&mut out, m, side, mouse, now_ms);
         }
         let open_folder = if self.catalog {
             tr(SHORT_OPEN_FOLDER)
@@ -2100,7 +2100,14 @@ impl PackScreen {
             }
         }
     }
-    fn draw_list(&self, out: &mut Vec<Draw>, m: &Measure, side: usize, mouse: (i32, i32)) {
+    fn draw_list(
+        &self,
+        out: &mut Vec<Draw>,
+        m: &Measure,
+        side: usize,
+        mouse: (i32, i32),
+        now_ms: i64,
+    ) {
         let l = &self.lists[side];
         let hovered = if l.is_over(mouse.0 as f64, mouse.1 as f64) {
             l.entry_at(mouse.0, mouse.1)
