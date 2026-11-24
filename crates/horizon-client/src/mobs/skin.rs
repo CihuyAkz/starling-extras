@@ -51,6 +51,7 @@ pub struct SkinModels {
     /// render type's (spiders', endermen's...) as [`SkinJob::FLAT`] draws, and
     /// `entityTranslucent` layers (a horse's markings, a slime's outer cube).
     pub tagged: bool,
+    epoch: u64,
 }
 
 /// A stored item model: its quads' vertices in order, by runs of quads that
@@ -136,6 +137,10 @@ impl SkinModels {
         self.rotation_cache_disabled = !enabled;
     }
 
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
     /// Starts a frame: drops the models nothing else holds (their vertices
     /// stay in the store until it restarts), restarts the store when it grew
     /// too large or the renderer's (`stored`, its size) is out of step.
@@ -151,6 +156,7 @@ impl SkinModels {
     }
 
     pub fn restart(&mut self, frame: &mut SkinFrame) {
+        self.epoch += 1;
         self.stored.clear();
         self.items.clear();
         self.vertices = 0;
@@ -348,6 +354,7 @@ pub struct Paint {
     pub color: u32,
     pub light: u32,
     pub overlay: u32,
+    pub bias: f32,
 }
 
 /// Where a frame's posed draws go, and the bounds of the current mob's.
@@ -365,6 +372,8 @@ struct Walked {
     model: usize,
     base: glam::Mat4,
     poses: u64,
+    shape: u64,
+    first_part: u32,
     jobs: std::ops::Range<usize>,
 }
 
@@ -397,6 +406,61 @@ impl<'a> Skin<'a> {
         self.models.entry(model, self.frame).is_some()
     }
 
+    pub fn stencil_copy_since(&mut self, first: usize) -> (u32, u32) {
+        self.frame.stencil_copy_since(first)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_attached(
+        &mut self,
+        model: &Arc<Part>,
+        chain: glam::Mat4,
+        base: glam::Mat4,
+        bound_only: bool,
+        base_of: &dyn Fn(&str) -> Option<glam::Mat4>,
+        poses: &Poses,
+        paint: Paint,
+    ) -> bool {
+        let Some((stored, _)) = self.models.entry(model, self.frame) else {
+            return false;
+        };
+        let first_part = self.frame.parts.len() as u32;
+        self.frame.parts.resize(
+            self.frame.parts.len() + stored.parts.len(),
+            bytemuck::Zeroable::zeroed(),
+        );
+        let mut walk = AttachedWalk {
+            stored,
+            poses,
+            parts: &mut self.frame.parts[first_part as usize..],
+            jobs: &mut self.frame.jobs,
+            vertices: &mut self.frame.vertices,
+            bounds: &mut self.bounds,
+            first_part,
+            paint,
+            base,
+            bound_only,
+            base_of,
+            index: 0,
+        };
+        walk.part(model, chain, None);
+        self.last = None;
+        true
+    }
+
+    pub fn store_epoch(&self) -> u64 {
+        self.models.epoch()
+    }
+
+    pub fn forget_last(&mut self) {
+        self.last = None;
+    }
+
+    pub fn stencil_move_since(&mut self, first: usize, vertices: u32) -> (u32, u32) {
+        self.last = None;
+        self.frame.stencil_move_since(first, vertices)
+    }
+
     /// `render::draw_scrolled` on the GPU: false (nothing done) when the
     /// model cannot take this path.
     pub fn draw(
@@ -424,6 +488,39 @@ impl<'a> Skin<'a> {
                 });
                 self.frame.vertices += job.count;
             }
+            return true;
+        }
+        if let Some(last) = &self.last
+            && last.model == key
+            && last.base == base
+            && last.shape == poses.shape_version()
+        {
+            let first_part = last.first_part;
+            let Some((stored, _)) = self.models.entry(model, self.frame) else {
+                return false;
+            };
+            let jobs = self.frame.jobs.len();
+            let mut walk = Rejob {
+                stored,
+                poses,
+                parts: &self.frame.parts[first_part as usize..],
+                jobs: &mut self.frame.jobs,
+                vertices: &mut self.frame.vertices,
+                bounds: &mut self.bounds,
+                first_part,
+                paint,
+                index: 0,
+                since: jobs,
+            };
+            walk.part(model);
+            self.last = Some(Walked {
+                model: key,
+                base,
+                poses: poses.version(),
+                shape: poses.shape_version(),
+                first_part,
+                jobs: jobs..self.frame.jobs.len(),
+            });
             return true;
         }
         let cache_enabled = !self.models.rotation_cache_disabled;
@@ -470,6 +567,8 @@ impl<'a> Skin<'a> {
             model: key,
             base,
             poses: poses.version(),
+            shape: poses.shape_version(),
+            first_part,
             jobs: jobs..self.frame.jobs.len(),
         });
         true
@@ -494,9 +593,149 @@ impl Paint {
             mode: SkinJob::MODEL,
             cull,
             spare: 0,
-            bias: 0.0,
+            bias: self.bias,
             reserved: [0; 3],
         }
+    }
+}
+
+struct Rejob<'a> {
+    stored: &'a Stored,
+    poses: &'a Poses,
+    parts: &'a [SkinPart],
+    jobs: &'a mut Vec<SkinJob>,
+    vertices: &'a mut u32,
+    bounds: &'a mut Option<(glam::Vec3, glam::Vec3)>,
+    first_part: u32,
+    paint: Paint,
+    index: u32,
+    since: usize,
+}
+
+impl Rejob<'_> {
+    fn part(&mut self, part: &Part) {
+        let index = self.index;
+        let stored = self.stored.parts[index as usize];
+        let pose = self.poses.pose(part);
+        if self.poses.is_hidden(part) || pose[6] == 0.0 && pose[7] == 0.0 && pose[8] == 0.0 {
+            self.index = stored.end;
+            return;
+        }
+        if !self.poses.skips(part) && stored.count > 0 {
+            let matrix = glam::Mat4::from_cols_array(&self.parts[index as usize].matrix);
+            Walk::emit_into(
+                self.stored,
+                self.jobs,
+                self.since,
+                self.vertices,
+                self.first_part,
+                self.paint,
+                stored,
+            );
+            if let Some((lo, hi)) = self.stored.bounds[index as usize] {
+                let (lo, hi) = (glam::Vec3::from_array(lo), glam::Vec3::from_array(hi));
+                let center = matrix.transform_point3((lo + hi) * 0.5);
+                let half = (hi - lo) * 0.5;
+                let rotation = glam::Mat3::from_mat4(matrix);
+                let extent = rotation.x_axis.abs() * half.x
+                    + rotation.y_axis.abs() * half.y
+                    + rotation.z_axis.abs() * half.z;
+                let (a, b) = (center - extent, center + extent);
+                *self.bounds = Some(match *self.bounds {
+                    Some((low, high)) => (low.min(a), high.max(b)),
+                    None => (a, b),
+                });
+            }
+        }
+        self.index += 1;
+        for child in &part.children {
+            self.part(child);
+        }
+    }
+}
+
+struct AttachedWalk<'a, 'b> {
+    stored: &'a Stored,
+    poses: &'a Poses,
+    parts: &'a mut [SkinPart],
+    jobs: &'a mut Vec<SkinJob>,
+    vertices: &'a mut u32,
+    bounds: &'a mut Option<(glam::Vec3, glam::Vec3)>,
+    first_part: u32,
+    paint: Paint,
+    base: glam::Mat4,
+    bound_only: bool,
+    base_of: &'b dyn Fn(&str) -> Option<glam::Mat4>,
+    index: u32,
+}
+
+impl AttachedWalk<'_, '_> {
+    fn part(&mut self, part: &Part, chain: glam::Mat4, inherited: Option<glam::Mat4>) {
+        let index = self.index;
+        let stored = self.stored.parts[index as usize];
+        let pose = self.poses.pose(part);
+        if self.poses.is_hidden(part)
+            || pose[6] == 0.0 && pose[7] == 0.0 && pose[8] == 0.0
+        {
+            self.index = stored.end;
+            return;
+        }
+        let mine = super::render::posed(chain, pose);
+        let bound = (self.base_of)(&part.name);
+        let under = match bound.or(inherited) {
+            Some(bound) => bound,
+            None if self.bound_only => glam::Mat4::ZERO,
+            None => self.base,
+        };
+        let matrix = under * mine;
+        let skip = under == glam::Mat4::ZERO || self.poses.skips(part);
+        self.parts[index as usize] = SkinPart {
+            matrix: matrix.to_cols_array(),
+            normal: normal_matrix(ModelNormals::new(matrix)).to_cols_array(),
+        };
+        if !skip && stored.count > 0 {
+            Walk::emit_into(
+                self.stored,
+                self.jobs,
+                0,
+                self.vertices,
+                self.first_part,
+                self.paint,
+                stored,
+            );
+            if let Some((lo, hi)) = self.stored.bounds[index as usize] {
+                let (lo, hi) = (glam::Vec3::from_array(lo), glam::Vec3::from_array(hi));
+                let center = matrix.transform_point3((lo + hi) * 0.5);
+                let half = (hi - lo) * 0.5;
+                let rotation = glam::Mat3::from_mat4(matrix);
+                let extent = rotation.x_axis.abs() * half.x
+                    + rotation.y_axis.abs() * half.y
+                    + rotation.z_axis.abs() * half.z;
+                let (a, b) = (center - extent, center + extent);
+                *self.bounds = Some(match *self.bounds {
+                    Some((low, high)) => (low.min(a), high.max(b)),
+                    None => (a, b),
+                });
+            }
+        }
+        self.index += 1;
+        for child in &part.children {
+            self.part(child, mine, bound.or(inherited));
+        }
+    }
+}
+
+fn normal_matrix(normals: ModelNormals) -> glam::Mat3 {
+    if normals.trusted {
+        normals.matrix
+    } else if !normals.matrix.is_finite() {
+        glam::Mat3::ZERO
+    } else {
+        glam::Mat3::from_cols(
+            normals.matrix.x_axis.normalize_or_zero(),
+            normals.matrix.y_axis.normalize_or_zero(),
+            normals.matrix.z_axis.normalize_or_zero(),
+        )
     }
 }
 
@@ -527,15 +766,7 @@ impl Walk<'_> {
             return;
         }
         let normals = normals.part(p);
-        let n = if normals.trusted {
-            normals.matrix
-        } else {
-            glam::Mat3::from_cols(
-                normals.matrix.x_axis.normalize_or_zero(),
-                normals.matrix.y_axis.normalize_or_zero(),
-                normals.matrix.z_axis.normalize_or_zero(),
-            )
-        };
+        let n = normal_matrix(normals);
         self.parts[index as usize] = SkinPart {
             matrix: m.to_cols_array(),
             normal: n.to_cols_array(),
@@ -564,26 +795,41 @@ impl Walk<'_> {
 
     /// The part's vertices: extends the last job when they follow its own.
     fn emit(&mut self, stored: StoredPart) {
-        let first = self.stored.first + stored.first;
-        let paint = self.paint;
-        if let Some(job) = self.jobs.last_mut()
+        Self::emit_into(
+            self.stored,
+            self.jobs,
+            0,
+            self.vertices,
+            self.first_part,
+            self.paint,
+            stored,
+        );
+    }
+
+    fn emit_into(
+        model: &Stored,
+        jobs: &mut Vec<SkinJob>,
+        since: usize,
+        vertices: &mut u32,
+        first_part: u32,
+        paint: Paint,
+        stored: StoredPart,
+    ) {
+        let first = model.first + stored.first;
+        if jobs.len() > since
+            && let Some(job) = jobs.last_mut()
             && job.first + job.count == first
-            && job.part == self.first_part
-            && job.dst + job.count == *self.vertices
+            && job.part == first_part
+            && job.dst + job.count == *vertices
         {
             job.count += stored.count;
         } else {
-            self.jobs.push(SkinJob {
-                dst: *self.vertices,
-                ..paint.job(
-                    first,
-                    stored.count,
-                    self.first_part,
-                    u32::from(self.stored.cull),
-                )
+            jobs.push(SkinJob {
+                dst: *vertices,
+                ..paint.job(first, stored.count, first_part, u32::from(model.cull))
             });
         }
-        *self.vertices += stored.count;
+        *vertices += stored.count;
     }
 }
 
@@ -616,15 +862,7 @@ impl CachedWalk<'_> {
         let rotation = self.rotations.get(p);
         let m = super::render::posed_rotated(base, p, rotation.matrix);
         let normals = normals.part_rotated(p, rotation.normal);
-        let n = if normals.trusted {
-            normals.matrix
-        } else {
-            glam::Mat3::from_cols(
-                normals.matrix.x_axis.normalize_or_zero(),
-                normals.matrix.y_axis.normalize_or_zero(),
-                normals.matrix.z_axis.normalize_or_zero(),
-            )
-        };
+        let n = normal_matrix(normals);
         self.parts[index as usize] = SkinPart {
             matrix: m.to_cols_array(),
             normal: n.to_cols_array(),
@@ -683,6 +921,72 @@ mod tests {
     use crate::mobs::{Mob, MobData, MobTypes, render};
 
     #[test]
+    fn material_groups_reuse_the_part_matrices() {
+        let quad = serde_json::json!([[
+            [0, 0, 0, 0, 0],
+            [0, 16, 0, 0, 1],
+            [0, 16, 16, 1, 1],
+            [0, 0, 16, 1, 0]
+        ]]);
+        let model = Arc::new(Part::parse(
+            "root",
+            &serde_json::json!({
+                "pose": [0, 0, 0, 0, 0, 0, 1, 1, 1],
+                "children": {
+                    "arm": {"pose": [4, 2, 0, 0, 0, 0, 1, 1, 1], "polygons": quad, "normals": [[1, 0, 0]]},
+                    "leg": {"pose": [-4, 0, 0, 0, 0, 0, 1, 1, 1], "polygons": quad, "normals": [[1, 0, 0]]}
+                }
+            }),
+        ));
+        let paint = |color| Paint {
+            uv: [0.0, 0.0, 1.0, 1.0],
+            scroll: 0.0,
+            color,
+            light: 0x70a0,
+            overlay: 0,
+            bias: 0.0,
+        };
+        let base = glam::Mat4::from_translation(glam::Vec3::new(1.0, 2.0, -3.0))
+            * glam::Mat4::from_rotation_y(0.7);
+        let mut poses = Poses::new(&model);
+        poses.get("arm")[3] = 0.6;
+        poses.get("leg")[4] = -0.4;
+        let mut cpu = Vec::new();
+        for (skip, color) in [("leg", 0xff00_00ff), ("arm", 0xff00_ff00)] {
+            let mut own = Poses::default();
+            own.copy_from(&poses);
+            own.skip_draw(skip);
+            render::draw(
+                &model,
+                base,
+                &own,
+                [0.0, 0.0, 1.0, 1.0],
+                color,
+                0x70a0,
+                0,
+                &mut cpu,
+            );
+        }
+        let mut models = SkinModels::default();
+        let mut frame = SkinFrame::default();
+        models.begin(&mut frame, 0);
+        let mut skin = Skin::new(&mut models, &mut frame);
+        poses.skip_draw("leg");
+        assert!(skin.draw(&model, base, &poses, paint(0xff00_00ff)));
+        let parts = skin.frame.parts.len();
+        poses.clear_skips();
+        poses.skip_draw("arm");
+        assert!(skin.draw(&model, base, &poses, paint(0xff00_ff00)));
+        assert_eq!(skin.frame.parts.len(), parts);
+        let store = frame.new_model.clone();
+        let gpu = expand(&store, &frame);
+        assert_eq!(gpu.len(), cpu.len());
+        for (i, (a, b)) in gpu.iter().zip(&cpu).enumerate() {
+            assert_eq!(bytemuck::bytes_of(a), bytemuck::bytes_of(b), "vertex {i}");
+        }
+    }
+
+    #[test]
     fn rotation_cache_can_be_bypassed_between_frames() {
         let model = Arc::new(Part::parse(
             "root",
@@ -702,6 +1006,7 @@ mod tests {
             color: 0xff80_c0ff,
             light: 0x70a0,
             overlay: 0,
+            bias: 0.0,
         };
         for (i, enabled) in [false, true, false, true].into_iter().enumerate() {
             let mut poses = Poses::new(&model);
@@ -801,6 +1106,7 @@ mod tests {
                 color: 0xff80_c0ff,
                 light: 0x70a0,
                 overlay: 0,
+                bias: 0.0,
             };
             let mut expected = Vec::new();
             render::draw(
@@ -1077,7 +1383,8 @@ mod tests {
                     scroll: 0.0,
                     color: u32::MAX,
                     light: 0,
-                    overlay: 0
+                    overlay: 0,
+                    bias: 0.0,
                 },
             ));
             assert!(frame.jobs.iter().all(|j| j.cull == cull), "{id}");

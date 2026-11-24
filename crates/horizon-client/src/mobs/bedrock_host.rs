@@ -755,7 +755,15 @@ impl Host for MobHost<'_> {
             // The slot counts 0 head, 1 chest, 2 legs, 3 feet, 4 body.
             "has_armor_slot" => {
                 let slot = args.first().map_or(0.0, Value::num) as usize;
-                Value::bool(m.equipment_stacks().get(slot).is_some_and(|s| s.is_some()))
+                let equipment_slot = match slot {
+                    0 => horizon_items::equipment::HEAD,
+                    1 => horizon_items::equipment::CHEST,
+                    2 => horizon_items::equipment::LEGS,
+                    3 => horizon_items::equipment::FEET,
+                    4 => horizon_items::equipment::BODY,
+                    _ => return Value::bool(false),
+                };
+                Value::bool(m.equipment_stacks().get(equipment_slot).is_some())
             }
             "armor_material_slot" => {
                 let slot = args.first().map_or(0.0, Value::num) as usize;
@@ -1032,7 +1040,7 @@ pub(super) fn held_items(m: &Mob) -> Vec<(&'static str, Arc<str>)> {
 /// What each slot holds: as the pack's queries see it (`for_attachables` false: the sulfur
 /// cube's block in its main hand) or as attachables dress it.
 pub(super) fn slot_items(m: &Mob, for_attachables: bool) -> Vec<(&'static str, Arc<str>)> {
-    let e = &m.extra;
+    let e = m.equipment_stacks();
     // A sulfur cube's block is the Java mob's body slot. Bedrock draws it as a block on the
     // cube's `rightitem` bone, never through an attachable (the generic held-block one would
     // shrink and tilt it by the hand's animation): the game draws it there, and the pack's
@@ -1042,21 +1050,28 @@ pub(super) fn slot_items(m: &Mob, for_attachables: bool) -> Vec<(&'static str, A
         (
             "main_hand",
             match (cube, for_attachables) {
-                (true, true) => &None,
-                (true, false) => &e.body,
-                (false, _) => &e.main_hand,
+                (true, true) => None,
+                (true, false) => e.get(horizon_items::equipment::BODY),
+                (false, _) => e.get(horizon_items::equipment::MAINHAND),
             },
         ),
-        ("off_hand", &e.off_hand),
-        ("head", &e.head),
-        ("torso", &e.chest),
-        ("legs", &e.legs),
-        ("feet", &e.feet),
+        ("off_hand", e.get(horizon_items::equipment::OFFHAND)),
+        ("head", e.get(horizon_items::equipment::HEAD)),
+        ("torso", e.get(horizon_items::equipment::CHEST)),
+        ("legs", e.get(horizon_items::equipment::LEGS)),
+        ("feet", e.get(horizon_items::equipment::FEET)),
         // What the body slot holds: a harness, a horse's armour, a llama's carpet.
-        ("body", if cube { &None } else { &e.body }),
+        (
+            "body",
+            if cube {
+                None
+            } else {
+                e.get(horizon_items::equipment::BODY)
+            },
+        ),
     ]
     .into_iter()
-    .filter_map(|(slot, item)| Some((slot, item.clone()?)))
+    .filter_map(|(slot, item)| Some((slot, item?.item.clone())))
     .collect()
 }
 
@@ -1162,7 +1177,7 @@ pub(super) fn slot_enchanted(m: &Mob, slot: &str) -> bool {
         "feet" => (gear::FEET, m.extra.slot_stack(horizon_items::equipment::FEET)),
         _ => return false,
     };
-    stack.is_some_and(|s| s.has_foil(false)) || gear::enchanted(m, index)
+    stack.is_some_and(|s| s.has_foil(None)) || gear::enchanted(m, index)
 }
 
 impl Host for AttachHost<'_> {
