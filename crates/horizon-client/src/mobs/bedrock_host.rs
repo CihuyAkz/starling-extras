@@ -1213,7 +1213,7 @@ impl Host for AttachHost<'_> {
     fn context(&mut self, name: &str) -> Value {
         match name {
             "item_slot" => Value::Str(self.slot.into()),
-            "is_first_person" => Value::bool(self.inner.super::is_first_person(m)),
+            "is_first_person" => Value::bool(super::is_first_person(self.inner.m)),
             "owning_entity" => Value::Entity(u64::from(self.inner.m.id)),
             _ => Value::Null,
         }
