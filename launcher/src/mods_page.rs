@@ -37,44 +37,43 @@ pub(super) const SOURCES: [(SourceId, &str); 2] = [
 ];
 const PAGE: usize = 20;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum InstalledFilter {
+    #[default]
+    Java,
+    Horizon,
+}
+
+const INSTALLED_FILTERS: [(InstalledFilter, &str); 2] = [
+    (InstalledFilter::Java, "Java Mods"),
+    (InstalledFilter::Horizon, "Horizon Mods"),
+];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum InstalledItem {
-    Heading(&'static str),
     Entry(usize),
     Native(usize),
 }
 
-fn installed_items(
-    kind: PackKind,
-    sources: &[SourceId],
-    native_count: usize,
-) -> Vec<InstalledItem> {
-    if kind != PackKind::Mod {
-        return (0..sources.len()).map(InstalledItem::Entry).collect();
-    }
-
-    let java: Vec<usize> = sources
+fn installed_entry_indices(sources: &[SourceId], filter: InstalledFilter) -> Vec<usize> {
+    sources
         .iter()
         .enumerate()
-        .filter_map(|(index, source)| (*source != SourceId::Horizon).then_some(index))
-        .collect();
-    let horizon: Vec<usize> = sources
-        .iter()
-        .enumerate()
-        .filter_map(|(index, source)| (*source == SourceId::Horizon).then_some(index))
-        .collect();
-    let mut items = Vec::new();
+        .filter_map(|(index, source)| {
+            let visible = match filter {
+                InstalledFilter::Java => *source != SourceId::Horizon,
+                InstalledFilter::Horizon => *source == SourceId::Horizon,
+            };
+            visible.then_some(index)
+        })
+        .collect()
+}
 
-    if !java.is_empty() {
-        items.push(InstalledItem::Heading("Java Mods"));
-        items.extend(java.into_iter().map(InstalledItem::Entry));
-    }
-    if !horizon.is_empty() || native_count > 0 {
-        items.push(InstalledItem::Heading("Horizon Mods"));
-        items.extend(horizon.into_iter().map(InstalledItem::Entry));
-        items.extend((0..native_count).map(InstalledItem::Native));
-    }
-    items
+fn installed_items(entry_count: usize, native_count: usize) -> Vec<InstalledItem> {
+    (0..entry_count)
+        .map(InstalledItem::Entry)
+        .chain((0..native_count).map(InstalledItem::Native))
+        .collect()
 }
 
 #[path = "glass_mods.rs"]
@@ -125,6 +124,7 @@ pub(super) struct Mods {
     more: bool,
     error: Option<String>,
     pub(super) installed: Vec<installed::Entry>,
+    installed_filter: InstalledFilter,
     /// The registry native mods' versions the player picked on their Versions tab, by id
     /// (`horizon::chosen`), read with `installed`.
     pub(super) chosen: std::collections::BTreeMap<String, String>,
@@ -244,6 +244,7 @@ impl Mods {
             more: false,
             error: None,
             installed: Vec::new(),
+            installed_filter: InstalledFilter::Java,
             chosen: Default::default(),
             checked_for: None,
             loaded: false,
@@ -1413,43 +1414,65 @@ impl Launcher {
     fn mods_installed_list(&mut self, cx: &mut Context<Self>) -> Option<Div> {
         let t = self.theme;
         let kind = self.mods.kind;
-        // Each project's own icon (Modrinth's, asked for once), at the row's size.
+        let show_filter = kind == PackKind::Mod && self.mods.java.is_none();
+        let filter = self.mods.installed_filter;
         let ids = self
             .mods
             .installed
             .iter()
-            .filter(|e| e.kind == kind && e.source == SourceId::Modrinth)
-            .map(|e| e.project.clone())
+            .filter(|entry| {
+                entry.kind == kind
+                    && (!show_filter
+                        || match filter {
+                            InstalledFilter::Java => entry.source != SourceId::Horizon,
+                            InstalledFilter::Horizon => entry.source == SourceId::Horizon,
+                        })
+                    && entry.source == SourceId::Modrinth
+            })
+            .map(|entry| entry.project.clone())
             .collect();
         self.ask_project_icons(ids, cx);
-        let icons: Vec<Option<PathBuf>> = self
-            .mods
-            .installed
-            .clone()
-            .iter()
-            .filter(|e| e.kind == kind)
-            .map(|e| self.project_icon(e))
-            .collect();
-        let entries: Vec<&installed::Entry> = self
+        let all_entries: Vec<installed::Entry> = self
             .mods
             .installed
             .iter()
-            .filter(|e| e.kind == kind)
+            .filter(|entry| entry.kind == kind)
+            .cloned()
             .collect();
-        let native_entries = if kind == PackKind::Mod && self.mods.java.is_none() {
+        let all_native_entries = if show_filter {
             self.native_files()
         } else {
             Vec::new()
         };
-        if entries.is_empty() && native_entries.is_empty() {
+        if all_entries.is_empty() && all_native_entries.is_empty() {
             return None;
         }
+        let sources: Vec<SourceId> = all_entries.iter().map(|entry| entry.source).collect();
+        let visible_indices = if show_filter {
+            installed_entry_indices(&sources, filter)
+        } else {
+            (0..all_entries.len()).collect()
+        };
+        let entries: Vec<installed::Entry> = visible_indices
+            .iter()
+            .map(|index| all_entries[*index].clone())
+            .collect();
+        let native_entries = if show_filter && filter == InstalledFilter::Horizon {
+            all_native_entries
+        } else {
+            Vec::new()
+        };
+        let icons: Vec<Option<PathBuf>> = entries
+            .iter()
+            .map(|entry| self.project_icon(entry))
+            .collect();
         let busy = self.mods.busy.is_some();
-        let native = !native_entries.is_empty()
-            || self.mods.java.is_none()
-                && entries
+        let native = show_filter
+            && filter == InstalledFilter::Horizon
+            && (!native_entries.is_empty()
+                || entries
                     .iter()
-                    .any(|e| native_status::is_native_file(&e.file));
+                    .any(|entry| native_status::is_native_file(&entry.file)));
         let left_out = native
             .then(|| {
                 self.selected_instance()
@@ -1460,19 +1483,13 @@ impl Launcher {
             .map(|build| build.left_out)
             .unwrap_or_default();
         let instance = self.selected_instance().map(|i| i.name.clone());
-        let sources: Vec<SourceId> = entries.iter().map(|entry| entry.source).collect();
-        let lines = installed_items(kind, &sources, native_entries.len());
+        let lines = installed_items(entries.len(), native_entries.len());
         let row = |line: usize| match lines[line] {
-            InstalledItem::Heading(label) => div()
-                .px(px(18.))
-                .pt(px(12.))
-                .pb(px(4.))
-                .child(caps(tr(label)).text_color(t.muted)),
             InstalledItem::Native(index) => {
                 self.native_mod_row(&native_entries[index], busy, cx)
             }
             InstalledItem::Entry(i) => {
-                let e = entries[i];
+                let e = &entries[i];
                 let key = (e.source, e.project.clone());
                 let is_native =
                     self.mods.java.is_none() && native_status::is_native_file(&e.file);
@@ -1554,7 +1571,6 @@ impl Launcher {
                             .items_center()
                             .gap(px(8.))
                             .cursor_pointer()
-                            // Its id sits under the row's own, so one name serves every row.
                             .child(switch("mods-switch-knob", on, &t))
                             .child(text(theme::LABEL).text_color(t.ink_soft).child(if on {
                                 tr("On")
@@ -1655,7 +1671,6 @@ impl Launcher {
                 )
             }
         };
-        // Every kind's updates at once, whichever tab is open.
         let update_all = (!self.mods.updates.is_empty()).then(|| {
             let b = button(
                 "mods-update-all",
@@ -1682,11 +1697,44 @@ impl Launcher {
             |index| match lines[index] {
                 InstalledItem::Entry(entry) => entries
                     .get(entry)
-                    .is_some_and(|e| self.mods.confirm_remove.as_ref() == Some(&e.project)),
-                InstalledItem::Heading(_) | InstalledItem::Native(_) => false,
+                    .is_some_and(|entry| self.mods.confirm_remove.as_ref() == Some(&entry.project)),
+                InstalledItem::Native(_) => false,
             },
             row,
         );
+        let filter_switch = show_filter.then(|| {
+            segments(
+                "mods-installed-filter",
+                &INSTALLED_FILTERS,
+                filter,
+                &t,
+                {
+                    let this = cx.entity().downgrade();
+                    move |chosen, _, cx| {
+                        let _ = this.update(cx, |this, cx| {
+                            if this.mods.installed_filter != chosen {
+                                this.mods.installed_filter = chosen;
+                                this.mods.installed_list.reset();
+                            }
+                            cx.notify();
+                        });
+                    }
+                },
+            )
+        });
+        let mut actions = div().flex().items_center().flex_wrap().gap(px(8.));
+        actions = actions.children(filter_switch).children(update_all);
+        let empty = lines.is_empty().then(|| {
+            let message = match filter {
+                InstalledFilter::Java => "No Java Mods installed yet.",
+                InstalledFilter::Horizon => "No Horizon Mods installed yet.",
+            };
+            div()
+                .px(px(16.))
+                .py(px(12.))
+                .text_color(t.muted)
+                .child(tr(message))
+        });
         Some(
             div()
                 .flex()
@@ -1696,9 +1744,11 @@ impl Launcher {
                     div()
                         .flex()
                         .items_center()
+                        .flex_wrap()
                         .justify_between()
+                        .gap(px(8.))
                         .child(caps(tr("Installed")).text_color(t.muted))
-                        .children(update_all),
+                        .child(actions),
                 )
                 .children(native.then(|| self.native_build(cx)).flatten())
                 .children(
@@ -1706,7 +1756,8 @@ impl Launcher {
                         .iter()
                         .map(|left| div().text_color(t.warn).child(left.label())),
                 )
-                .child(list),
+                .children(empty)
+                .when(!lines.is_empty(), |page| page.child(list)),
         )
     }
 
@@ -1965,30 +2016,31 @@ mod tests {
     }
 
     #[test]
-    fn installed_mods_are_grouped_by_java_and_horizon_source() {
+    fn installed_filter_separates_java_and_horizon_mods() {
+        let sources = [SourceId::Horizon, SourceId::Modrinth, SourceId::CurseForge];
         assert_eq!(
-            installed_items(
-                PackKind::Mod,
-                &[SourceId::Horizon, SourceId::Modrinth, SourceId::CurseForge],
-                2,
-            ),
-            [
-                InstalledItem::Heading("Java Mods"),
-                InstalledItem::Entry(1),
-                InstalledItem::Entry(2),
-                InstalledItem::Heading("Horizon Mods"),
-                InstalledItem::Entry(0),
-                InstalledItem::Native(0),
-                InstalledItem::Native(1),
-            ]
+            installed_entry_indices(&sources, InstalledFilter::Java),
+            [1, 2]
+        );
+        assert_eq!(
+            installed_entry_indices(&sources, InstalledFilter::Horizon),
+            [0]
         );
     }
 
     #[test]
-    fn installed_non_mod_items_keep_their_existing_flat_layout() {
+    fn installed_rows_contain_only_the_selected_entries() {
         assert_eq!(
-            installed_items(PackKind::ResourcePack, &[SourceId::Horizon, SourceId::Modrinth], 0),
+            installed_items(2, 0),
             [InstalledItem::Entry(0), InstalledItem::Entry(1)]
+        );
+        assert_eq!(
+            installed_items(1, 2),
+            [
+                InstalledItem::Entry(0),
+                InstalledItem::Native(0),
+                InstalledItem::Native(1),
+            ]
         );
     }
 }

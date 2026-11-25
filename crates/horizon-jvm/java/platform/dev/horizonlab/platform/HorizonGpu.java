@@ -67,9 +67,38 @@ public final class HorizonGpu implements GpuDeviceBackend {
     private final DeviceInfo info;
     private final Encoder encoder = new Encoder();
     private static HorizonGpu device;
+    private static Boolean androidRuntime;
+    private static Boolean androidLwjglAvailable;
 
     private HorizonGpu(DeviceInfo info) {
         this.info = info;
+    }
+
+    private static boolean androidRuntime() {
+        if (androidRuntime != null) return androidRuntime;
+        try {
+            Class.forName("android.os.Build", false, HorizonGpu.class.getClassLoader());
+            androidRuntime = true;
+        } catch (ClassNotFoundException e) {
+            androidRuntime = false;
+        }
+        return androidRuntime;
+    }
+
+    private static synchronized boolean androidLwjglAvailable() {
+        if (androidLwjglAvailable != null) return androidLwjglAvailable;
+        try {
+            System.loadLibrary("lwjgl");
+            androidLwjglAvailable = true;
+        } catch (Throwable t) {
+            androidLwjglAvailable = false;
+            Natives.log("Horizon's client: Android LWJGL native check failed: " + t);
+        }
+        return androidLwjglAvailable;
+    }
+
+    public static boolean skipVulkanClientBootstrap() {
+        return androidRuntime();
     }
 
     /**
@@ -79,6 +108,10 @@ public final class HorizonGpu implements GpuDeviceBackend {
     public static synchronized boolean install() {
         if (device != null) return true;
         if ("0".equals(System.getenv("HORIZON_JAVA_GPU"))) return false;
+        if (androidRuntime() && !androidLwjglAvailable()) {
+            Natives.log("Horizon's client: the Android Java GPU bridge is disabled because liblwjgl.so is unavailable; Horizon's native renderer remains active, but Java mods that require RenderPearl GPU access will not render");
+            return false;
+        }
         String description;
         try {
             description = Gpu.open();

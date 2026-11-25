@@ -41,6 +41,7 @@ public final class HorizonConfiguration {
     /** The player configuring now and their listener (ConnectionMixin: what Fabric sends the connection). */
     private static ServerPlayer configuring;
     private static ServerConfigurationPacketListenerImpl configuringListener;
+    private static ClientConfigurationNetworking.Context configuringClientContext;
     private static final java.util.Set<Object> SET_UP = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private static boolean failedOnce;
 
@@ -81,10 +82,12 @@ public final class HorizonConfiguration {
             configuring = player;
             configuringListener = listener;
             try {
-                run(server, player, listener, addon);
+                configuringClientContext = clientContext(server, player, listener);
+                run(server, player, listener, addon, configuringClientContext);
             } finally {
                 configuring = null;
                 configuringListener = null;
+                configuringClientContext = null;
             }
         } catch (Throwable t) {
             log("a player's configuration failed", t);
@@ -92,7 +95,8 @@ public final class HorizonConfiguration {
     }
 
     private static void run(MinecraftServer server, ServerPlayer player, ServerConfigurationPacketListenerImpl listener,
-                            net.fabricmc.fabric.impl.networking.server.ServerConfigurationNetworkAddon addon) throws ReflectiveOperationException {
+                            net.fabricmc.fabric.impl.networking.server.ServerConfigurationNetworkAddon addon,
+                            ClientConfigurationNetworking.Context clientContext) throws ReflectiveOperationException {
         {
             addon.preConfiguration();
             addon.configuration();
@@ -109,7 +113,7 @@ public final class HorizonConfiguration {
                 if (DEBUG) Natives.log("loop: configuration task " + task.type().id() + " for " + player.getName().getString());
                 current.set(listener, task);
                 try {
-                    task.start(packet -> toClient(server, player, listener, packet));
+                    task.start(packet -> toClient(server, player, listener, clientContext, packet));
                     HorizonServer.runTasks();
                 } catch (Throwable t) {
                     log("the configuration task " + task.type().id() + " failed", t);
@@ -132,13 +136,14 @@ public final class HorizonConfiguration {
      */
     public static boolean sent(Packet<?> packet) {
         ServerPlayer player = configuring;
-        if (player != null) toClient(HorizonServer.server(), player, configuringListener, packet);
+        if (player != null) toClient(HorizonServer.server(), player, configuringListener, configuringClientContext, packet);
         return true;
     }
 
     /** A packet a task sends the client: a mod's payload goes to the client's configuration receiver. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void toClient(MinecraftServer server, ServerPlayer player, ServerConfigurationPacketListenerImpl listener, Packet<?> packet) {
+    private static void toClient(MinecraftServer server, ServerPlayer player, ServerConfigurationPacketListenerImpl listener,
+                                 ClientConfigurationNetworking.Context clientContext, Packet<?> packet) {
         if (!(packet instanceof ClientboundCustomPayloadPacket(CustomPacketPayload payload))) return;
         var handler = (ClientConfigurationNetworking.ConfigurationPayloadHandler) ClientNetworkingImpl.CONFIGURATION.getHandler(payload.type().id());
         if (DEBUG) Natives.log("loop: configuration, server to client " + payload.type().id() + (handler == null ? " (no receiver)" : ""));
@@ -146,7 +151,7 @@ public final class HorizonConfiguration {
         try {
             HorizonClient.as(player, () -> {
                 handler.receive(carried(payload, net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl.CLIENTBOUND_CONFIGURATION),
-                        clientContext(server, listener));
+                        clientContext);
                 HorizonClient.tasks();
             });
         } catch (Throwable t) {
@@ -166,7 +171,8 @@ public final class HorizonConfiguration {
         }
     }
 
-    private static ClientConfigurationNetworking.Context clientContext(MinecraftServer server, ServerConfigurationPacketListenerImpl listener) {
+    private static ClientConfigurationNetworking.Context clientContext(MinecraftServer server, ServerPlayer player,
+                                                                         ServerConfigurationPacketListenerImpl listener) {
         PacketSender sender = new PacketSender() {
             @Override
             public Packet<?> createPacket(CustomPacketPayload payload) {
@@ -188,6 +194,23 @@ public final class HorizonConfiguration {
                 Natives.log("Java mods: a mod's client asked to leave during its configuration: " + reason.getString());
             }
         };
+        var connection = HorizonServer.clientConnection();
+        var clientListener = (net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl)
+                Natives.allocate(net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl.class);
+        try {
+            HorizonClient.set(net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl.class,
+                    clientListener, "connection", connection);
+            HorizonClient.set(net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl.class,
+                    clientListener, "minecraft", Minecraft.getInstance());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("could not prepare the headless client configuration listener", e);
+        }
+        var packetContext = new net.fabricmc.fabric.impl.networking.context.PacketContextImpl(connection);
+        packetContext.set(net.fabricmc.fabric.impl.networking.context.PacketContextImpl.GAME_PROFILE, player.getGameProfile());
+        if (server != null) {
+            packetContext.set(net.fabricmc.fabric.impl.networking.context.PacketContextImpl.SERVER_INSTANCE, server);
+            packetContext.set(net.fabricmc.fabric.impl.networking.context.PacketContextImpl.REGISTRY_ACCESS, server.registryAccess());
+        }
         return new ClientConfigurationNetworking.Context() {
             @Override
             public Minecraft client() {
@@ -196,7 +219,12 @@ public final class HorizonConfiguration {
 
             @Override
             public net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl packetListener() {
-                return null;
+                return clientListener;
+            }
+
+            @Override
+            public net.fabricmc.fabric.api.networking.v1.context.PacketContext packetContext() {
+                return packetContext;
             }
 
             @Override

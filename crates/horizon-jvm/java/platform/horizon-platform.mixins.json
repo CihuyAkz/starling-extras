@@ -79,6 +79,7 @@
     "ClientChunkCacheMixin",
     "ClientPlayNetworkingMixin",
     "ClientCommonPacketListenerMixin",
+    "ClientBootstrapMixin",
     "ChatComponentMixin",
     "MinecraftProfileMixin",
     "ItemModelResolverMixin",
