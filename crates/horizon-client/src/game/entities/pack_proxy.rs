@@ -28,7 +28,7 @@ fn proxy_id(entity: &str, id: u32) -> u32 {
 
 impl Game<'_> {
     pub(super) fn pack_draws(&self, entity: &str) -> bool {
-        let bedrock = &self.mob_data().bedrock;
+        let bedrock = &self.res.mob_data().bedrock;
         !bedrock.is_empty() && bedrock.has_entity(entity)
     }
 
@@ -112,7 +112,7 @@ impl Game<'_> {
                 .borrow_mut()
                 .entry(proxy.entity.to_owned())
                 .or_insert_with(|| {
-                    let types = self.mob_types();
+                    let types = self.res.mob_types();
                     let base = types
                         .get("minecraft:mannequin")
                         .or_else(|| types.get("minecraft:zombie"))
@@ -130,7 +130,7 @@ impl Game<'_> {
         let now = self.world.game_time;
         let atlas = &self.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|rect| [rect.u0, rect.v0, rect.u1, rect.v1]);
-        let data = self.mob_data();
+        let data = self.res.mob_data();
         PROXIES.with(|proxies| {
             let mut proxies = proxies.borrow_mut();
             if proxies.len() > 256 {
