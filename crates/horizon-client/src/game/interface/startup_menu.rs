@@ -39,6 +39,11 @@ pub(super) struct StartupMenu {
     narration: horizon_client::screen_narrator::ScreenNarrator,
     /// Frames drawn, for `widgets::end_frame`.
     frames: u64,
+    pack_info_receiver: Option<
+        std::sync::mpsc::Receiver<Vec<horizon_client::pack_screen::PackInfo>>,
+    >,
+    pack_infos_started: bool,
+    languages_loaded: bool,
     /// The keyboard's focus (`key_focus`: Tab, the arrows, Enter); the
     /// pointer sits on it, as in the game.
     key_focus: Option<Target>,
@@ -121,6 +126,8 @@ impl StartupMenu {
             &settings.language,
         ));
         self.root = root;
+        self.languages_loaded = false;
+        self.options.languages.clear();
         if self.title.is_none() {
             let mut title = Title::new(
                 std::env::current_dir().unwrap_or_default().join("saves"),
@@ -714,8 +721,71 @@ impl Loading {
             }
         }
         self.drive_menu_mod_browser();
+        self.poll_menu_pack_infos();
         self.restart_menu_resources()
     }
+
+    fn poll_menu_pack_infos(&mut self) {
+        let result = match &self.menu.pack_info_receiver {
+            Some(receiver) => Some(receiver.try_recv()),
+            None => None,
+        };
+        match result {
+            Some(Ok(infos)) => {
+                if let Some(screen) = self.menu.options.pack_screen.take() {
+                    self.menu.options.pack_selection = screen.commit();
+                }
+                self.menu.options.pack_infos = infos;
+                self.menu.pack_info_receiver = None;
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                self.menu.pack_info_receiver = None;
+                log::warn!("Horizon: resource pack discovery stopped before returning its list");
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Empty)) | None => {}
+        }
+        if self.menu.options_open
+            && self.menu.options.page() == Page::Language
+            && !self.menu.languages_loaded
+        {
+            self.menu.options.languages = horizon_client::lang::available(&[
+                &horizon_assets::resource_source::ResourceSource::directory(
+                    self.menu.root.clone(),
+                ),
+            ]);
+            self.menu.languages_loaded = true;
+        }
+        if self.menu.options_open
+            && self.menu.options.page() == Page::Packs
+            && !self.menu.pack_infos_started
+        {
+            self.start_menu_pack_infos();
+        }
+    }
+
+    fn start_menu_pack_infos(&mut self) {
+        self.menu.pack_infos_started = true;
+        let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
+            let packs = super::pack_finders::discover(
+                mod_api::PackType::ClientResources,
+                &options.mods,
+            );
+            packs.iter().map(super::packs::pack_info).collect()
+        });
+        let vanilla = self.vanilla_root.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = horizon_guest_stack::builder()
+            .name("resource-pack-discovery".into())
+            .spawn(move || {
+                let infos = super::packs::menu_pack_infos(&vanilla, additional);
+                let _ = sender.send(infos);
+            });
+        match worker {
+            Ok(_) => self.menu.pack_info_receiver = Some(receiver),
+            Err(error) => log::warn!("Horizon: could not start resource pack discovery: {error}"),
+        }
+    }
+
     /// The startup menu's Browse mods, as `Game::drive_mod_browser`.
     fn drive_menu_mod_browser(&mut self) {
         let menu = &mut self.menu;
@@ -808,14 +878,12 @@ impl Loading {
     }
 
     pub(super) fn open_menu_options(&mut self, page: Page) {
+        if matches!(page, Page::Main | Page::Packs)
+            && self.menu.pack_info_receiver.is_none()
+        {
+            self.menu.pack_infos_started = false;
+        }
         self.menu.options.open_at(false, page);
-        self.menu.options.languages = horizon_client::lang::available(&[
-            &horizon_assets::resource_source::ResourceSource::directory(self.menu.root.clone()),
-        ]);
-        let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
-            super::pack_finders::discover(mod_api::PackType::ClientResources, &options.mods)
-        });
-        self.menu.options.pack_infos = packs::pack_infos(&self.vanilla_root, &[], &additional);
         self.menu.options.pack_selection = self.settings.resource_packs.clone();
         self.menu.options.pack_screen = None;
         self.menu.options_open = true;
@@ -886,6 +954,8 @@ impl Loading {
                     packs::open_folder(&dir);
                 }
                 Event::ImportPacks(paths) => {
+                    self.menu.pack_info_receiver = None;
+                    self.menu.pack_infos_started = true;
                     let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
                         super::pack_finders::discover(
                             mod_api::PackType::ClientResources,

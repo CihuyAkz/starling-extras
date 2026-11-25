@@ -148,6 +148,20 @@ fn vanilla_info(vanilla: &Path) -> PackInfo {
 }
 /// Packs the Resource Packs screen lists: folder and built-in packs, then any
 /// active downloaded server (or world) packs, then vanilla.
+pub(super) fn pack_info(pack: &Pack) -> PackInfo {
+    info(pack)
+}
+
+pub(super) fn menu_pack_infos(vanilla: &Path, additional: Vec<PackInfo>) -> Vec<PackInfo> {
+    let mut infos: Vec<PackInfo> = packs::discover(vanilla, &packs_dir())
+        .iter()
+        .map(info)
+        .collect();
+    infos.extend(additional);
+    infos.push(vanilla_info(vanilla));
+    infos
+}
+
 pub(super) fn pack_infos(vanilla: &Path, server: &[Pack], additional: &[Pack]) -> Vec<PackInfo> {
     let mut infos: Vec<PackInfo> = packs::discover(vanilla, &packs_dir())
         .iter()
