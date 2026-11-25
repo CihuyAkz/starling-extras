@@ -57,6 +57,14 @@ pub fn choose_setting(
 }
 
 /// The settings the Bedrock pack at `path` offers, labels in English.
+pub fn preview_name(path: &Path) -> Option<String> {
+    Pack::open_all(path, &Options::default())
+        .ok()?
+        .into_iter()
+        .find(|pack| pack.manifest().is_resource_pack())
+        .map(|pack| pack.manifest().name.clone())
+}
+
 pub fn settings(path: &Path) -> Vec<horizon_bedrock::settings::Def> {
     Pack::open_all(path, &Options::default())
         .ok()
@@ -378,6 +386,58 @@ mod tests {
             packs[0].compatibility,
             crate::pack_screen::Compat::Compatible
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_a_mcpack_reads_only_its_manifest_until_selected() {
+        use std::io::Write;
+        let root = tmp("mcpack-lazy-listing");
+        let dir = root.join("resourcepacks");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Demo.mcpack");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&file).unwrap());
+        zip.start_file("manifest.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(
+            br#"{"format_version":2,"header":{"name":"Demo","uuid":"00000000-0000-0000-0000-000000000001","version":[1,0,0]},"modules":[{"type":"resources","uuid":"00000000-0000-0000-0000-000000000002","version":[1,0,0]}]}"#,
+        )
+        .unwrap();
+        zip.finish().unwrap();
+        let listed = super::super::folder(&dir, super::super::RESOURCE_FORMAT);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "file/Demo.mcpack");
+        assert!(listed[0].selection.is_some());
+        assert!(!root.join(".horizon-cache/bedrock").exists());
+        let selected = super::super::folder_selected(
+            &dir,
+            super::super::RESOURCE_FORMAT,
+            &["file/Demo.mcpack".to_owned()],
+        );
+        assert_eq!(selected.len(), 1);
+        assert!(selected[0].selection.is_none());
+        assert!(root.join(".horizon-cache/bedrock").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_a_bedrock_pack_does_not_convert_until_selected() {
+        let root = tmp("lazy-listing");
+        let dir = root.join("resourcepacks");
+        pack(&dir.join("Demo"));
+        let listed = super::super::folder(&dir, super::super::RESOURCE_FORMAT);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "file/Demo");
+        assert!(listed[0].selection.is_some());
+        assert!(!root.join(".horizon-cache/bedrock").exists());
+        let selected = super::super::folder_selected(
+            &dir,
+            super::super::RESOURCE_FORMAT,
+            &["file/Demo".to_owned()],
+        );
+        assert_eq!(selected.len(), 1);
+        assert!(root.join(".horizon-cache/bedrock").exists());
+        assert!(selected[0].selection.is_none());
         let _ = fs::remove_dir_all(&root);
     }
 

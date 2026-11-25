@@ -6,6 +6,7 @@
 mod cache;
 mod import;
 pub mod bedrock;
+use crate::pack_screen::{Compat, PackInfo, Source as PackSource};
 use crate::resource_source::stays_inside;
 use crate::text::Style;
 use crate::text::Text;
@@ -728,13 +729,16 @@ fn folder_matching(
             {
                 Source::Zip(path.clone())
             } else if bedrock_file {
-                let converted = bedrock_pack(dir, &path, &name, format)?;
-                return Some(converted);
+                return if selected.is_some() {
+                    bedrock_pack(dir, &path, &name, format)
+                } else {
+                    bedrock_preview_pack(&path, pack_id, &name)
+                };
             } else {
                 return None;
             };
             if let Some(pack) = pack_for(
-                pack_id,
+                pack_id.clone(),
                 Text::literal(name.clone()),
                 source,
                 format,
@@ -742,14 +746,59 @@ fn folder_matching(
                 return Some(pack);
             }
             let has_manifest = path.is_dir() && path.join("manifest.json").is_file();
-            (bedrock_file || has_manifest || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")))
-                .then(|| bedrock_pack(dir, &path, &name, format))?
+            if has_manifest || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+                if selected.is_some() {
+                    bedrock_pack(dir, &path, &name, format)
+                } else {
+                    bedrock_preview_pack(&path, pack_id, &name)
+                }
+            } else {
+                None
+            }
         })
         .collect();
     user.sort_by(|a, b| a.id.cmp(&b.id));
     user
 }
 
+
+fn bedrock_preview_pack(path: &Path, id: String, name: &str) -> Option<Pack> {
+    let manifest_name = bedrock::preview_name(path)?;
+    let title = Text::literal(name);
+    let description = Text::literal(format!("Bedrock: {manifest_name}"));
+    let description_style = Style::default();
+    let selection = PackInfo {
+        id: id.clone(),
+        title: title.clone(),
+        description: description.clone(),
+        description_style: description_style.clone(),
+        source: PackSource::Default,
+        compat: Compat::Compatible,
+        icon: None,
+        required: false,
+        position: Position::Top,
+        fixed: false,
+        hidden: false,
+    };
+    Some(Pack {
+        id,
+        source: if path.is_dir() {
+            Source::Dir(path.to_path_buf())
+        } else {
+            Source::Zip(path.to_path_buf())
+        },
+        title,
+        description: description.clone(),
+        raw_description: description,
+        description_style,
+        compatible: true,
+        compatibility: Compat::Compatible,
+        overlays: Vec::new(),
+        polytone_configs: horizon_polytone::pack::Configs::default(),
+        filter: Vec::new(),
+        selection: Some(selection),
+    })
+}
 
 fn bedrock_pack(dir: &Path, path: &Path, name: &str, format: (i64, i64)) -> Option<Pack> {
     let cache = dir
