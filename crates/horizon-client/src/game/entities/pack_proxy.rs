@@ -28,7 +28,13 @@ fn proxy_id(entity: &str, id: u32) -> u32 {
 
 impl Game<'_> {
     pub(super) fn pack_draws(&self, entity: &str) -> bool {
-        let bedrock = &self.res.mob_data().bedrock;
+        let bedrock = self
+            .res
+            .mob_data()
+            .bedrock
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         !bedrock.is_empty() && bedrock.has_entity(entity)
     }
 
