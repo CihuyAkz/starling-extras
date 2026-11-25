@@ -62,7 +62,7 @@ pub fn startup_root(
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
 ) -> horizon_client::Result<horizon_assets::resource_source::ResourceRoot> {
-    let mut all = packs::discover(vanilla, &packs_dir());
+    let mut all = packs::discover_selected(vanilla, &packs_dir(), selected);
     all.extend(super::pack_finders::discover(
         mod_api::PackType::ClientResources,
         mod_sources,

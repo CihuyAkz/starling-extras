@@ -656,10 +656,32 @@ pub fn discover(resources: &Path, packs_dir: &Path) -> Vec<Pack> {
     out.extend(folder(packs_dir, RESOURCE_FORMAT));
     out
 }
+
+pub fn discover_selected(resources: &Path, packs_dir: &Path, selected: &[String]) -> Vec<Pack> {
+    let mut out = Vec::new();
+    for (id, key) in [
+        ("programmer_art", "resourcePack.programmer_art.name"),
+        ("high_contrast", "resourcePack.high_contrast.name"),
+    ] {
+        if selected.iter().any(|entry| entry == id) {
+            let z = resources.join(format!("assets/minecraft/resourcepacks/{id}.zip"));
+            if z.exists()
+                && let Some(p) = pack(id.into(), Text::translate(key, &[]), Source::Zip(z))
+            {
+                out.push(p);
+            }
+        }
+    }
+    out.extend(folder_selected(packs_dir, RESOURCE_FORMAT, selected));
+    out
+}
 /// The packs (folders and zips) in `dir`, by name, as `FolderRepositorySource`
 /// finds them; their compatibility is against `format`.
 pub fn folder(dir: &Path, format: (i64, i64)) -> Vec<Pack> {
     folder_with(dir, format, &DirectoryValidator::game())
+}
+pub fn folder_selected(dir: &Path, format: (i64, i64), selected: &[String]) -> Vec<Pack> {
+    folder_matching(dir, format, &DirectoryValidator::game(), Some(selected))
 }
 /// [`folder`] under an explicit `allowed_symlinks.txt` validator.
 pub(crate) fn folder_with(
@@ -667,12 +689,24 @@ pub(crate) fn folder_with(
     format: (i64, i64),
     validator: &DirectoryValidator,
 ) -> Vec<Pack> {
+    folder_matching(dir, format, validator, None)
+}
+fn folder_matching(
+    dir: &Path,
+    format: (i64, i64),
+    validator: &DirectoryValidator,
+    selected: Option<&[String]>,
+) -> Vec<Pack> {
     let mut user: Vec<Pack> = fs::read_dir(dir)
         .into_iter()
         .flatten()
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
+            let pack_id = format!("file/{name}");
+            if selected.is_some_and(|ids| !ids.iter().any(|id| id == &pack_id)) {
+                return None;
+            }
             let entry = e.path();
             let path = match detected_pack_path(&entry, validator) {
                 Ok(Some(path)) => path,
@@ -700,7 +734,7 @@ pub(crate) fn folder_with(
                 return None;
             };
             if let Some(pack) = pack_for(
-                format!("file/{name}"),
+                pack_id,
                 Text::literal(name.clone()),
                 source,
                 format,
