@@ -669,7 +669,7 @@ impl super::Game<'_> {
                     "Minecraft resources imported",
                     "Restart the game to use them".into(),
                 ),
-                Some(Kind::ResourcePack) => self.refresh_pack_lists(),
+                Some(Kind::ResourcePack) => self.refresh_pack_lists_async(),
                 // The Mods page lists it at once; a mod with code runs as soon as it is turned on.
                 Some(Kind::Mod | Kind::NativeMod) => self.start_mods(),
                 // A skin is worn at once (Skin Customization's Choose a File...).

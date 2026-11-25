@@ -152,63 +152,88 @@ pub(super) fn pack_info(pack: &Pack) -> PackInfo {
     info(pack)
 }
 
-pub(super) fn menu_pack_infos(vanilla: &Path, additional: Vec<PackInfo>) -> Vec<PackInfo> {
-    let mut infos: Vec<PackInfo> = packs::discover(vanilla, &packs_dir())
-        .iter()
-        .map(info)
-        .collect();
-    infos.extend(additional);
-    infos.push(vanilla_info(vanilla));
-    infos
+pub(super) fn downloaded_pack_info(pack: &Pack) -> PackInfo {
+    downloaded_info(pack)
 }
 
-pub(super) fn pack_infos(vanilla: &Path, server: &[Pack], additional: &[Pack]) -> Vec<PackInfo> {
-    let mut infos: Vec<PackInfo> = packs::discover(vanilla, &packs_dir())
-        .iter()
-        .map(info)
-        .collect();
-    infos.extend(additional.iter().map(info));
-    infos.extend(server.iter().map(downloaded_info));
-    infos.push(vanilla_info(vanilla));
-    infos
+pub(crate) struct PackListResult {
+    pub infos: Vec<PackInfo>,
+    pub configs: std::collections::BTreeMap<String, packs::Configs>,
+    pub copy_failed: bool,
 }
-/// The folder packs' Polytone config entries (#11486), by pack id, for those that have some:
-/// what the Pack Options page edits.
-pub(super) fn pack_configs(vanilla: &Path) -> std::collections::BTreeMap<String, packs::Configs> {
-    packs::discover(vanilla, &packs_dir())
+
+fn pack_lists(
+    vanilla: &Path,
+    server: &[PackInfo],
+    additional: &[PackInfo],
+    copy_failed: bool,
+) -> PackListResult {
+    let discovered = packs::discover(vanilla, &packs_dir());
+    let mut infos: Vec<PackInfo> = discovered.iter().map(info).collect();
+    infos.extend(additional.iter().cloned());
+    infos.extend(server.iter().cloned());
+    infos.push(vanilla_info(vanilla));
+    let configs = discovered
         .into_iter()
         .filter(|p| !p.polytone_configs.entries().is_empty())
         .map(|p| (p.id, p.polytone_configs))
-        .collect()
+        .collect();
+    PackListResult {
+        infos,
+        configs,
+        copy_failed,
+    }
 }
 
-/// The confirmation's callback, shared by the startup menu and in-game options.
-pub(super) fn import_resource_packs(
-    ui: &mut horizon_client::options_ui::OptionsUi,
-    vanilla: &Path,
-    server: &[Pack],
-    paths: &[PathBuf],
-    additional: &[Pack],
-) {
+pub(super) fn pack_infos(vanilla: &Path, server: &[Pack], additional: &[Pack]) -> Vec<PackInfo> {
+    let server: Vec<_> = server.iter().map(downloaded_info).collect();
+    let additional: Vec<_> = additional.iter().map(info).collect();
+    pack_lists(vanilla, &server, &additional, false).infos
+}
+
+pub(super) fn spawn_pack_discovery(
+    vanilla: PathBuf,
+    server: Vec<PackInfo>,
+    additional: Vec<PackInfo>,
+) -> std::io::Result<std::sync::mpsc::Receiver<PackListResult>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    horizon_guest_stack::builder()
+        .name("resource-pack-discovery".into())
+        .spawn(move || {
+            let result = pack_lists(&vanilla, &server, &additional, false);
+            let _ = sender.send(result);
+        })?;
+    Ok(receiver)
+}
+
+pub(super) fn spawn_pack_import(
+    vanilla: PathBuf,
+    server: Vec<PackInfo>,
+    paths: Vec<PathBuf>,
+    additional: Vec<PackInfo>,
+) -> std::io::Result<std::sync::mpsc::Receiver<PackListResult>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
     let dir = packs_dir();
-    let mut failed = false;
-    for path in paths {
-        match packs::copy_pack(path, &dir) {
-            Ok(()) => log::info!("Horizon: added resource pack {}", path.display()),
-            Err(error) => {
-                log::warn!(
-                    "Horizon: could not copy resource pack {}: {error}",
-                    path.display()
-                );
-                failed = true;
+    horizon_guest_stack::builder()
+        .name("resource-pack-import".into())
+        .spawn(move || {
+            let mut failed = false;
+            for path in paths {
+                match packs::copy_pack(&path, &dir) {
+                    Ok(()) => log::info!("Horizon: added resource pack {}", path.display()),
+                    Err(error) => {
+                        log::warn!(
+                            "Horizon: could not copy resource pack {}: {error}",
+                            path.display()
+                        );
+                        failed = true;
+                    }
+                }
             }
-        }
-    }
-    ui.update_pack_infos(pack_infos(vanilla, server, additional));
-    ui.pack_configs = pack_configs(vanilla);
-    if failed {
-        ui.resource_error = Some(Text::translate("pack.copyFailure", &[]).plain());
-    }
+            let result = pack_lists(&vanilla, &server, &additional, failed);
+            let _ = sender.send(result);
+        })?;
+    Ok(receiver)
 }
 /// The player changed Pack Options: `chosen` replaces their choices for `entries`, kept in
 /// `polytone-configs.json`.
@@ -239,10 +264,6 @@ impl Game<'_> {
             title.drop_file(path.to_path_buf());
         }
     }
-    pub(super) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
-        let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
-        pack_infos(&self.vanilla_root(), &self.server_packs.active, &additional)
-    }
     pub(super) fn vanilla_root(&self) -> PathBuf {
         if self.ui.vanilla_root.as_os_str().is_empty() {
             self.options.resources.clone()
@@ -270,15 +291,50 @@ impl Game<'_> {
     /// The packs the pack screen offers and the current selection
     /// (`PackSelectionScreen` makes its `PackSelectionModel` from them).
     pub(super) fn refresh_pack_lists(&mut self) {
-        let infos = self.resource_pack_infos();
-        let configs = pack_configs(&self.vanilla_root());
+        let additional = self
+            .discover_mod_packs(mod_api::PackType::ClientResources)
+            .iter()
+            .map(info)
+            .collect::<Vec<_>>();
+        let server = self
+            .server_packs
+            .active
+            .iter()
+            .map(downloaded_info)
+            .collect::<Vec<_>>();
+        let result = pack_lists(&self.vanilla_root(), &server, &additional, false);
         let browsing = self.settings.extras.pack_browser;
         let o = &mut self.ui.options;
         o.pack_browser = browsing;
-        o.pack_infos = infos;
-        o.pack_configs = configs;
+        o.pack_infos = result.infos;
+        o.pack_configs = result.configs;
         o.pack_selection = self.settings.resource_packs.clone();
         o.pack_screen = None;
+    }
+    pub(super) fn refresh_pack_lists_async(&mut self) {
+        let browsing = self.settings.extras.pack_browser;
+        self.ui.options.pack_browser = browsing;
+        self.ui.options.pack_selection = self.settings.resource_packs.clone();
+        self.ui.options.pack_screen = None;
+        self.pack_list_receiver = None;
+        let vanilla = self.vanilla_root();
+        let server = self
+            .server_packs
+            .active
+            .iter()
+            .map(downloaded_info)
+            .collect();
+        let additional = self
+            .discover_mod_packs(mod_api::PackType::ClientResources)
+            .iter()
+            .map(info)
+            .collect();
+        match spawn_pack_discovery(vanilla, server, additional) {
+            Ok(receiver) => self.pack_list_receiver = Some(receiver),
+            Err(error) => {
+                log::warn!("Horizon: could not start resource pack discovery: {error}");
+            }
+        }
     }
     /// `Minecraft.reloadResourcePacks`: rebuild the overlay and reload every
     /// client resource from it, as vanilla's reload listeners do: block
@@ -315,14 +371,24 @@ impl Game<'_> {
         }
         if let pack_browser::Message::Downloaded(name) = message {
             log::info!("Horizon: added the resource pack {name}");
-            // Rebuilding the screen would shut the list; keep it and only
-            // refresh what the lists read.
-            let selection = self.settings.resource_packs.clone();
-            let infos = self.resource_pack_infos();
-            self.ui.options.pack_infos = infos;
-            self.ui.options.pack_configs = pack_configs(&self.vanilla_root());
-            self.ui.options.pack_selection = selection;
+            self.ui.options.pack_selection = self.settings.resource_packs.clone();
             self.ui.options.pack_screen = None;
+            let vanilla = self.vanilla_root();
+            let server = self
+            .server_packs
+            .active
+            .iter()
+            .map(downloaded_info)
+            .collect();
+            let additional = self
+                .discover_mod_packs(mod_api::PackType::ClientResources)
+                .iter()
+                .map(info)
+                .collect();
+            match spawn_pack_discovery(vanilla, server, additional) {
+                Ok(receiver) => self.pack_list_receiver = Some(receiver),
+                Err(error) => log::warn!("Horizon: could not refresh resource packs: {error}"),
+            }
         }
     }
     pub(super) fn reload_packs(&mut self) {

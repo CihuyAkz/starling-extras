@@ -16,6 +16,22 @@ use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 /// `CommonLinks.ACCESSIBILITY_HELP`, the Accessibility page's footer link.
 pub(super) const ACCESSIBILITY_HELP_LINK: &str = "https://aka.ms/MinecraftJavaAccessibility";
 
+fn resource_pack_folder_signature() -> Vec<(String, u64, Option<std::time::SystemTime>)> {
+    std::fs::read_dir(super::packs::packs_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| {
+            let metadata = entry.metadata().ok();
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                metadata.as_ref().map_or(0, |metadata| metadata.len()),
+                metadata.and_then(|metadata| metadata.modified().ok()),
+            )
+        })
+        .collect()
+}
+
 pub(super) const CONTROL_HELP: &[&str] = &[
     "options-get [KEY...]           options.txt values by key, with their type, range or choices",
     "options-set KEY VALUE          set an option (enums by name, keys as key.keyboard.w, lists as JSON), apply and save it",
@@ -235,14 +251,44 @@ impl Game<'_> {
         ui.open_at(!from_title && self.title.is_none(), page);
         ui.minecart_improvements = minecart_improvements;
         ui.languages = lang::available(&[&self.pack.source]);
-        self.refresh_pack_lists();
+        self.refresh_pack_lists_async();
     }
     /// While the resource pack screen is open, `resourcepacks/` is looked at once a second
     /// and the list found again when its packs changed (`PackSelectionScreen.tick`'s
     /// watcher).
+    fn poll_pack_list_receiver(&mut self) {
+        let result = match &self.pack_list_receiver {
+            Some(receiver) => Some(receiver.try_recv()),
+            None => None,
+        };
+        match result {
+            Some(Ok(result)) => {
+                self.ui.options.update_pack_infos(result.infos);
+                self.ui.options.pack_configs = result.configs;
+                if result.copy_failed {
+                    self.ui.options.resource_error = Some(
+                        horizon_client::text::Text::translate("pack.copyFailure", &[]).plain(),
+                    );
+                }
+                self.pack_folder = Some((
+                    std::time::Instant::now(),
+                    resource_pack_folder_signature(),
+                ));
+                self.pack_list_receiver = None;
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                self.pack_list_receiver = None;
+                log::warn!("Horizon: resource pack worker stopped before returning its list");
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Empty)) | None => {}
+        }
+    }
     fn watch_pack_folder(&mut self) {
         if !self.ui.options.resource_packs_open() {
             self.pack_folder = None;
+            return;
+        }
+        if self.pack_list_receiver.is_some() {
             return;
         }
         let now = std::time::Instant::now();
@@ -253,32 +299,33 @@ impl Game<'_> {
         {
             return;
         }
-        let signature: Vec<(String, u64, Option<std::time::SystemTime>)> =
-            std::fs::read_dir(super::packs::packs_dir())
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| {
-                    let meta = e.metadata().ok();
-                    (
-                        e.file_name().to_string_lossy().into_owned(),
-                        meta.as_ref().map_or(0, |m| m.len()),
-                        meta.and_then(|m| m.modified().ok()),
-                    )
-                })
-                .collect();
+        let signature = resource_pack_folder_signature();
         let changed = self
             .pack_folder
             .as_ref()
             .is_some_and(|(_, seen)| *seen != signature);
         self.pack_folder = Some((now, signature));
         if changed {
-            let infos = self.resource_pack_infos();
-            self.ui.options.update_pack_infos(infos);
-            self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
+            let vanilla = self.vanilla_root();
+            let server = self
+                .server_packs
+                .active
+                .iter()
+                .map(super::packs::downloaded_pack_info)
+                .collect();
+            let additional = self
+                .discover_mod_packs(mod_api::PackType::ClientResources)
+                .iter()
+                .map(super::packs::pack_info)
+                .collect();
+            match super::packs::spawn_pack_discovery(vanilla, server, additional) {
+                Ok(receiver) => self.pack_list_receiver = Some(receiver),
+                Err(error) => log::warn!("Horizon: could not start resource pack discovery: {error}"),
+            }
         }
     }
     pub(super) fn draw_options(&mut self, batch: &mut HudBatch) {
+        self.poll_pack_list_receiver();
         self.watch_pack_folder();
         self.poll_diagnostics();
         self.perf_calibrate_page();
@@ -564,7 +611,6 @@ impl Game<'_> {
                 }
                 Event::PackOptions { entries, chosen } => {
                     super::packs::save_pack_options(&entries, chosen);
-                    self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
                     self.reload_packs();
                 }
                 Event::OpenPackFolder => self.open_game_folder(&super::packs::packs_dir()),
@@ -572,15 +618,27 @@ impl Game<'_> {
                     self.open_game_folder(&Self::game_dir().join(horizon_client::mod_list::DIR))
                 }
                 Event::ImportPacks(paths) => {
-                    let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
                     let vanilla = self.vanilla_root();
-                    super::packs::import_resource_packs(
-                        &mut self.ui.options,
-                        &vanilla,
-                        &self.server_packs.active,
-                        &paths,
-                        &additional,
-                    );
+                    let server = self
+                        .server_packs
+                        .active
+                        .iter()
+                        .map(super::packs::downloaded_pack_info)
+                        .collect();
+                    let additional = self
+                        .discover_mod_packs(mod_api::PackType::ClientResources)
+                        .iter()
+                        .map(super::packs::pack_info)
+                        .collect();
+                    match super::packs::spawn_pack_import(vanilla, server, paths, additional) {
+                        Ok(receiver) => self.pack_list_receiver = Some(receiver),
+                        Err(error) => {
+                            log::warn!("Horizon: could not start resource pack import: {error}");
+                            self.ui.options.resource_error = Some(
+                                horizon_client::text::Text::translate("pack.copyFailure", &[]).plain(),
+                            );
+                        }
+                    }
                 }
                 // Horizon's own Add button: the screen picked a hit, the game
                 // owns the folder it lands in.

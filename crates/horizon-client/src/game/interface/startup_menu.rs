@@ -39,9 +39,7 @@ pub(super) struct StartupMenu {
     narration: horizon_client::screen_narrator::ScreenNarrator,
     /// Frames drawn, for `widgets::end_frame`.
     frames: u64,
-    pack_info_receiver: Option<
-        std::sync::mpsc::Receiver<Vec<horizon_client::pack_screen::PackInfo>>,
-    >,
+    pack_info_receiver: Option<std::sync::mpsc::Receiver<super::packs::PackListResult>>,
     pack_infos_started: bool,
     languages_loaded: bool,
     /// The keyboard's focus (`key_focus`: Tab, the arrows, Enter); the
@@ -731,11 +729,17 @@ impl Loading {
             None => None,
         };
         match result {
-            Some(Ok(infos)) => {
+            Some(Ok(result)) => {
                 if let Some(screen) = self.menu.options.pack_screen.take() {
                     self.menu.options.pack_selection = screen.commit();
                 }
-                self.menu.options.pack_infos = infos;
+                self.menu.options.pack_infos = result.infos;
+                self.menu.options.pack_configs = result.configs;
+                if result.copy_failed {
+                    self.menu.options.resource_error = Some(
+                        horizon_client::text::Text::translate("pack.copyFailure", &[]).plain(),
+                    );
+                }
                 self.menu.pack_info_receiver = None;
             }
             Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
@@ -766,22 +770,13 @@ impl Loading {
     fn start_menu_pack_infos(&mut self) {
         self.menu.pack_infos_started = true;
         let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
-            let packs = super::pack_finders::discover(
-                mod_api::PackType::ClientResources,
-                &options.mods,
-            );
-            packs.iter().map(super::packs::pack_info).collect()
+            super::pack_finders::discover(mod_api::PackType::ClientResources, &options.mods)
+                .iter()
+                .map(super::packs::pack_info)
+                .collect()
         });
-        let vanilla = self.vanilla_root.clone();
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let worker = horizon_guest_stack::builder()
-            .name("resource-pack-discovery".into())
-            .spawn(move || {
-                let infos = super::packs::menu_pack_infos(&vanilla, additional);
-                let _ = sender.send(infos);
-            });
-        match worker {
-            Ok(_) => self.menu.pack_info_receiver = Some(receiver),
+        match super::packs::spawn_pack_discovery(self.vanilla_root.clone(), Vec::new(), additional) {
+            Ok(receiver) => self.menu.pack_info_receiver = Some(receiver),
             Err(error) => log::warn!("Horizon: could not start resource pack discovery: {error}"),
         }
     }
@@ -945,7 +940,6 @@ impl Loading {
                 }
                 Event::PackOptions { entries, chosen } => {
                     packs::save_pack_options(&entries, chosen);
-                    self.menu.options.pack_configs = packs::pack_configs(&self.vanilla_root);
                     self.menu.reload_packs = true;
                 }
                 Event::OpenPackFolder => {
@@ -961,14 +955,24 @@ impl Loading {
                             mod_api::PackType::ClientResources,
                             &options.mods,
                         )
+                        .iter()
+                        .map(super::packs::pack_info)
+                        .collect()
                     });
-                    packs::import_resource_packs(
-                        &mut self.menu.options,
-                        &self.vanilla_root,
-                        &[],
-                        &paths,
-                        &additional,
-                    );
+                    match packs::spawn_pack_import(
+                        self.vanilla_root.clone(),
+                        Vec::new(),
+                        paths,
+                        additional,
+                    ) {
+                        Ok(receiver) => self.menu.pack_info_receiver = Some(receiver),
+                        Err(error) => {
+                            log::warn!("Horizon: could not start resource pack import: {error}");
+                            self.menu.options.resource_error = Some(
+                            horizon_client::text::Text::translate("pack.copyFailure", &[]).plain(),
+                        );
+                        }
+                    }
                 }
                 Event::DownloadPack(i) => {
                     let dir = packs::packs_dir();

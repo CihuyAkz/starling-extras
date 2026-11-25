@@ -670,10 +670,7 @@ impl Game<'_> {
     fn after_removal(&mut self, entry: &Entry) {
         match entry.kind {
             Kind::Shader => self.after_shader_pack_removed(&entry.file),
-            Kind::ResourcePack => {
-                let infos = self.resource_pack_infos();
-                self.ui.options.update_pack_infos(infos);
-            }
+            Kind::ResourcePack => self.refresh_pack_lists_async(),
             _ => {
                 let id = starling_catalog::mod_id(entry);
                 self.refresh_mods_page(id.as_deref());
@@ -850,10 +847,7 @@ impl Game<'_> {
                     // The Resource Packs page lists what was read when Options opened, and its
                     // folder watcher only sees what changes with the page open. A selection
                     // made on the page and not yet applied stays.
-                    Done::ResourcePack => {
-                        let infos = self.resource_pack_infos();
-                        self.ui.options.update_pack_infos(infos);
-                    }
+                    Done::ResourcePack => self.refresh_pack_lists_async(),
                     // The Mods page lists what was found when the game started.
                     Done::ContentMod => self.refresh_mods_page(None),
                 }

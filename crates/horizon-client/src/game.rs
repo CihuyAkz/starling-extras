@@ -1010,6 +1010,7 @@ struct Game<'a> {
         std::time::Instant,
         Vec<(String, u64, Option<std::time::SystemTime>)>,
     )>,
+    pack_list_receiver: Option<std::sync::mpsc::Receiver<packs::PackListResult>>,
     /// A pack reload staged on a worker (`LoadingOverlay`): the frame draws
     /// its progress until `drive_pack_reload` applies it.
     pack_reload: Option<packs::PackReload>,
@@ -10929,6 +10930,7 @@ impl<'a> Game<'a> {
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
+            pack_list_receiver: None,
             pack_reload: None,
             server_packs: Default::default(),
             link_prompt: None,
