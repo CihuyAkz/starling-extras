@@ -565,45 +565,8 @@ struct SettingsView {
     scroll: f64,
 }
 
-fn addons_of(packs: &[PackInfo]) -> HashMap<String, Addon> {
-    let dir = std::env::current_dir().unwrap_or_default().join("resourcepacks");
-    packs
-        .iter()
-        .filter_map(|p| {
-            let file = p.id.strip_prefix("file/")?;
-            let path = dir.join(file);
-            if !(crate::packs::bedrock::is_bedrock_file(file)
-                || path.join("manifest.json").is_file())
-            {
-                return None;
-            }
-            let subpacks = crate::packs::bedrock::subpacks(&path);
-            let defs = crate::packs::bedrock::settings(&path);
-            if subpacks.is_empty() && defs.is_empty() {
-                return None;
-            }
-            let values = defs
-                .iter()
-                .filter_map(|d| {
-                    Some((
-                        d.name.clone(),
-                        crate::packs::bedrock::chosen_setting(&dir, file, &d.name)?,
-                    ))
-                })
-                .collect();
-            Some((
-                p.id.clone(),
-                Addon {
-                    chosen: crate::packs::bedrock::chosen_subpack(&dir, file),
-                    dir: dir.clone(),
-                    file: file.to_owned(),
-                    subpacks,
-                    defs,
-                    values,
-                },
-            ))
-        })
-        .collect()
+fn addons_of(_packs: &[PackInfo]) -> HashMap<String, Addon> {
+    HashMap::new()
 }
 
 /// The pack screen and its state.

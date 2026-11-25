@@ -298,6 +298,7 @@ fn java_mods_are_ported_turned_on_refused_on_clashes_and_removed() {
         fs::read_to_string(home.join("horizon-mods.txt")).unwrap(),
         "mod.ruby:true\n"
     );
+    assert!(super::super::java::is_enabled(&home, "ruby"));
     // The jar isn't kept, its check is.
     assert!(!home
         .join("mod-browser/checks-1/.downloads/ruby-1.zip")

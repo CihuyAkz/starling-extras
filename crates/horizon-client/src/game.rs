@@ -9259,6 +9259,18 @@ impl Game<'_> {
         }
         // Android's winit sends no ModifiersChanged: the held keys make them.
         self.platform_held_modifiers(&event);
+        #[cfg(feature = "java-mods")]
+        if let WindowEvent::KeyboardInput { event: key_event, .. } = &event
+            && let PhysicalKey::Code(key) = key_event.physical_key
+            && let Some(code) = java_gui::key_code(key)
+        {
+            let action = match (key_event.state, key_event.repeat) {
+                (ElementState::Released, _) => 0,
+                (_, true) => 2,
+                (_, false) => 1,
+            };
+            java_gui::mod_key_input(code, code, glfw_modifiers(self.modifiers), action);
+        }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
         if let WindowEvent::KeyboardInput { event, .. } = &event
@@ -9318,6 +9330,25 @@ impl Game<'_> {
         // in game, before the screen takes the key.
         if let WindowEvent::KeyboardInput { event, .. } = &event {
             self.narrator_hotkey(event);
+        }
+        #[cfg(feature = "java-mods")]
+        match &event {
+            WindowEvent::Focused(false) => java_gui::release_mod_inputs(),
+            WindowEvent::MouseInput { state, button, .. } if !self.pad_synthetic_input() => {
+                java_gui::mod_mouse_input(
+                    glfw_button(*button),
+                    glfw_modifiers(self.modifiers),
+                    *state == ElementState::Pressed,
+                );
+            }
+            WindowEvent::MouseWheel { delta, .. } if !self.pad_synthetic_input() => {
+                let (horizontal, vertical) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (f64::from(*x), f64::from(*y)),
+                    MouseScrollDelta::PixelDelta(p) => (p.x / 30.0, p.y / 30.0),
+                };
+                java_gui::mod_scroll_input(horizontal, vertical, self.selected as i32);
+            }
+            _ => {}
         }
         if matches!(
             event,

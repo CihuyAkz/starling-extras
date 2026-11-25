@@ -37,6 +37,46 @@ pub(super) const SOURCES: [(SourceId, &str); 2] = [
 ];
 const PAGE: usize = 20;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstalledItem {
+    Heading(&'static str),
+    Entry(usize),
+    Native(usize),
+}
+
+fn installed_items(
+    kind: PackKind,
+    sources: &[SourceId],
+    native_count: usize,
+) -> Vec<InstalledItem> {
+    if kind != PackKind::Mod {
+        return (0..sources.len()).map(InstalledItem::Entry).collect();
+    }
+
+    let java: Vec<usize> = sources
+        .iter()
+        .enumerate()
+        .filter_map(|(index, source)| (*source != SourceId::Horizon).then_some(index))
+        .collect();
+    let horizon: Vec<usize> = sources
+        .iter()
+        .enumerate()
+        .filter_map(|(index, source)| (*source == SourceId::Horizon).then_some(index))
+        .collect();
+    let mut items = Vec::new();
+
+    if !java.is_empty() {
+        items.push(InstalledItem::Heading("Java Mods"));
+        items.extend(java.into_iter().map(InstalledItem::Entry));
+    }
+    if !horizon.is_empty() || native_count > 0 {
+        items.push(InstalledItem::Heading("Horizon Mods"));
+        items.extend(horizon.into_iter().map(InstalledItem::Entry));
+        items.extend((0..native_count).map(InstalledItem::Native));
+    }
+    items
+}
+
 #[path = "glass_mods.rs"]
 mod glass_mods;
 
@@ -1420,192 +1460,200 @@ impl Launcher {
             .map(|build| build.left_out)
             .unwrap_or_default();
         let instance = self.selected_instance().map(|i| i.name.clone());
-        let row = |i: usize| {
-            if i >= entries.len() {
-                return self.native_mod_row(&native_entries[i - entries.len()], busy, cx);
+        let sources: Vec<SourceId> = entries.iter().map(|entry| entry.source).collect();
+        let lines = installed_items(kind, &sources, native_entries.len());
+        let row = |line: usize| match lines[line] {
+            InstalledItem::Heading(label) => div()
+                .px(px(18.))
+                .pt(px(12.))
+                .pb(px(4.))
+                .child(caps(tr(label)).text_color(t.muted)),
+            InstalledItem::Native(index) => {
+                self.native_mod_row(&native_entries[index], busy, cx)
             }
-            let e = entries[i];
-            let key = (e.source, e.project.clone());
-            let is_native = self.mods.java.is_none() && native_status::is_native_file(&e.file);
-            let mut right = div().flex().items_center().gap(px(8.));
-            if let Some(number) = self.mods.updates.get(&key) {
-                let mut update = button(
-                    SharedString::from(format!("mods-update-{}", e.project)),
-                    trf("Update to {version}", &[("version", number)]),
-                    Kind::Secondary,
-                    &t,
-                );
-                if busy {
-                    update = disabled(update);
-                } else {
-                    let (source, id) = key.clone();
-                    update = update.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.mods_install(source, id.clone(), None);
-                        cx.notify();
-                    }));
-                }
-                right = right.child(update);
-            }
-            if let Some(kept) = self
-                .mods
-                .chosen
-                .get(&e.project)
-                .filter(|_| e.source == SourceId::Horizon)
-            {
-                let mut recommended = button(
-                    SharedString::from(format!("mods-recommended-{}", e.project)),
-                    trf("Use recommended (kept at {version})", &[("version", kept)]),
-                    Kind::Ghost,
-                    &t,
-                );
-                if busy {
-                    recommended = disabled(recommended);
-                } else {
-                    let id = e.project.clone();
-                    recommended =
-                        recommended.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            this.mods_install(SourceId::Horizon, id.clone(), None);
+            InstalledItem::Entry(i) => {
+                let e = entries[i];
+                let key = (e.source, e.project.clone());
+                let is_native =
+                    self.mods.java.is_none() && native_status::is_native_file(&e.file);
+                let mut right = div().flex().items_center().gap(px(8.));
+                if let Some(number) = self.mods.updates.get(&key) {
+                    let mut update = button(
+                        SharedString::from(format!("mods-update-{}", e.project)),
+                        trf("Update to {version}", &[("version", number)]),
+                        Kind::Secondary,
+                        &t,
+                    );
+                    if busy {
+                        update = disabled(update);
+                    } else {
+                        let (source, id) = key.clone();
+                        update = update.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.mods_install(source, id.clone(), None);
                             cx.notify();
                         }));
+                    }
+                    right = right.child(update);
                 }
-                right = right.child(recommended);
-            }
-            let confirming = self.mods.confirm_remove.as_deref() == Some(e.project.as_str());
-            let id = e.project.clone();
-            let remove = button(
-                SharedString::from(format!("mods-remove-{}", e.project)),
-                if confirming {
-                    "Remove for good"
-                } else {
-                    "Remove"
-                },
-                if confirming {
-                    Kind::Secondary
-                } else {
-                    Kind::Ghost
-                },
-                &t,
-            )
-            .when(confirming, |b| b.text_color(t.danger))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                this.mods_remove_click(id.clone());
-                cx.notify();
-            }));
-            let on = match &self.mods.java {
-                _ if e.kind != PackKind::Mod => None,
-                Some(_) => Some(java_instance::is_on(&self.mods.home(), e)),
-                None if e.source == SourceId::Horizon => Some(
-                    horizon::mod_id(e).is_some_and(|id| java::is_enabled(&self.mods.home(), id)),
-                ),
-                None => None,
-            };
-            if let Some(on) = on {
-                let entry = e.clone();
-                right = right.child(
-                    div()
-                        .id(SharedString::from(format!("mods-switch-{}", e.project)))
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .cursor_pointer()
-                        // Its id sits under the row's own, so one name serves every row.
-                        .child(switch("mods-switch-knob", on, &t))
-                        .child(text(theme::LABEL).text_color(t.ink_soft).child(if on {
-                            tr("On")
-                        } else {
-                            tr("Off")
-                        }))
-                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            this.mods_switch(&entry);
-                            cx.notify();
-                        })),
-                );
-            }
-            if is_native {
-                right = right.child(blocks::badge(tr("NATIVE"), t.muted, &t));
-            }
-            if is_native && self.settings.native_mods_allowed_at.is_none() {
-                let entry = e.clone();
-                right = right
-                    .child(blocks::badge(tr("Needs permission"), t.muted, &t))
-                    .child(
-                        button(
-                            SharedString::from(format!("native-permission-{}", e.project)),
-                            "Allow native mods",
-                            Kind::Secondary,
-                            &t,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _: &ClickEvent, _, cx| {
-                                this.pending_consent = Some(PendingConsent::Toggle(entry.clone()));
-                                cx.notify();
-                            },
-                        )),
-                    );
-            }
-            if is_native {
-                let folder = self.mods.home().join(native_mods::INSTALLED);
-                right = right.child(
-                    button(
-                        SharedString::from(format!("mods-folder-{}", e.project)),
-                        "Open folder",
+                if let Some(kept) = self
+                    .mods
+                    .chosen
+                    .get(&e.project)
+                    .filter(|_| e.source == SourceId::Horizon)
+                {
+                    let mut recommended = button(
+                        SharedString::from(format!("mods-recommended-{}", e.project)),
+                        trf("Use recommended (kept at {version})", &[("version", kept)]),
                         Kind::Ghost,
                         &t,
-                    )
-                    .on_click(move |_, _, cx| {
-                        let _ = std::fs::create_dir_all(&folder);
-                        crate::glass_toast::open(cx, &folder);
-                    }),
-                );
-            }
-            right = right.child(remove);
-            let detail = div()
-                .flex()
-                .flex_col()
-                .child({
-                    let from = e
-                        .source
-                        .shown_for(&e.project)
-                        .map(|s| trf("from {source}", &[("source", s)]));
-                    let needed = e
-                        .dependency
-                        .then(|| tr("needed by another pack").to_string());
-                    let origin: Vec<String> = from.into_iter().chain(needed).collect();
-                    e.verdict
-                        .iter()
-                        .map(|v| tr(v).to_string())
-                        .chain([e.number.clone()])
-                        .chain((!origin.is_empty()).then(|| origin.join(", ")))
-                        .chain([e.file.clone()])
-                        .collect::<Vec<_>>()
-                        .join(" · ")
-                })
-                .children(instance.as_ref().filter(|_| is_native).map(|name| {
-                    div()
-                        .text_color(t.ink)
-                        .child(trf("Installed in {instance}", &[("instance", name)]))
-                }))
-                .children(e.skipped.iter().map(|s| {
-                    div()
-                        .text_color(t.ink_soft)
-                        .child(trf("Not ported: {item}", &[("item", s)]))
-                }))
-                .child(div().font_family(theme::MONO).child(trf(
-                    "checked: {checksum}",
-                    &[("checksum", &short_sum(&e.checksum))],
-                )));
-            slot_row(
-                Some(blocks::slot(
-                    icons[i].clone().map(gpui::ImageSource::from),
-                    &e.title,
-                    40.,
+                    );
+                    if busy {
+                        recommended = disabled(recommended);
+                    } else {
+                        let id = e.project.clone();
+                        recommended =
+                            recommended.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.mods_install(SourceId::Horizon, id.clone(), None);
+                                cx.notify();
+                            }));
+                    }
+                    right = right.child(recommended);
+                }
+                let confirming = self.mods.confirm_remove.as_deref() == Some(e.project.as_str());
+                let id = e.project.clone();
+                let remove = button(
+                    SharedString::from(format!("mods-remove-{}", e.project)),
+                    if confirming {
+                        "Remove for good"
+                    } else {
+                        "Remove"
+                    },
+                    if confirming {
+                        Kind::Secondary
+                    } else {
+                        Kind::Ghost
+                    },
                     &t,
-                )),
-                e.title.clone(),
-                Some(detail.into_any_element()),
-                Some(right.into_any_element()),
-                &t,
-            )
+                )
+                .when(confirming, |b| b.text_color(t.danger))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.mods_remove_click(id.clone());
+                    cx.notify();
+                }));
+                let on = match &self.mods.java {
+                    _ if e.kind != PackKind::Mod => None,
+                    Some(_) => Some(java_instance::is_on(&self.mods.home(), e)),
+                    None => horizon::mod_id(e).map(|id| java::is_enabled(&self.mods.home(), id)),
+                };
+                if let Some(on) = on {
+                    let entry = e.clone();
+                    right = right.child(
+                        div()
+                            .id(SharedString::from(format!("mods-switch-{}", e.project)))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .cursor_pointer()
+                            // Its id sits under the row's own, so one name serves every row.
+                            .child(switch("mods-switch-knob", on, &t))
+                            .child(text(theme::LABEL).text_color(t.ink_soft).child(if on {
+                                tr("On")
+                            } else {
+                                tr("Off")
+                            }))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.mods_switch(&entry);
+                                cx.notify();
+                            })),
+                    );
+                }
+                if is_native {
+                    right = right.child(blocks::badge(tr("NATIVE"), t.muted, &t));
+                }
+                if is_native && self.settings.native_mods_allowed_at.is_none() {
+                    let entry = e.clone();
+                    right = right
+                        .child(blocks::badge(tr("Needs permission"), t.muted, &t))
+                        .child(
+                            button(
+                                SharedString::from(format!("native-permission-{}", e.project)),
+                                "Allow native mods",
+                                Kind::Secondary,
+                                &t,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _: &ClickEvent, _, cx| {
+                                    this.pending_consent =
+                                        Some(PendingConsent::Toggle(entry.clone()));
+                                    cx.notify();
+                                },
+                            )),
+                        );
+                }
+                if is_native {
+                    let folder = self.mods.home().join(native_mods::INSTALLED);
+                    right = right.child(
+                        button(
+                            SharedString::from(format!("mods-folder-{}", e.project)),
+                            "Open folder",
+                            Kind::Ghost,
+                            &t,
+                        )
+                        .on_click(move |_, _, cx| {
+                            let _ = std::fs::create_dir_all(&folder);
+                            crate::glass_toast::open(cx, &folder);
+                        }),
+                    );
+                }
+                right = right.child(remove);
+                let detail = div()
+                    .flex()
+                    .flex_col()
+                    .child({
+                        let from = e
+                            .source
+                            .shown_for(&e.project)
+                            .map(|s| trf("from {source}", &[("source", s)]));
+                        let needed = e
+                            .dependency
+                            .then(|| tr("needed by another pack").to_string());
+                        let origin: Vec<String> = from.into_iter().chain(needed).collect();
+                        e.verdict
+                            .iter()
+                            .map(|v| tr(v).to_string())
+                            .chain([e.number.clone()])
+                            .chain((!origin.is_empty()).then(|| origin.join(", ")))
+                            .chain([e.file.clone()])
+                            .collect::<Vec<_>>()
+                            .join(" · ")
+                    })
+                    .children(instance.as_ref().filter(|_| is_native).map(|name| {
+                        div()
+                            .text_color(t.ink)
+                            .child(trf("Installed in {instance}", &[("instance", name)]))
+                    }))
+                    .children(e.skipped.iter().map(|s| {
+                        div()
+                            .text_color(t.ink_soft)
+                            .child(trf("Not ported: {item}", &[("item", s)]))
+                    }))
+                    .child(div().font_family(theme::MONO).child(trf(
+                        "checked: {checksum}",
+                        &[("checksum", &short_sum(&e.checksum))],
+                    )));
+                slot_row(
+                    Some(blocks::slot(
+                        icons[i].clone().map(gpui::ImageSource::from),
+                        &e.title,
+                        40.,
+                        &t,
+                    )),
+                    e.title.clone(),
+                    Some(detail.into_any_element()),
+                    Some(right.into_any_element()),
+                    &t,
+                )
+            }
         };
         // Every kind's updates at once, whichever tab is open.
         let update_all = (!self.mods.updates.is_empty()).then(|| {
@@ -1629,12 +1677,13 @@ impl Launcher {
         });
         let list = self.mods.installed_list.column(
             &self.content_scroll.handle,
-            entries.len() + native_entries.len(),
+            lines.len(),
             8.,
-            |index| {
-                entries
-                    .get(index)
-                    .is_some_and(|e| self.mods.confirm_remove.as_ref() == Some(&e.project))
+            |index| match lines[index] {
+                InstalledItem::Entry(entry) => entries
+                    .get(entry)
+                    .is_some_and(|e| self.mods.confirm_remove.as_ref() == Some(&e.project)),
+                InstalledItem::Heading(_) | InstalledItem::Native(_) => false,
             },
             row,
         );
@@ -1913,5 +1962,33 @@ mod tests {
         let sum = format!("SHA-512:{}", "ab".repeat(64));
         assert_eq!(short_sum(&sum), "SHA-512 abababababab…abababab");
         assert_eq!(short_sum("SHA-1:abcd"), "SHA-1:abcd");
+    }
+
+    #[test]
+    fn installed_mods_are_grouped_by_java_and_horizon_source() {
+        assert_eq!(
+            installed_items(
+                PackKind::Mod,
+                &[SourceId::Horizon, SourceId::Modrinth, SourceId::CurseForge],
+                2,
+            ),
+            [
+                InstalledItem::Heading("Java Mods"),
+                InstalledItem::Entry(1),
+                InstalledItem::Entry(2),
+                InstalledItem::Heading("Horizon Mods"),
+                InstalledItem::Entry(0),
+                InstalledItem::Native(0),
+                InstalledItem::Native(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn installed_non_mod_items_keep_their_existing_flat_layout() {
+        assert_eq!(
+            installed_items(PackKind::ResourcePack, &[SourceId::Horizon, SourceId::Modrinth], 0),
+            [InstalledItem::Entry(0), InstalledItem::Entry(1)]
+        );
     }
 }

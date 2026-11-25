@@ -2944,14 +2944,36 @@ public final class HorizonClient {
     /** The mods' own KeyMappings (Fabric's KeyMappingHelper registry), vanilla's left to Horizon. */
     @SuppressWarnings("unchecked")
     static java.util.List<KeyMapping> modKeys() {
+        var out = new java.util.ArrayList<KeyMapping>();
+        var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<KeyMapping, Boolean>());
+        try {
+            Object all = field(KeyMapping.class, null, "ALL");
+            java.util.Collection<KeyMapping> mappings = all instanceof java.util.Map<?, ?> map
+                    ? (java.util.Collection<KeyMapping>) map.values()
+                    : all instanceof java.util.Collection<?> collection
+                            ? (java.util.Collection<KeyMapping>) collection : java.util.List.of();
+            if (minecraft != null && minecraft.options != null) {
+                Object configured = field(net.minecraft.client.Options.class, minecraft.options, "keyMappings");
+                if (configured instanceof KeyMapping[] array) {
+                    var vanilla = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<KeyMapping, Boolean>());
+                    java.util.Collections.addAll(vanilla, array);
+                    for (KeyMapping mapping : mappings) {
+                        if (mapping != null && !vanilla.contains(mapping) && seen.add(mapping)) out.add(mapping);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
         try {
             Class<?> registry = Class.forName("net.fabricmc.fabric.impl.client.keymapping.KeyMappingRegistryImpl");
             Field list = registry.getDeclaredField("MODDED_KEY_BINDINGS");
             list.setAccessible(true);
-            return new java.util.ArrayList<>((java.util.List<KeyMapping>) list.get(null));
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            return java.util.List.of();
+            for (KeyMapping mapping : (java.util.List<KeyMapping>) list.get(null)) {
+                if (mapping != null && seen.add(mapping)) out.add(mapping);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
         }
+        return out;
     }
 
     /**
@@ -2997,19 +3019,22 @@ public final class HorizonClient {
      * KeyMapping.set, and click on a press), kept for that player's client tick.
      */
     static void bind(java.util.UUID player, int scancode, boolean down) {
-        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(scancode), down);
+        bind(player, scancode, down ? 1 : 0);
     }
 
-    /** A mouse button of a player's game while playing (MouseHandler.onButton: KeyMapping.set and click). */
+    static void bind(java.util.UUID player, int scancode, int action) {
+        if (action < 0 || action > 2) return;
+        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(scancode), action);
+    }
+
     static void bindMouse(java.util.UUID player, int button, boolean down) {
-        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(button), down);
+        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(button), down ? 1 : 0);
     }
 
-    private static void bind(java.util.UUID player, com.mojang.blaze3d.platform.InputConstants.Key pressed, boolean down) {
+    private static void bind(java.util.UUID player, com.mojang.blaze3d.platform.InputConstants.Key pressed, int action) {
+        boolean down = action != 0;
         Keys keys = KEYS.computeIfAbsent(player, p -> new Keys(
                 java.util.concurrent.ConcurrentHashMap.newKeySet(), new java.util.concurrent.ConcurrentHashMap<>()));
-        // Vanilla's use key, when its button's own presses come (mods take every button: the
-        // click's real length, not the uses it repeats).
         if (minecraft != null && minecraft.options != null && pressed.equals(key(minecraft.options.keyUse))) {
             if (down) {
                 USE_DOWN.add(player);
@@ -3023,7 +3048,7 @@ public final class HorizonClient {
             if (DEBUG_INPUT) Natives.log("bind " + pressed.getName() + (down ? " down" : " up") + ": " + mapping.getName());
             if (down) {
                 keys.down().add(mapping);
-                keys.clicks().merge(mapping, 1, Integer::sum);
+                if (action == 1) keys.clicks().merge(mapping, 1, Integer::sum);
             } else {
                 keys.down().remove(mapping);
             }
@@ -3156,11 +3181,15 @@ public final class HorizonClient {
         try {
             keyPressHandlers = HorizonHooks.injected(net.minecraft.client.KeyboardHandler.class, "keyPress",
                     long.class, int.class, net.minecraft.client.input.KeyEvent.class);
+        } catch (Throwable t) {
+            Natives.log("Horizon's client: the mods' KeyboardHandler hooks can't be read: " + t);
+            keyPressHandlers = java.util.List.of();
+        }
+        try {
             sdlKeyHandlers = HorizonHooks.injected(com.mojang.blaze3d.platform.SDLEventHandler.class, "handleKeyEvent",
                     org.lwjgl.sdl.SDL_Event.class);
         } catch (Throwable t) {
-            Natives.log("Horizon's client: the mods' key handlers can't be read: " + t);
-            keyPressHandlers = java.util.List.of();
+            Natives.log("Horizon's client: SDL key hooks are unavailable: " + t);
             sdlKeyHandlers = java.util.List.of();
         }
         if (!keyPressHandlers.isEmpty() || !sdlKeyHandlers.isEmpty()) {
@@ -3177,43 +3206,138 @@ public final class HorizonClient {
      * hotkey may open a screen (Gui.setScreen: a client-only screen in their window).
      */
     static void keyPress(java.util.UUID id, int key, int keycode, int mods, boolean down) {
+        keyPress(id, key, keycode, mods, down ? 1 : 0);
+    }
+
+    static void keyPress(java.util.UUID id, int key, int keycode, int mods, int action) {
         var player = HorizonServer.player(id);
         if ((keyPressHandlers().isEmpty() && sdlKeyHandlers.isEmpty()) || player == null || minecraft == null) return;
         try {
-            as(player, () -> firePress(key, keycode, mods, down));
+            as(player, () -> withKeys(player.getUUID(), () -> firePress(key, keycode, mods, action)));
         } catch (Throwable t) {
             Natives.log("Horizon's client: a key press failed: " + t);
         }
     }
 
-    /** The mods' key handlers for a press or release, as the client player now (keyPress). */
     static void firePress(int key, int keycode, int mods, boolean down) throws Throwable {
+        firePress(key, keycode, mods, down ? 1 : 0);
+    }
+
+    static void firePress(int key, int keycode, int mods, int action) throws Throwable {
         var handlers = keyPressHandlers();
         var sdl = sdlKeyHandlers;
         if (handlers.isEmpty() && sdl.isEmpty()) return;
+        if (action < 0 || action > 2) return;
+        boolean down = action != 0;
         var event = new net.minecraft.client.input.KeyEvent(key, keycode, mods);
         long window = HorizonScreenEvents.windowHandle(minecraft);
         boolean taken = false;
         if (!sdl.isEmpty()) {
-            if (sdlEvents == null) {
-                sdlEvents = Natives.allocate(com.mojang.blaze3d.platform.SDLEventHandler.class);
-                set(com.mojang.blaze3d.platform.SDLEventHandler.class, sdlEvents, "minecraft", minecraft);
-            }
-            var sdlEvent = org.lwjgl.sdl.SDL_Event.calloc();
             try {
-                // SDL_EVENT_KEY_DOWN (0x300), SDL_EVENT_KEY_UP (0x301).
-                sdlEvent.type(down ? 0x300 : 0x301);
-                sdlEvent.key().type(down ? 0x300 : 0x301).scancode(key).key(keycode).mod((short) mods)
-                        .down(down).repeat(false);
-                taken = fireKey(sdl, sdlEvents, "handleKeyEvent", sdlEvent);
-            } finally {
-                sdlEvent.free();
+                if (sdlEvents == null) {
+                    sdlEvents = Natives.allocate(com.mojang.blaze3d.platform.SDLEventHandler.class);
+                    set(com.mojang.blaze3d.platform.SDLEventHandler.class, sdlEvents, "minecraft", minecraft);
+                }
+                int scan = sdlScancode(key);
+                if (scan != 0) {
+                    var sdlEvent = org.lwjgl.sdl.SDL_Event.calloc();
+                    try {
+                        sdlEvent.type(down ? 0x300 : 0x301);
+                        sdlEvent.key().type(down ? 0x300 : 0x301).scancode(scan).key(sdlKeycode(key, scan))
+                                .mod((short) sdlModifiers(mods)).down(down).repeat(action == 2);
+                        taken = fireKey(sdl, sdlEvents, "handleKeyEvent", sdlEvent);
+                    } finally {
+                        sdlEvent.free();
+                    }
+                }
+            } catch (Throwable t) {
+                sdlKeyHandlers = java.util.List.of();
+                sdlEvents = null;
+                sdl = java.util.List.of();
+                Natives.log("Horizon's client: SDL key handlers are unavailable; continuing with KeyboardHandler: " + t);
             }
         }
-        if (!taken) taken = fireKey(handlers, minecraft.keyboardHandler, "keyPress", window, down ? 1 : 0, event);
-        if (DEBUG_INPUT) Natives.log("key " + key + (down ? " down" : " up") + " to " + sdl.size() + "+"
+        if (!taken) taken = fireKey(handlers, minecraft.keyboardHandler, "keyPress", window, action, event);
+        if (DEBUG_INPUT) Natives.log("key " + key + " action " + action + " to " + sdl.size() + "+"
                 + handlers.size() + " mod key handler(s)" + (taken ? ", taken" : "") + "; screen now "
                 + minecraft.gui.screen());
+    }
+
+    private static int sdlScancode(int key) {
+        if (key >= 65 && key <= 90) return key - 61;
+        if (key >= 49 && key <= 57) return key - 19;
+        if (key == 48) return 39;
+        if (key >= 290 && key <= 301) return key - 232;
+        if (key >= 302 && key <= 313) return key - 198;
+        if (key >= 321 && key <= 329) return key - 232;
+        return switch (key) {
+            case 32 -> 44;
+            case 39 -> 52;
+            case 44 -> 54;
+            case 45 -> 45;
+            case 46 -> 55;
+            case 47 -> 56;
+            case 59 -> 51;
+            case 61 -> 46;
+            case 91 -> 47;
+            case 92 -> 49;
+            case 93 -> 48;
+            case 96 -> 53;
+            case 256 -> 41;
+            case 257 -> 40;
+            case 258 -> 43;
+            case 259 -> 42;
+            case 260 -> 73;
+            case 261 -> 76;
+            case 262 -> 79;
+            case 263 -> 80;
+            case 264 -> 81;
+            case 265 -> 82;
+            case 266 -> 75;
+            case 267 -> 78;
+            case 268 -> 74;
+            case 269 -> 77;
+            case 280 -> 57;
+            case 281 -> 71;
+            case 282 -> 83;
+            case 283 -> 70;
+            case 284 -> 72;
+            case 320 -> 98;
+            case 330 -> 99;
+            case 331 -> 84;
+            case 332 -> 85;
+            case 333 -> 86;
+            case 334 -> 87;
+            case 335 -> 88;
+            case 336 -> 103;
+            case 340 -> 225;
+            case 341 -> 224;
+            case 342 -> 226;
+            case 343 -> 227;
+            case 344 -> 229;
+            case 345 -> 228;
+            case 346 -> 230;
+            case 347 -> 231;
+            case 348 -> 101;
+            default -> 0;
+        };
+    }
+
+    private static int sdlKeycode(int key, int scan) {
+        if (key >= 65 && key <= 90) return key + 32;
+        if (key >= 48 && key <= 57) return key;
+        if (key == 32 || key == 39 || key == 44 || key == 45 || key == 46 || key == 47
+                || key == 59 || key == 61 || key == 91 || key == 92 || key == 93 || key == 96) return key;
+        return 0x40000000 | scan;
+    }
+
+    private static int sdlModifiers(int mods) {
+        int result = 0;
+        if ((mods & 0x0001) != 0) result |= 0x0003;
+        if ((mods & 0x0002) != 0) result |= 0x00c0;
+        if ((mods & 0x0004) != 0) result |= 0x0300;
+        if ((mods & 0x0008) != 0) result |= 0x0c00;
+        return result;
     }
 
     /** Calls handlers (the method's arguments, then a CallbackInfo): whether one cancelled. */
@@ -4163,10 +4287,11 @@ public final class HorizonClient {
         }
         if (kind.equals("bind")) {
             int key = in.get("key").getAsInt();
-            boolean down = in.get("down").getAsBoolean();
-            bind(id, key, down);
+            int action = in.has("action") ? in.get("action").getAsInt() : (in.get("down").getAsBoolean() ? 1 : 0);
+            if (action < 0 || action > 2) return;
+            bind(id, key, action);
             keyPress(id, key, in.has("keycode") ? in.get("keycode").getAsInt() : key,
-                    in.has("mods") ? in.get("mods").getAsInt() : 0, down);
+                    in.has("mods") ? in.get("mods").getAsInt() : 0, action);
             return;
         }
         // A mod's settings screen, from the player's Mods page (as /modconfig opens it).

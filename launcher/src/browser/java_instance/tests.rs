@@ -227,6 +227,9 @@ fn installs_jars_with_dependencies_then_updates_and_removes() {
     assert_eq!(done.len(), 3);
     assert_eq!(fs::read(home.join("mods/map-1.jar")).unwrap(), b"map 1");
     assert!(home.join("mods/fabric-api-1.jar").is_file());
+    let fresh_map = Installed::load(&home).lookup("map").cloned().unwrap();
+    assert!(is_on(&home, &fresh_map));
+    assert!(!home.join("mods/map-1.jar.disabled").exists());
     assert_eq!(Installed::load(&home).entries.len(), 3);
 
     fake.release("map", Kind::Mod, "2", &["1.21.1"], &["fabric"], &["lib"]);

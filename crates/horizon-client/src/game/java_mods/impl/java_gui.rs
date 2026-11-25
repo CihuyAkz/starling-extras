@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -38,6 +38,8 @@ struct UiState {
     dynamic_images: HashMap<String, DynamicImage>,
     drag_button: Option<i32>,
     pointer: [f32; 2],
+    mod_keys: HashSet<i32>,
+    mod_buttons: HashSet<i32>,
 }
 
 impl UiState {
@@ -92,6 +94,8 @@ static UI: LazyLock<Mutex<UiState>> = LazyLock::new(|| {
         dynamic_images: HashMap::new(),
         drag_button: None,
         pointer: [0.0, 0.0],
+        mod_keys: HashSet::new(),
+        mod_buttons: HashSet::new(),
     })
 });
 
@@ -109,6 +113,8 @@ pub(in crate::game) fn set_local_uuid(uuid: &str) {
         ui.sent_size = None;
         ui.dynamic_images.clear();
         ui.drag_button = None;
+        ui.mod_keys.clear();
+        ui.mod_buttons.clear();
     }
 }
 
@@ -251,6 +257,74 @@ pub(in crate::game) fn input(json: &str) -> bool {
         return false;
     }
     true
+}
+
+pub(in crate::game) fn mod_key_input(key: i32, keycode: i32, mods: u32, action: u8) {
+    if action > 2 {
+        return;
+    }
+    {
+        let mut ui = UI.lock().unwrap_or_else(|e| e.into_inner());
+        if ui.local_uuid.is_none() {
+            return;
+        }
+        if action == 0 {
+            ui.mod_keys.remove(&key);
+        } else {
+            ui.mod_keys.insert(key);
+        }
+    }
+    let json = format!(r#"{{"kind":"bind","key":{key},"keycode":{keycode},"mods":{mods},"action":{action}}}"#);
+    let _ = input(&json);
+}
+
+pub(in crate::game) fn mod_mouse_input(button: i32, mods: u32, down: bool) {
+    {
+        let mut ui = UI.lock().unwrap_or_else(|e| e.into_inner());
+        if ui.local_uuid.is_none() {
+            return;
+        }
+        if down {
+            ui.mod_buttons.insert(button);
+        } else {
+            ui.mod_buttons.remove(&button);
+        }
+    }
+    let json = format!(r#"{{"kind":"bind","mouse":{button},"mods":{mods},"down":{down}}}"#);
+    let _ = input(&json);
+}
+
+pub(in crate::game) fn mod_scroll_input(horizontal: f64, vertical: f64, slot: i32) {
+    if !horizontal.is_finite() || !vertical.is_finite() {
+        return;
+    }
+    let json = format!(r#"{{"kind":"bind","x":{horizontal},"scroll":{vertical},"slot":{slot}}}"#);
+    let _ = input(&json);
+}
+
+pub(in crate::game) fn release_mod_inputs() {
+    let (keys, buttons) = {
+        let mut ui = UI.lock().unwrap_or_else(|e| e.into_inner());
+        if ui.local_uuid.is_none() {
+            ui.mod_keys.clear();
+            ui.mod_buttons.clear();
+            return;
+        }
+        (
+            std::mem::take(&mut ui.mod_keys),
+            std::mem::take(&mut ui.mod_buttons),
+        )
+    };
+    let mut keys: Vec<_> = keys.into_iter().collect();
+    keys.sort_unstable();
+    for key in keys {
+        mod_key_input(key, key, 0, 0);
+    }
+    let mut buttons: Vec<_> = buttons.into_iter().collect();
+    buttons.sort_unstable();
+    for button in buttons {
+        mod_mouse_input(button, 0, false);
+    }
 }
 
 pub(in crate::game) fn key_code(code: winit::keyboard::KeyCode) -> Option<i32> {

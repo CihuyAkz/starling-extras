@@ -6,7 +6,6 @@
 mod cache;
 mod import;
 pub mod bedrock;
-use crate::pack_screen::{Compat, PackInfo, Source as PackSource};
 use crate::resource_source::stays_inside;
 use crate::text::Style;
 use crate::text::Text;
@@ -704,6 +703,9 @@ fn folder_matching(
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
+            if bedrock::is_bedrock_file(&name) {
+                return None;
+            }
             let pack_id = format!("file/{name}");
             if selected.is_some_and(|ids| !ids.iter().any(|id| id == &pack_id)) {
                 return None;
@@ -720,7 +722,12 @@ fn folder_matching(
                     return None;
                 }
             };
-            let bedrock_file = bedrock::is_bedrock_file(&name);
+            if path.is_dir()
+                && path.join("manifest.json").is_file()
+                && !path.join("pack.mcmeta").is_file()
+            {
+                return None;
+            }
             let source = if path.is_dir() {
                 Source::Dir(path.clone())
             } else if path
@@ -728,92 +735,16 @@ fn folder_matching(
                 .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
             {
                 Source::Zip(path.clone())
-            } else if bedrock_file {
-                return if selected.is_some() {
-                    bedrock_pack(dir, &path, &name, format)
-                } else {
-                    bedrock_preview_pack(&path, pack_id, &name)
-                };
             } else {
                 return None;
             };
-            if let Some(pack) = pack_for(
-                pack_id.clone(),
-                Text::literal(name.clone()),
-                source,
-                format,
-            ) {
-                return Some(pack);
-            }
-            let has_manifest = path.is_dir() && path.join("manifest.json").is_file();
-            if has_manifest || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
-                if selected.is_some() {
-                    bedrock_pack(dir, &path, &name, format)
-                } else {
-                    bedrock_preview_pack(&path, pack_id, &name)
-                }
-            } else {
-                None
-            }
+            pack_for(pack_id, Text::literal(name), source, format)
         })
         .collect();
     user.sort_by(|a, b| a.id.cmp(&b.id));
     user
 }
 
-
-fn bedrock_preview_pack(path: &Path, id: String, name: &str) -> Option<Pack> {
-    let manifest_name = bedrock::preview_name(path)?;
-    let title = Text::literal(name);
-    let description = Text::literal(format!("Bedrock: {manifest_name}"));
-    let description_style = Style::default();
-    let selection = PackInfo {
-        id: id.clone(),
-        title: title.clone(),
-        description: description.clone(),
-        description_style: description_style.clone(),
-        source: PackSource::Default,
-        compat: Compat::Compatible,
-        icon: None,
-        required: false,
-        position: Position::Top,
-        fixed: false,
-        hidden: false,
-    };
-    Some(Pack {
-        id,
-        source: if path.is_dir() {
-            Source::Dir(path.to_path_buf())
-        } else {
-            Source::Zip(path.to_path_buf())
-        },
-        title,
-        description: description.clone(),
-        raw_description: description,
-        description_style,
-        compatible: true,
-        compatibility: Compat::Compatible,
-        overlays: Vec::new(),
-        polytone_configs: horizon_polytone::pack::Configs::default(),
-        filter: Vec::new(),
-        selection: Some(selection),
-    })
-}
-
-fn bedrock_pack(dir: &Path, path: &Path, name: &str, format: (i64, i64)) -> Option<Pack> {
-    let cache = dir
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join(".horizon-cache/bedrock");
-    let subpack = bedrock::chosen_subpack(dir, name);
-    let converted = bedrock::convert(path, &cache, format, subpack.as_deref())?;
-    pack_for(
-        format!("file/{name}"),
-        Text::literal(name),
-        Source::Dir(converted),
-        format,
-    )
-}
 
 /// `LevelStorageSource.ALLOWED_SYMLINKS_CONFIG_NAME`: the game folder's list of
 /// symbolic link targets the game accepts.

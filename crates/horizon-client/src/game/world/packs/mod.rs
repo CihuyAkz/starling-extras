@@ -863,7 +863,7 @@ pub(super) fn stage_pack(
         &source,
         res.mob_types(),
     ));
-    let bedrock = Arc::new(horizon_client::mobs::bedrock::BedrockMobs::load(&root));
+    let bedrock = Arc::new(horizon_client::mobs::bedrock::BedrockMobs::default());
     let block_entity_shapes = res.block_entity_render().shapes_for(&source);
     let waypoint_styles = horizon_client::locator_bar::WaypointStyles::load(&source);
     let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
