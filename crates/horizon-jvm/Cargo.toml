@@ -10,6 +10,7 @@ description = "Runs Java mods inside Horizon: an embedded JVM, started only when
 # The Java mods' blocks, items and assets as Horizon content mods (content.rs): the
 # carry-over step of the modpack porter, fed with facts from the bridge's running game.
 horizon-port-pack = { path = "../horizon-port-pack" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The JNI bindings: env, strings, arrays, natives. 0.21.1 is already in Cargo.lock.
 jni = "0.21.1"
