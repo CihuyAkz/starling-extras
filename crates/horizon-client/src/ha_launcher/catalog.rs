@@ -612,27 +612,41 @@ pub enum InstalledSubTab {
 pub enum InstalledFilter {
     #[default]
     All,
-    Mods,
+    JavaMods,
+    HorizonMods,
     Packs,
     Shaders,
 }
 
 impl InstalledFilter {
-    pub const ALL: [Self; 4] = [Self::All, Self::Mods, Self::Packs, Self::Shaders];
+    pub const MOD_ROW: [Self; 3] = [Self::All, Self::JavaMods, Self::HorizonMods];
+    pub const OTHER_ROW: [Self; 2] = [Self::Packs, Self::Shaders];
+
     pub fn label(self) -> &'static str {
         match self {
             Self::All => "All",
-            Self::Mods => "Mods",
+            Self::JavaMods => "Java Mods",
+            Self::HorizonMods => "Horizon Mods",
             Self::Packs => "Resource Packs",
             Self::Shaders => "Shaders",
         }
     }
-    pub fn matches(self, kind: crate::ha_launcher::client::content_files::Kind) -> bool {
+
+    pub fn matches(self, item: &LocalItem) -> bool {
+        use crate::ha_launcher::client::content_files::Kind;
         match self {
             Self::All => true,
-            Self::Mods => kind == crate::ha_launcher::client::content_files::Kind::Mods,
-            Self::Packs => kind == crate::ha_launcher::client::content_files::Kind::Packs,
-            Self::Shaders => kind == crate::ha_launcher::client::content_files::Kind::Shaders,
+            Self::JavaMods => {
+                item.kind == Kind::Mods
+                    && item.file.strip_prefix("mods-java/").is_some_and(|name| {
+                        name.to_ascii_lowercase().ends_with(".jar")
+                    })
+            }
+            Self::HorizonMods => {
+                item.kind == Kind::Mods && !item.file.starts_with("mods-java/")
+            }
+            Self::Packs => item.kind == Kind::Packs,
+            Self::Shaders => item.kind == Kind::Shaders,
         }
     }
 }
@@ -836,11 +850,11 @@ impl Catalog {
         if let Some(k) = kind {
             self.installed_sub_tab = InstalledSubTab::Library;
             self.installed_filter = match k {
-                crate::ha_launcher::client::content_files::Kind::Mods => InstalledFilter::Mods,
-                crate::ha_launcher::client::content_files::Kind::Packs => InstalledFilter::Packs,
-                crate::ha_launcher::client::content_files::Kind::Shaders => {
-                    InstalledFilter::Shaders
+                crate::ha_launcher::client::content_files::Kind::Mods => {
+                    InstalledFilter::All
                 }
+                crate::ha_launcher::client::content_files::Kind::Packs => InstalledFilter::Packs,
+                crate::ha_launcher::client::content_files::Kind::Shaders => InstalledFilter::Shaders,
             };
         }
         self.sections = [true; 3];
@@ -937,7 +951,10 @@ impl Catalog {
         }
         // Include ported Modrinth folder mods and native .hnmod packages from Installed.
         for e in &installed.entries {
-            if e.kind != Kind::Mod || !game.join(&e.file).exists() {
+            if e.kind != Kind::Mod
+                || e.file.starts_with("mods-java/")
+                || !game.join(&e.file).exists()
+            {
                 continue;
             }
             let file_name = e
@@ -976,6 +993,49 @@ impl Catalog {
                 subtitle,
                 mod_id,
             });
+        }
+        let java_dir = game.join("mods-java");
+        if std::fs::symlink_metadata(&java_dir).is_ok_and(|m| !m.file_type().is_symlink()) {
+            for entry in std::fs::read_dir(&java_dir).into_iter().flatten().flatten() {
+                if !entry.file_type().is_ok_and(|t| t.is_file()) {
+                    continue;
+                }
+                let disk_name = entry.file_name().to_string_lossy().into_owned();
+                let (jar_name, disabled) = match disk_name.strip_suffix(".disabled") {
+                    Some(name) => (name, true),
+                    None => (disk_name.as_str(), false),
+                };
+                if !crate::ha_launcher::client::content_files::plain_name(jar_name)
+                    || !jar_name.to_ascii_lowercase().ends_with(".jar")
+                {
+                    continue;
+                }
+                let active_path = java_dir.join(jar_name);
+                if disabled && active_path.exists() {
+                    continue;
+                }
+                let relative = format!("mods-java/{jar_name}");
+                if self.local.iter().any(|item| item.file == relative) {
+                    continue;
+                }
+                let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                let title = jar_name[..jar_name.len() - 4].to_owned();
+                let mod_id = package_mod_id(&entry.path(), jar_name);
+                let state = if disabled { "  •  Disabled" } else { "" };
+                self.local.push(LocalItem {
+                    kind: crate::ha_launcher::client::content_files::Kind::Mods,
+                    file: relative,
+                    title,
+                    enabled: !disabled,
+                    size_bytes,
+                    badge: "JAVA",
+                    subtitle: format!(
+                        "Java Mod (.jar){state}  •  {}  •  {jar_name}",
+                        format_file_size(size_bytes)
+                    ),
+                    mod_id,
+                });
+            }
         }
         // Also scan horizon-native-mods/ for any .hnmod or .hmod files on disk.
         let native_dir = game.join("horizon-native-mods");
@@ -1981,6 +2041,50 @@ impl Catalog {
                     self.status = "Sandboxed code mods require a 64-bit APK".into();
                     return;
                 }
+                if let Some(name) = item.file.strip_prefix("mods-java/") {
+                    if !crate::ha_launcher::client::content_files::plain_name(name)
+                        || !name.to_ascii_lowercase().ends_with(".jar")
+                    {
+                        self.status = "Invalid Java mod filename".into();
+                        return;
+                    }
+                    let dir = game.join("mods-java");
+                    if std::fs::symlink_metadata(&dir)
+                        .is_ok_and(|m| m.file_type().is_symlink())
+                    {
+                        self.status = "Refusing a redirected Java mods directory".into();
+                        return;
+                    }
+                    let active = dir.join(name);
+                    let disabled = dir.join(format!("{name}.disabled"));
+                    let (from, to) = if item.enabled {
+                        (&active, &disabled)
+                    } else {
+                        (&disabled, &active)
+                    };
+                    match std::fs::symlink_metadata(from) {
+                        Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => {}
+                        _ => {
+                            self.status = "Java mod file is missing or is not a regular file".into();
+                            return;
+                        }
+                    };
+                    if std::fs::symlink_metadata(to).is_ok() {
+                        self.status = "Cannot toggle Java mod: target filename already exists".into();
+                        return;
+                    }
+                    if let Err(error) = std::fs::rename(from, to) {
+                        self.status = format!("Couldn't toggle Java mod: {error}");
+                        return;
+                    }
+                    self.status = if item.enabled {
+                        format!("{} disabled (.jar.disabled)", item.title)
+                    } else {
+                        format!("{} enabled", item.title)
+                    };
+                    self.refresh(home);
+                    return;
+                }
                 let mut on = crate::ha_launcher::client::mod_list::ModList::load(&game);
                 if let Some(bid) = item.file.strip_prefix("builtin:") {
                     if item.enabled {
@@ -2040,8 +2144,23 @@ impl Catalog {
                 on.save(&game);
                 return Ok(());
             }
-            if item.file.starts_with("mods-java/") {
-                let target = game.join(&item.file);
+            if let Some(name) = item.file.strip_prefix("mods-java/") {
+                if !crate::ha_launcher::client::content_files::plain_name(name)
+                    || !name.to_ascii_lowercase().ends_with(".jar")
+                {
+                    return Err("Invalid Java mod filename".into());
+                }
+                let dir = game.join("mods-java");
+                if std::fs::symlink_metadata(&dir)
+                    .map_err(|e| e.to_string())?
+                    .file_type()
+                    .is_symlink()
+                {
+                    return Err("Refusing a redirected Java mods directory".into());
+                }
+                let active = dir.join(name);
+                let disabled = dir.join(format!("{name}.disabled"));
+                let target = if active.exists() { active } else { disabled };
                 let meta = std::fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
                 if !meta.is_file() || meta.file_type().is_symlink() {
                     return Err("Refusing a redirected Java mod file".into());
@@ -2462,6 +2581,37 @@ mod package_id_tests {
         );
         let decoded: super::Config = serde_json::from_value(encoded).unwrap();
         assert!(decoded.java_mods_compatibility);
+    }
+
+    #[test]
+    fn installed_filters_separate_java_and_horizon_mods() {
+        use crate::ha_launcher::client::content_files::Kind;
+        let java = super::LocalItem {
+            kind: Kind::Mods,
+            file: "mods-java/fabric-api.jar".into(),
+            title: "Fabric API".into(),
+            enabled: true,
+            size_bytes: 1,
+            badge: "JAVA",
+            subtitle: "Java Mod".into(),
+            mod_id: "fabric-api".into(),
+        };
+        let horizon = super::LocalItem {
+            kind: Kind::Mods,
+            file: "horizon-mods/example.hmod".into(),
+            title: "Example".into(),
+            enabled: true,
+            size_bytes: 1,
+            badge: "MOD",
+            subtitle: "Horizon Mod".into(),
+            mod_id: "example".into(),
+        };
+        assert!(super::InstalledFilter::JavaMods.matches(&java));
+        assert!(!super::InstalledFilter::JavaMods.matches(&horizon));
+        assert!(super::InstalledFilter::HorizonMods.matches(&horizon));
+        assert!(!super::InstalledFilter::HorizonMods.matches(&java));
+        assert!(super::InstalledFilter::All.matches(&java));
+        assert!(super::InstalledFilter::All.matches(&horizon));
     }
 
     /// A catalog download is named with its version: the switch is keyed by the manifest's id.
