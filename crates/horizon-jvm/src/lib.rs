@@ -756,6 +756,11 @@ fn boot(env: &mut JNIEnv, jars: &[PathBuf]) -> jni::errors::Result<String> {
         &natives,
         &[
             NativeMethod {
+                name: "isAndroid".into(),
+                sig: "()Z".into(),
+                fn_ptr: native_is_android as *mut c_void,
+            },
+            NativeMethod {
                 name: "log".into(),
                 sig: "(Ljava/lang/String;)V".into(),
                 fn_ptr: native_log as *mut c_void,
@@ -1125,6 +1130,11 @@ fn emit(line: &str) {
         Some(sink) => sink(line),
         None => log::info!("[java] {line}"),
     }
+}
+
+/// `Natives.isAndroid()`: the target platform of the native Horizon process.
+extern "system" fn native_is_android(_env: JNIEnv, _class: JClass) -> sys::jboolean {
+    if cfg!(target_os = "android") { 1 } else { 0 }
 }
 
 /// `dev.horizonlab.bridge.Natives.log(String)`.

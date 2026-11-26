@@ -77,12 +77,37 @@ public final class HorizonGpu implements GpuDeviceBackend {
     private static boolean androidRuntime() {
         if (androidRuntime != null) return androidRuntime;
         try {
-            Class.forName("android.os.Build", false, HorizonGpu.class.getClassLoader());
-            androidRuntime = true;
-        } catch (ClassNotFoundException e) {
-            androidRuntime = false;
+            // Do not infer the host from the Fabric class loader: on Starling's embedded JVM,
+            // Android framework classes are not necessarily visible from that loader. The JNI
+            // bridge knows the actual compile target and is authoritative.
+            androidRuntime = Natives.isAndroid();
+        } catch (Throwable probeFailure) {
+            androidRuntime = androidRuntimeFallback();
+            Natives.log("Horizon's client: native Android platform probe unavailable; fallback detection="
+                    + androidRuntime + " (" + probeFailure + ")");
         }
         return androidRuntime;
+    }
+
+    /** Best-effort compatibility for an older native bridge which lacks Natives.isAndroid(). */
+    private static boolean androidRuntimeFallback() {
+        String[] properties = {"java.vm.vendor", "java.vm.name", "java.runtime.name", "java.vendor", "os.name"};
+        for (String key : properties) {
+            String value = System.getProperty(key, "").toLowerCase(java.util.Locale.ROOT);
+            if (value.contains("android") || value.contains("dalvik")) return true;
+        }
+        String[] markers = {
+                "/system/bin/app_process",
+                "/system/bin/app_process32",
+                "/system/bin/app_process64",
+                "/system/framework/framework.jar",
+                "/system/build.prop",
+                "/apex/com.android.art"
+        };
+        for (String marker : markers) {
+            if (new java.io.File(marker).exists()) return true;
+        }
+        return false;
     }
 
     private static synchronized boolean androidLwjglAvailable() {

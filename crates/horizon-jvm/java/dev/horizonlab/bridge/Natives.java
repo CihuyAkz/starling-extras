@@ -7,6 +7,9 @@ public final class Natives {
     /** A line in Horizon's log, as {@code [java] text}. */
     public static native void log(String text);
 
+    /** Whether this Horizon process was built for Android (reported by the native host). */
+    public static native boolean isAndroid();
+
     /** A system message to one player, by {@code UUID.toString()}. */
     public static native void tell(String uuid, String text);
 
