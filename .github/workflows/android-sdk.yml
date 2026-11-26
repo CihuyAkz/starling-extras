@@ -3,8 +3,6 @@ name: android-sdk
 # that answers whether the std the APK builds from source (build_apk.py's TLS_FLAGS and BUILD_STD) can be one
 # shared library for the game and every mod. Its artifact goes to a phone by adb (`toyhost libtoymod.so`).
 on:
-  push:
-    branches: [android-native-sdk]
   workflow_dispatch:
     inputs:
       mods:

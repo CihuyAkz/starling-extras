@@ -1526,7 +1526,7 @@ impl Game<'_> {
         let native_rows = mods
             .installed
             .iter()
-            .any(|m| m.native.is_some() && !m.id.is_empty());
+            .any(|m| m.native.is_some() && !m.id.is_empty() && !m.id.starts_with("javamod-"));
         if now.is_none() && next.is_none() && !native_rows {
             return None;
         }
@@ -1637,14 +1637,21 @@ impl Game<'_> {
     /// build. Another set waits for a Compile, which the page offers.
     pub(super) fn native_mod_toggled(&mut self, i: usize) {
         let mods = &self.settings.mods;
-        if !SERVICE_SUPPORTED || !mods.installed.get(i).is_some_and(|m| m.native.is_some()) {
+        if !SERVICE_SUPPORTED
+            || !mods
+                .installed
+                .get(i)
+                .is_some_and(|m| m.native.is_some() && !m.id.starts_with("javamod-"))
+        {
             return;
         }
         let any_on = mods
             .installed
             .iter()
             .enumerate()
-            .any(|(j, m)| m.native.is_some() && !m.id.is_empty() && mods.is_on(j));
+            .any(|(j, m)| {
+                m.native.is_some() && !m.id.is_empty() && !m.id.starts_with("javamod-") && mods.is_on(j)
+            });
         // The libraries the next start opens follow the mods on, from those already here.
         native_libs_follow();
         if !any_on {
@@ -1693,6 +1700,14 @@ impl Game<'_> {
             }
             NativeGameAct::BuildServer => {
                 crate::android::ask_build_server(custom_server().as_deref().unwrap_or(""));
+            }
+            NativeGameAct::OpenJavaModMenu => {
+                self.open_java_mod_menu();
+                return;
+            }
+            NativeGameAct::OpenJavaModConfig(index) => {
+                self.open_java_mod_config(index);
+                return;
             }
         }
         self.refresh_native_game();

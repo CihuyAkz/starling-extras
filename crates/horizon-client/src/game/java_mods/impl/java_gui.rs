@@ -20,8 +20,17 @@ struct DynamicImage {
 }
 
 #[derive(Clone, Default)]
+struct HotbarLayer {
+    width: i32,
+    height: i32,
+    selected: Option<usize>,
+    operations: Vec<Value>,
+}
+
+#[derive(Clone, Default)]
 struct Frame {
     operations: Vec<Value>,
+    hotbar: Option<HotbarLayer>,
     images: HashMap<String, DynamicImage>,
 }
 
@@ -158,6 +167,87 @@ pub(in crate::game) fn set_overlay_frame(json: &str) {
     });
 }
 
+fn frame_operation_count(operations: &[Value]) -> usize {
+    operations.iter().fold(0usize, |count, operation| {
+        count.saturating_add(1).saturating_add(
+            operation
+                .get("ops")
+                .and_then(Value::as_array)
+                .map_or(0, |children| frame_operation_count(children)),
+        )
+    })
+}
+
+fn collect_frame_images(
+    operations: &mut Vec<Value>,
+    frame: &mut Frame,
+    frame_image_bytes: &mut usize,
+) {
+    let mut kept = Vec::with_capacity(operations.len());
+    for mut operation in operations.drain(..) {
+        if operation.get("op").and_then(Value::as_str) == Some("image") {
+            let Some(name) = operation.get("name").and_then(Value::as_str) else { continue };
+            let Some(width) = operation.get("width").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()) else { continue };
+            let Some(height) = operation.get("height").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()) else { continue };
+            let Some(encoded) = operation.get("rgba").and_then(Value::as_str) else { continue };
+            if width == 0 || height == 0 || width > 2048 || height > 2048 { continue; }
+            let expected = width as usize * height as usize * 4;
+            if expected > MAX_DYNAMIC_IMAGE_BYTES
+                || frame_image_bytes.saturating_add(expected) > MAX_FRAME_IMAGE_BYTES
+            {
+                continue;
+            }
+            let Ok(rgba) = STANDARD.decode(encoded) else { continue };
+            if rgba.len() != expected { continue; }
+            *frame_image_bytes = frame_image_bytes.saturating_add(expected);
+            frame.images.insert(
+                name.to_owned(),
+                DynamicImage { width, height, rgba: Arc::new(rgba) },
+            );
+            continue;
+        }
+        if let Some(children) = operation.get_mut("ops").and_then(Value::as_array_mut) {
+            let mut nested = std::mem::take(children);
+            collect_frame_images(&mut nested, frame, frame_image_bytes);
+            *children = nested;
+        }
+        kept.push(operation);
+    }
+    *operations = kept;
+}
+
+fn extract_hotbar_layer(operations: &mut Vec<Value>) -> Option<HotbarLayer> {
+    let mut kept = Vec::with_capacity(operations.len());
+    let mut hotbar = None;
+    for mut operation in operations.drain(..) {
+        if operation.get("op").and_then(Value::as_str) == Some("hotbar_layer") {
+            if hotbar.is_none() {
+                let width = operation.get("width").and_then(Value::as_i64).and_then(|v| i32::try_from(v).ok());
+                let height = operation.get("height").and_then(Value::as_i64).and_then(|v| i32::try_from(v).ok());
+                let selected = operation.get("selected").and_then(Value::as_u64).and_then(|v| usize::try_from(v).ok());
+                let layer_operations = operation
+                    .get_mut("ops")
+                    .and_then(Value::as_array_mut)
+                    .map(|values| std::mem::take(values));
+                if let (Some(width), Some(height), Some(layer_operations)) = (width, height, layer_operations) {
+                    if width > 0 && height > 0 && width <= 32768 && height <= 32768 {
+                        hotbar = Some(HotbarLayer {
+                            width,
+                            height,
+                            selected,
+                            operations: layer_operations,
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+        kept.push(operation);
+    }
+    *operations = kept;
+    hotbar
+}
+
 fn set_frame(json: &str, store: impl FnOnce(&mut UiState, Frame)) {
     if json.len() > MAX_FRAME_BYTES {
         log::warn!("Java GUI: rejected a frame larger than {MAX_FRAME_BYTES} bytes");
@@ -174,30 +264,21 @@ fn set_frame(json: &str, store: impl FnOnce(&mut UiState, Frame)) {
         log::warn!("Java GUI: frame root is not an operation array");
         return;
     };
-    if operations.len() > MAX_FRAME_OPS {
-        log::warn!("Java GUI: rejected a frame with {} operations", operations.len());
+    let operation_count = frame_operation_count(operations);
+    if operation_count > MAX_FRAME_OPS {
+        log::warn!("Java GUI: rejected a frame with {operation_count} operations");
         return;
     }
     let mut frame = Frame::default();
+    let mut frame_operations = operations.clone();
+    frame.hotbar = extract_hotbar_layer(&mut frame_operations);
     let mut frame_image_bytes = 0usize;
-    for operation in operations {
-        let Some(kind) = operation.get("op").and_then(Value::as_str) else { continue };
-        if kind == "image" {
-            let Some(name) = operation.get("name").and_then(Value::as_str) else { continue };
-            let Some(width) = operation.get("width").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()) else { continue };
-            let Some(height) = operation.get("height").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()) else { continue };
-            let Some(encoded) = operation.get("rgba").and_then(Value::as_str) else { continue };
-            if width == 0 || height == 0 || width > 2048 || height > 2048 { continue; }
-            let expected = width as usize * height as usize * 4;
-            if expected > MAX_DYNAMIC_IMAGE_BYTES || frame_image_bytes.saturating_add(expected) > MAX_FRAME_IMAGE_BYTES { continue; }
-            let Ok(rgba) = STANDARD.decode(encoded) else { continue };
-            if rgba.len() != expected { continue; }
-            frame_image_bytes = frame_image_bytes.saturating_add(expected);
-            frame.images.insert(name.to_owned(), DynamicImage { width, height, rgba: Arc::new(rgba) });
-            continue;
-        }
-        frame.operations.push(operation.clone());
+    collect_frame_images(&mut frame_operations, &mut frame, &mut frame_image_bytes);
+    if let Some(mut hotbar) = frame.hotbar.take() {
+        collect_frame_images(&mut hotbar.operations, &mut frame, &mut frame_image_bytes);
+        frame.hotbar = Some(hotbar);
     }
+    frame.operations = frame_operations;
     let mut ui = UI.lock().unwrap_or_else(|e| e.into_inner());
     for (name, image) in frame.images.drain() {
         ui.dynamic_images.insert(name, image);
@@ -216,6 +297,25 @@ pub(in crate::game) fn draw_hud(game: &mut super::Game, batch: &mut HudBatch) {
     if let Some(frame) = hud.as_deref() {
         draw_frame(game, batch, frame);
     }
+}
+
+pub(in crate::game) fn draw_hotbar(game: &mut super::Game, batch: &mut HudBatch) -> bool {
+    let hud = UI.lock().unwrap_or_else(|e| e.into_inner()).hud.clone();
+    let Some(frame) = hud else { return false };
+    let Some(hotbar) = frame.hotbar.as_ref() else { return false };
+    if !hotbar_layer_ready(hotbar, batch.width, batch.height, game.selected) {
+        return false;
+    }
+    let mut scissors = Vec::new();
+    draw_operations(game, batch, &hotbar.operations, &frame, &mut scissors);
+    true
+}
+
+fn hotbar_layer_ready(hotbar: &HotbarLayer, width: f32, height: f32, selected: usize) -> bool {
+    !hotbar.operations.is_empty()
+        && hotbar.width == width as i32
+        && hotbar.height == height as i32
+        && hotbar.selected.is_none_or(|slot| slot == selected)
 }
 
 pub(in crate::game) fn draw_screens(game: &mut super::Game, batch: &mut HudBatch, inventory_visible: bool) {
@@ -401,8 +501,30 @@ pub(in crate::game) fn character_input(character: char) -> bool {
 
 fn draw_frame(game: &mut super::Game, batch: &mut HudBatch, frame: &Frame) {
     let mut scissors: Vec<[f32; 4]> = Vec::new();
-    for operation in &frame.operations {
-        let Some(kind) = operation.get("op").and_then(Value::as_str) else { continue };
+    draw_operations(game, batch, &frame.operations, frame, &mut scissors);
+}
+
+fn draw_operations(
+    game: &mut super::Game,
+    batch: &mut HudBatch,
+    operations: &[Value],
+    frame: &Frame,
+    scissors: &mut Vec<[f32; 4]>,
+) {
+    for operation in operations {
+        let kind = operation.get("op").and_then(Value::as_str).unwrap_or("");
+        if kind == "hotbar_layer" {
+            continue;
+        }
+        if let Some(children) = operation.get("ops").and_then(Value::as_array) {
+            draw_operations(game, batch, children, frame, scissors);
+            if kind.is_empty() || kind == "group" {
+                continue;
+            }
+        }
+        if kind.is_empty() {
+            continue;
+        }
         if kind == "scissor" {
             if let Some(mut next) = rect(operation).map(|rect| transformed_rect(rect, operation.get("pose"))) {
                 if let Some(parent) = scissors.last().copied() {
@@ -432,12 +554,17 @@ fn draw_operation(game: &mut super::Game, batch: &mut HudBatch, op: &Value, fram
     match kind {
         "fill" => {
             if let Some([x0, y0, x1, y1]) = rect(op) {
-                batch.fill(&game.gui.atlas, x0, y0, x1 - x0, y1 - y0, color(op.get("color")));
+                batch.fill(&game.gui.atlas, x0, y0, x1 - x0, y1 - y0, color_with_alpha(op.get("color"), op.get("alpha")));
             }
         }
         "gradient" => {
             if let Some([x0, y0, x1, y1]) = rect(op) {
-                batch.fill_gradient(&game.gui.atlas, (x0, y0, x1 - x0, y1 - y0), color(op.get("top")), color(op.get("bottom")));
+                batch.fill_gradient(
+                    &game.gui.atlas,
+                    (x0, y0, x1 - x0, y1 - y0),
+                    color_with_alpha(op.get("top"), op.get("alpha")),
+                    color_with_alpha(op.get("bottom"), op.get("alpha")),
+                );
             }
         }
         "text" => {
@@ -448,13 +575,19 @@ fn draw_operation(game: &mut super::Game, batch: &mut HudBatch, op: &Value, fram
                     component_text(text)
                 } else { text.to_owned() };
                 let shadow = op.get("shadow").and_then(Value::as_bool).unwrap_or(false);
-                batch.text(&game.gui.atlas, &text, x, y, color(op.get("color")), shadow);
+                batch.text(&game.gui.atlas, &text, x, y, color_with_alpha(op.get("color"), op.get("alpha")), shadow);
             }
         }
         "sprite" => {
             let sprite = op.get("sprite").and_then(Value::as_str);
             if let (Some(sprite), Some([x0, y0, x1, y1])) = (sprite, rect(op)) {
-                if let Some(mut sprite_rect) = game.gui.atlas.inline_sprite("minecraft:gui", sprite) {
+                let sprite_rect = op
+                    .get("texture")
+                    .and_then(Value::as_str)
+                    .and_then(gui_texture_key)
+                    .and_then(|name| game.gui.atlas.sprites.get(&name).copied())
+                    .or_else(|| game.gui.atlas.inline_sprite("minecraft:gui", sprite));
+                if let Some(mut sprite_rect) = sprite_rect {
                     let u0 = number(op.get("u0")).unwrap_or(0.0).clamp(0.0, 1.0);
                     let u1 = number(op.get("u1")).unwrap_or(1.0).clamp(0.0, 1.0);
                     let v0 = number(op.get("v0")).unwrap_or(0.0).clamp(0.0, 1.0);
@@ -558,10 +691,6 @@ fn number(value: Option<&Value>) -> Option<f32> {
     value.and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1_000_000.0, 1_000_000.0) as f32)
 }
 
-fn color(value: Option<&Value>) -> u32 {
-    color_with_alpha(value, None)
-}
-
 fn color_with_alpha(value: Option<&Value>, alpha: Option<&Value>) -> u32 {
     let mut argb = value.and_then(Value::as_i64).map(|v| v as u32).unwrap_or(u32::MAX);
     if let Some(alpha) = alpha.and_then(Value::as_f64).filter(|v| v.is_finite()) {
@@ -585,6 +714,11 @@ fn texture_name(texture: &str) -> Option<String> {
         && path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
         && path.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'.' | b'/'));
     (namespace_valid && path_valid).then(|| format!("{namespace}:{path}"))
+}
+
+fn gui_texture_key(texture: &str) -> Option<String> {
+    let name = texture_name(texture)?;
+    Some(name.strip_prefix("minecraft:").unwrap_or(&name).to_owned())
 }
 
 fn component_text(json: &str) -> String {
@@ -754,5 +888,70 @@ mod tests {
 
         assert!(ui.screen_open);
         assert!(ui.screen.is_none());
+    }
+}
+
+
+#[cfg(test)]
+mod hotbar_tests {
+    use super::{
+        DynamicImage, Frame, collect_frame_images, extract_hotbar_layer, frame_operation_count,
+        hotbar_layer_ready,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn hotbar_layer_is_separated_from_the_regular_hud_frame() {
+        let mut operations = vec![
+            json!({"op":"fill","x0":0,"y0":0,"x1":2,"y1":2,"color":4294967295u32}),
+            json!({"op":"hotbar_layer","width":320,"height":180,"selected":4,"ops":[{"op":"fill","x0":1,"y0":1,"x1":3,"y1":3,"color":4294967295u32}]}),
+        ];
+        assert_eq!(frame_operation_count(&operations), 3);
+        let hotbar = extract_hotbar_layer(&mut operations).expect("hotbar layer");
+        assert_eq!(operations.len(), 1);
+        assert_eq!(hotbar.width, 320);
+        assert_eq!(hotbar.height, 180);
+        assert_eq!(hotbar.selected, Some(4));
+        assert_eq!(hotbar.operations.len(), 1);
+        assert!(hotbar_layer_ready(&hotbar, 320.0, 180.0, 4));
+        assert!(!hotbar_layer_ready(&hotbar, 320.0, 180.0, 3));
+        assert!(!hotbar_layer_ready(&hotbar, 640.0, 360.0, 4));
+    }
+
+    #[test]
+    fn dynamic_images_inside_hotbar_layers_are_registered_for_drawing() {
+        let mut operations = vec![json!({
+            "op":"hotbar_layer",
+            "width":320,
+            "height":180,
+            "selected":2,
+            "ops":[
+                {"op":"image","name":"dynamic:hotbar-icon","width":1,"height":1,"rgba":"AAAA/w=="},
+                {"op":"blit","texture":"dynamic:hotbar-icon","x0":0,"y0":0,"x1":1,"y1":1}
+            ]
+        })];
+        let mut frame = Frame::default();
+        let mut hotbar = extract_hotbar_layer(&mut operations).expect("hotbar layer");
+        let mut bytes = 0;
+        collect_frame_images(&mut hotbar.operations, &mut frame, &mut bytes);
+        assert_eq!(hotbar.operations.len(), 1);
+        assert_eq!(bytes, 4);
+        assert_eq!(frame.images.len(), 1);
+        let image: &DynamicImage = frame.images.get("dynamic:hotbar-icon").expect("image");
+        assert_eq!((image.width, image.height), (1, 1));
+        assert_eq!(image.rgba.as_slice(), &[0, 0, 0, 255]);
+    }
+}
+
+
+#[cfg(test)]
+mod sprite_texture_tests {
+    use super::gui_texture_key;
+
+    #[test]
+    fn gui_texture_paths_resolve_to_atlas_keys() {
+        assert_eq!(gui_texture_key("minecraft:textures/gui/sprites/widget/button.png").as_deref(), Some("gui/sprites/widget/button"));
+        assert_eq!(gui_texture_key("example:textures/gui/custom/button.png").as_deref(), Some("example:gui/custom/button"));
+        assert_eq!(gui_texture_key("minecraft:textures/../outside.png"), None);
     }
 }

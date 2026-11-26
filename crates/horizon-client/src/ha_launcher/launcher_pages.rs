@@ -2328,9 +2328,7 @@ impl Launcher {
             );
 
             let import_kind = match self.catalog.installed_filter {
-                InstalledFilter::All | InstalledFilter::JavaMods | InstalledFilter::HorizonMods => {
-                    Kind::Mods
-                }
+                InstalledFilter::Mods | InstalledFilter::All => Kind::Mods,
                 InstalledFilter::Packs => Kind::Packs,
                 InstalledFilter::Shaders => Kind::Shaders,
             };
@@ -2344,52 +2342,26 @@ impl Launcher {
                 true,
             );
 
+            // Row 2: Category filter pills (All, Mods, Resource Packs, Shaders)
             let row2_y = 136.0 + slide_y;
             let pill_gap = 6.0;
-            let mod_pill_w = ((content_w - pill_gap * 2.0) / 3.0).max(88.0);
-            for (i, filter) in InstalledFilter::MOD_ROW.into_iter().enumerate() {
+            let pill_w = ((content_w - pill_gap * 3.0) / 4.0).max(64.0);
+            for (i, filter) in InstalledFilter::ALL.into_iter().enumerate() {
                 let count = self
                     .catalog
                     .local
                     .iter()
-                    .filter(|item| filter.matches(item))
+                    .filter(|item| filter.matches(item.kind))
                     .count();
-                let lbl = format!("{} ({count})", filter.label());
-                let pr = [
-                    content_x + i as f32 * (mod_pill_w + pill_gap),
-                    row2_y,
-                    mod_pill_w,
-                    28.0,
-                ];
-                button(
-                    ui,
-                    &mut self.targets,
-                    pr,
-                    &lbl,
-                    Action::SetInstalledFilter(filter),
-                    self.catalog.installed_filter == filter,
-                );
-            }
-
-            let row3_y = 168.0 + slide_y;
-            let other_pill_w = ((content_w - pill_gap) / 2.0).max(112.0);
-            for (i, filter) in InstalledFilter::OTHER_ROW.into_iter().enumerate() {
-                let count = self
-                    .catalog
-                    .local
-                    .iter()
-                    .filter(|item| filter.matches(item))
-                    .count();
-                let label = if compact && filter == InstalledFilter::Packs {
-                    "Packs"
+                let lbl = if compact && filter == InstalledFilter::Packs {
+                    format!("Packs ({count})")
                 } else {
-                    filter.label()
+                    format!("{} ({count})", filter.label())
                 };
-                let lbl = format!("{label} ({count})");
                 let pr = [
-                    content_x + i as f32 * (other_pill_w + pill_gap),
-                    row3_y,
-                    other_pill_w,
+                    content_x + i as f32 * (pill_w + pill_gap),
+                    row2_y,
+                    pill_w,
                     28.0,
                 ];
                 button(
@@ -2411,7 +2383,7 @@ impl Launcher {
                 .cloned()
                 .enumerate()
                 .filter(|(_, item)| {
-                    self.catalog.installed_filter.matches(item)
+                    self.catalog.installed_filter.matches(item.kind)
                         && (q.is_empty()
                             || item.title.to_lowercase().contains(&q)
                             || item.file.to_lowercase().contains(&q)
@@ -2419,7 +2391,7 @@ impl Launcher {
                 })
                 .collect();
 
-            let top = 204.0 + slide_y;
+            let top = 172.0 + slide_y;
             let bottom = h - 42.0;
             if filtered.is_empty() {
                 self.list_view = None;
@@ -2447,15 +2419,10 @@ impl Launcher {
                     content_x + 74.0,
                     top + 18.0,
                     my3_text(),
-                    match self.catalog.installed_filter {
-                        InstalledFilter::All if self.catalog.local.is_empty() => {
-                            "No local add-ons installed yet"
-                        }
-                        InstalledFilter::JavaMods => "No Java Mods installed yet",
-                        InstalledFilter::HorizonMods => "No Horizon Mods installed yet",
-                        InstalledFilter::Packs => "No resource packs installed yet",
-                        InstalledFilter::Shaders => "No shaders installed yet",
-                        InstalledFilter::All => "No installed add-ons match your filter",
+                    if self.catalog.local.is_empty() {
+                        "No local add-ons installed yet"
+                    } else {
+                        "No installed add-ons match your filter"
                     },
                 );
                 ui.hint_line(

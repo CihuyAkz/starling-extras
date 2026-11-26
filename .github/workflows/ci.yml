@@ -1,22 +1,14 @@
 name: checks
-# Every pull request and every push to the branches below, on GitHub's runners, in two jobs side by side: lint (the
-# public-tree check, the Python tests, rustfmt and clippy) and verify (the Rust tests and the API signature audit), as
-# in Horizon (a pull request that changes no Rust finishes in seconds). Horizon's vanilla parity jobs need a runner
-# holding a copy of the game and stay upstream; the Android APK is built by android.yml.
+# Manually started checks, in two jobs side by side: lint (the public-tree check, Python tests, rustfmt and clippy)
+# and verify (the Rust tests and API signature audit). Horizon's vanilla parity jobs need a runner holding a copy of
+# the game and stay upstream; the Android APK is built separately by android.yml.
 on:
-  push:
-    # starling and integration in starling-client/starling (android: Horizon Android's, and JuanLuci/starling's);
-    # sync-horizon-7, where Starling's pull requests go now, so its runs save the Rust cache they read.
-    branches: [android, starling, integration, sync-horizon-7, 2.0.0-extras]
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  # A new push to a pull request replaces its running checks; a branch's pushed runs all finish.
-  group: checks-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: checks-${{ github.ref }}
+  cancel-in-progress: false
 env:
   # Test runs never reach the telemetry server: no live-count ping, no uploads (docs/telemetry.md).
   HORIZON_TELEMETRY_URL: "off"
@@ -25,14 +17,7 @@ jobs:
   # by side a run takes the longer of them, about half of the one job's 43-47 minutes it was. Horizon kept one job for
   # its organisation's shared runner pool; starling-client's holds 20 at once with Compile's builds.
   #
-  # Where: GitHub's runners. With the repository variable SELF_HOSTED_CI=all (for when that pool is full: their 4 CPUs
-  # are about one GitHub runner, docs/ci-runners.md), main's pushes and this repository's own pull requests run on
-  # playhorizon's checks runners (label playhorizon-ci); a fork's pull request never does (and the runners refuse it
-  # themselves). There the build folder persists (CARGO_TARGET_DIR, outside the checkout), so the apt packages,
-  # Python and the Rust cache steps are GitHub's only.
-  #
-  # The Rust cache of each job is saved by the pushes to android, starling and sync-horizon-7 (pull requests read the
-  # one of the branch they go to): before sync-horizon-7 saved one, its pull requests built their dependencies anew.
+  # GitHub-hosted runners are used by default. SELF_HOSTED_CI=all selects the dedicated playhorizon checks runners.
   lint:
     runs-on: ${{ vars.SELF_HOSTED_CI == 'all' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "playhorizon-ci"]') || 'ubuntu-latest' }}
     timeout-minutes: 75

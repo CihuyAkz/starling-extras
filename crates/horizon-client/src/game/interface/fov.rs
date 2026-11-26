@@ -168,6 +168,11 @@ impl Game<'_> {
         let vanilla = self.zoomed_fov_degrees(fov);
         let mut degrees = vanilla;
         self.native_compute_fov(partial, camera, &mut degrees);
+        #[cfg(feature = "java-mods")]
+        {
+            let uuid = crate::game::java_gameplay::java_uuid_string(&self.level);
+            degrees *= horizon_jvm::events::view_scale(&uuid);
+        }
         if degrees.is_finite() && (1.0..=179.0).contains(&degrees) {
             degrees
         } else {

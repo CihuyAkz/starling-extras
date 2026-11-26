@@ -1,10 +1,5 @@
 name: android
 on:
-  push:
-    branches: [android, starling, integration, 2.0.0-extras]
-    tags: ['v*']
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       release_mode:
@@ -157,25 +152,12 @@ jobs:
           printf '%s' "$KEY_PASSWORD" | gh secret set "${AUTO_PREFIX}_KEY_PASSWORD" --repo "$GITHUB_REPOSITORY"
           echo "key_created=true" >> "$GITHUB_OUTPUT"
           echo "The $RELEASE_MODE signing key and passwords are now stored as persistent repository secrets."
-      - name: Queue a fresh build using the newly saved signing key
+      - name: Signing key saved; wait for a manual build run
         if: steps.create_signing.outputs.key_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PUBLISH_RELEASE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish_release }}
-          KEEP_SYMBOLS: ${{ inputs.keep_symbols || false }}
-          NATIVE_MODS: ${{ inputs.native_mods || '' }}
-          WASM_PROBE: ${{ inputs.wasm_probe || false }}
-        run: |
-          gh workflow run android.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-            -f release_mode="$RELEASE_MODE" \
-            -f publish_release="$PUBLISH_RELEASE" \
-            -f keep_symbols="$KEEP_SYMBOLS" \
-            -f native_mods="$NATIVE_MODS" \
-            -f wasm_probe="$WASM_PROBE"
-          echo "The signing key is saved. A new workflow run has been queued to build with it."
+        run: echo "::notice title=Signing key saved::The signing key is stored. Start android.yml again manually to build with the saved key."
   apk:
     needs: prepare_signing
-    if: always() && (github.event_name == 'pull_request' || (needs.prepare_signing.result == 'success' && needs.prepare_signing.outputs.key_created != 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.prepare_signing.result == 'success' && needs.prepare_signing.outputs.key_created != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -323,7 +305,7 @@ jobs:
 
   release:
     needs: apk
-    if: needs.apk.result == 'success' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
+    if: needs.apk.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish_release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -377,10 +359,3 @@ jobs:
                 --notes-file "$PREVIEW_NOTES" --prerelease --target "$GITHUB_SHA"
             fi
           fi
-      - name: Build native mods for the Public release
-        if: env.RELEASE_MODE == 'public'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION=$(python3 -c 'import runpy; print(runpy.run_path("packaging/android/build_apk.py")["VERSION_NAME"])')
-          gh workflow run native-mods.yml --repo "$GITHUB_REPOSITORY" --ref starling -f version="$VERSION"

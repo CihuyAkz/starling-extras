@@ -181,6 +181,10 @@ public final class HorizonClient {
         // its options: options.txt's load asks the device (its anisotropy, mods' options read
         // RenderSystem.getDevice(): "Can't getDevice() before it was initialized").
         HorizonGpu.install();
+        var equipmentAssets = new net.minecraft.client.resources.model.EquipmentAssetManager();
+        set(Minecraft.class, mc, "equipmentAssets", equipmentAssets);
+        ((net.minecraft.server.packs.resources.ReloadableResourceManager) mc.getResourceManager())
+                .registerReloadListener(equipmentAssets);
         // Its frame rate limiter, which options.txt's load sets (maxFps): a value holder here.
         set(Minecraft.class, mc, "framerateLimitTracker",
                 Natives.allocate(com.mojang.blaze3d.platform.FramerateLimitTracker.class));
@@ -542,6 +546,10 @@ public final class HorizonClient {
         }
         others.forEach(out::putIfAbsent);
         return out;
+    }
+
+    public static boolean modMenuAvailable() {
+        return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("modmenu");
     }
 
     /**
@@ -1420,6 +1428,10 @@ public final class HorizonClient {
         HUD_SENT.remove(id);
         HUD_DRAWN.remove(id);
         HUD_LOOK.remove(id);
+        VIEW_MODIFIERS.remove(id);
+        VIEW_SCALES.remove(id);
+        VIEW_FAILURES.remove(id);
+        Natives.view(id.toString(), 1.0f);
         CONNECTIONS.remove(id);
         HorizonClientState.forget(id);
         var overlay = OVERLAYS.remove(id);
@@ -1954,6 +1966,7 @@ public final class HorizonClient {
                     HorizonHooks.fireFrame(minecraft.gameRenderer, true);
                     t = HorizonProfile.add("client: frame start", t);
                     sendHud(player);
+                    sendView(player);
                     t = HorizonProfile.add("client: HUD", t);
                     HorizonHooks.fireFrame(minecraft.gameRenderer, false);
                     // Then the frame is drawn (GameRenderer.render): the mods' work at its head.
@@ -2940,6 +2953,7 @@ public final class HorizonClient {
     private record Keys(java.util.Set<KeyMapping> down, java.util.Map<KeyMapping, Integer> clicks) {}
 
     private static final java.util.Map<java.util.UUID, Keys> KEYS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<KeyMapping, Integer> MOD_KEY_MODIFIERS = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** The mods' own KeyMappings (Fabric's KeyMappingHelper registry), vanilla's left to Horizon. */
     @SuppressWarnings("unchecked")
@@ -3014,6 +3028,89 @@ public final class HorizonClient {
         }
     }
 
+    private static com.mojang.blaze3d.platform.InputConstants.Key defaultKey(KeyMapping mapping) {
+        try {
+            return (com.mojang.blaze3d.platform.InputConstants.Key) field(KeyMapping.class, mapping, "defaultKey");
+        } catch (ReflectiveOperationException e) {
+            return key(mapping);
+        }
+    }
+
+    private static String keyModId(String name) {
+        if (name == null || !name.startsWith("key.")) return null;
+        String rest = name.substring(4);
+        int separator = rest.indexOf('.');
+        if (separator <= 0 || separator == rest.length() - 1) return null;
+        String id = rest.substring(0, separator);
+        return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(id) ? id : null;
+    }
+
+    public static String javaModKeyMappings() {
+        Thread.currentThread().setContextClassLoader(HorizonClient.class.getClassLoader());
+        var out = new com.google.gson.JsonArray();
+        var seen = new java.util.HashSet<String>();
+        for (KeyMapping mapping : modKeys()) {
+            try {
+                String name = mapping.getName();
+                String modId = keyModId(name);
+                if (modId == null || !seen.add(modId + "\u0000" + name)) continue;
+                var container = net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer(modId);
+                if (container.isEmpty()) continue;
+                String title = container.get().getMetadata().getName();
+                String label = net.minecraft.network.chat.Component.translatable(mapping.getName()).getString();
+                var defaultKey = defaultKey(mapping);
+                var entry = new com.google.gson.JsonObject();
+                entry.addProperty("owner", "javamod-" + modId);
+                entry.addProperty("title", title == null || title.isBlank() ? modId : title);
+                entry.addProperty("id", name);
+                entry.addProperty("label", label == null || label.isBlank() ? name : label);
+                entry.addProperty("key", defaultKey == null ? "key.keyboard.unknown" : defaultKey.getName());
+                out.add(entry);
+            } catch (Throwable t) {
+                Natives.log("Java key mapping was skipped: " + t);
+            }
+        }
+        return out.toString();
+    }
+
+    public static void setJavaModKeys(String json) {
+        Thread.currentThread().setContextClassLoader(HorizonClient.class.getClassLoader());
+        try {
+            MOD_KEY_MODIFIERS.clear();
+            var configured = new java.util.HashMap<String, com.google.gson.JsonObject>();
+            for (var element : com.google.gson.JsonParser.parseString(json).getAsJsonArray()) {
+                var entry = element.getAsJsonObject();
+                configured.put(entry.get("owner").getAsString() + "\u0000" + entry.get("id").getAsString(), entry);
+            }
+            for (KeyMapping mapping : modKeys()) {
+                String name = mapping.getName();
+                String modId = keyModId(name);
+                if (modId == null) continue;
+                String owner = "javamod-" + modId;
+                var entry = configured.get(owner + "\u0000" + name);
+                var fallback = defaultKey(mapping);
+                String keyName = entry == null || !entry.has("key")
+                        ? fallback == null ? "key.keyboard.unknown" : fallback.getName()
+                        : entry.get("key").getAsString();
+                int modifiers = entry == null || !entry.has("modifiers") ? 0 : entry.get("modifiers").getAsInt() & 7;
+                var method = com.mojang.blaze3d.platform.InputConstants.class.getDeclaredMethod("getKey", String.class);
+                method.setAccessible(true);
+                Object resolved = method.invoke(null, keyName);
+                if (!(resolved instanceof com.mojang.blaze3d.platform.InputConstants.Key resolvedKey)) continue;
+                set(KeyMapping.class, mapping, "key", resolvedKey);
+                MOD_KEY_MODIFIERS.put(mapping, modifiers);
+            }
+            try {
+                var reset = KeyMapping.class.getDeclaredMethod("resetMapping");
+                reset.setAccessible(true);
+                reset.invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        } catch (Throwable t) {
+            Natives.log("Java mod key bindings could not be applied: " + t);
+        }
+    }
+
     /**
      * A key of a player's game, pressed or released while playing (KeyboardHandler.keyPress:
      * KeyMapping.set, and click on a press), kept for that player's client tick.
@@ -3023,15 +3120,23 @@ public final class HorizonClient {
     }
 
     static void bind(java.util.UUID player, int scancode, int action) {
+        bind(player, scancode, action, 0);
+    }
+
+    static void bind(java.util.UUID player, int scancode, int action, int modifiers) {
         if (action < 0 || action > 2) return;
-        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(scancode), action);
+        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(scancode), action, modifiers);
     }
 
     static void bindMouse(java.util.UUID player, int button, boolean down) {
-        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(button), down ? 1 : 0);
+        bindMouse(player, button, down, 0);
     }
 
-    private static void bind(java.util.UUID player, com.mojang.blaze3d.platform.InputConstants.Key pressed, int action) {
+    static void bindMouse(java.util.UUID player, int button, boolean down, int modifiers) {
+        bind(player, com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(button), down ? 1 : 0, modifiers);
+    }
+
+    private static void bind(java.util.UUID player, com.mojang.blaze3d.platform.InputConstants.Key pressed, int action, int modifiers) {
         boolean down = action != 0;
         Keys keys = KEYS.computeIfAbsent(player, p -> new Keys(
                 java.util.concurrent.ConcurrentHashMap.newKeySet(), new java.util.concurrent.ConcurrentHashMap<>()));
@@ -3043,10 +3148,18 @@ public final class HorizonClient {
                 USE_HELD.remove(player);
             }
         }
+        int heldModifiers = modifiers & 7;
         for (KeyMapping mapping : modKeys()) {
-            if (!pressed.equals(key(mapping))) continue;
+            boolean matchesKey = pressed.equals(key(mapping));
+            int requiredModifiers = MOD_KEY_MODIFIERS.getOrDefault(mapping, 0);
+            if (!matchesKey) {
+                if (keys.down().contains(mapping) && requiredModifiers != heldModifiers) keys.down().remove(mapping);
+                continue;
+            }
             if (DEBUG_INPUT) Natives.log("bind " + pressed.getName() + (down ? " down" : " up") + ": " + mapping.getName());
-            if (down) {
+            if (!down) {
+                keys.down().remove(mapping);
+            } else if (requiredModifiers == heldModifiers) {
                 keys.down().add(mapping);
                 if (action == 1) keys.clicks().merge(mapping, 1, Integer::sum);
             } else {
@@ -3585,6 +3698,10 @@ public final class HorizonClient {
     private record HudDraw(long time, HudLook look) {}
     private static final java.util.Map<java.util.UUID, HudDraw> HUD_DRAWN = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<java.util.UUID, HudLook> HUD_LOOK = new java.util.concurrent.ConcurrentHashMap<>();
+    private record ViewModifiers(float old, float current) {}
+    private static final java.util.Map<java.util.UUID, ViewModifiers> VIEW_MODIFIERS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<java.util.UUID, Float> VIEW_SCALES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<java.util.UUID> VIEW_FAILURES = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** Hud's parts under extractPlayerHealth (the hearts, food, armour, air: AppleSkin's). */
     private static final java.util.Set<String> HEALTH_PARTS = java.util.Set.of(
             "extractPlayerHealth", "extractHearts", "extractHeart", "extractFood", "extractArmor", "extractAirBubbles");
@@ -3618,6 +3735,55 @@ public final class HorizonClient {
         if (frame.equals(HUD_SENT.get(id))) return;
         HUD_SENT.put(id, frame);
         Natives.hudFrame(id.toString(), frame);
+    }
+
+    private static float optionNumber(Object option) throws ReflectiveOperationException {
+        if (option instanceof Number number) return number.floatValue();
+        Object value = option.getClass().getMethod("get").invoke(option);
+        if (value instanceof Number number) return number.floatValue();
+        throw new IllegalStateException("FOV option did not expose a numeric value");
+    }
+
+    private static void sendView(net.minecraft.server.level.ServerPlayer player) {
+        var id = player.getUUID();
+        try {
+            Object camera = field(net.minecraft.client.renderer.GameRenderer.class, minecraft.gameRenderer, "mainCamera");
+            if (camera == null) return;
+            set(net.minecraft.client.Camera.class, camera, "minecraft", minecraft);
+            float savedOld = ((Number) field(net.minecraft.client.Camera.class, camera, "oldFovModifier")).floatValue();
+            float savedCurrent = ((Number) field(net.minecraft.client.Camera.class, camera, "fovModifier")).floatValue();
+            var previous = VIEW_MODIFIERS.getOrDefault(id, new ViewModifiers(1.0f, 1.0f));
+            try {
+                set(net.minecraft.client.Camera.class, camera, "oldFovModifier", previous.old());
+                set(net.minecraft.client.Camera.class, camera, "fovModifier", previous.current());
+                var tick = net.minecraft.client.Camera.class.getDeclaredMethod("tickFov");
+                tick.setAccessible(true);
+                tick.invoke(camera);
+                float oldModifier = ((Number) field(net.minecraft.client.Camera.class, camera, "oldFovModifier")).floatValue();
+                float currentModifier = ((Number) field(net.minecraft.client.Camera.class, camera, "fovModifier")).floatValue();
+                VIEW_MODIFIERS.put(id, new ViewModifiers(oldModifier, currentModifier));
+                var calculate = net.minecraft.client.Camera.class.getDeclaredMethod("calculateFov", float.class);
+                calculate.setAccessible(true);
+                float calculated = ((Number) calculate.invoke(camera, 1.0f)).floatValue();
+                set(net.minecraft.client.Camera.class, camera, "fov", calculated);
+                var getFov = net.minecraft.client.Camera.class.getDeclaredMethod("getFov");
+                getFov.setAccessible(true);
+                float modded = ((Number) getFov.invoke(camera)).floatValue();
+                float optionFov = optionNumber(field(net.minecraft.client.Options.class, minecraft.options, "fov"));
+                float base = optionFov * currentModifier;
+                float scale = base > 0.0f ? modded / base : 1.0f;
+                if (!Float.isFinite(scale) || scale < 0.01f || scale > 10.0f) scale = 1.0f;
+                Float sent = VIEW_SCALES.put(id, scale);
+                if (sent == null || Math.abs(sent - scale) > 0.0005f) Natives.view(id.toString(), scale);
+            } finally {
+                set(net.minecraft.client.Camera.class, camera, "oldFovModifier", savedOld);
+                set(net.minecraft.client.Camera.class, camera, "fovModifier", savedCurrent);
+            }
+        } catch (Throwable t) {
+            if (VIEW_FAILURES.add(id)) Natives.log("Horizon's client: Java-mod FOV bridge is unavailable: " + t);
+            VIEW_SCALES.put(id, 1.0f);
+            Natives.view(id.toString(), 1.0f);
+        }
     }
 
     static void clientHudFrame(net.minecraft.server.level.ServerPlayer player, float yaw, float pitch) {
@@ -4281,17 +4447,35 @@ public final class HorizonClient {
         if (kind.equals("bind") && in.has("mouse")) {
             int button = in.get("mouse").getAsInt();
             boolean down = in.get("down").getAsBoolean();
-            bindMouse(id, button, down);
-            mousePress(id, button, in.has("mods") ? in.get("mods").getAsInt() : 0, down);
+            int modifiers = in.has("mods") ? in.get("mods").getAsInt() : 0;
+            bindMouse(id, button, down, modifiers);
+            mousePress(id, button, modifiers, down);
             return;
         }
         if (kind.equals("bind")) {
             int key = in.get("key").getAsInt();
             int action = in.has("action") ? in.get("action").getAsInt() : (in.get("down").getAsBoolean() ? 1 : 0);
             if (action < 0 || action > 2) return;
-            bind(id, key, action);
-            keyPress(id, key, in.has("keycode") ? in.get("keycode").getAsInt() : key,
-                    in.has("mods") ? in.get("mods").getAsInt() : 0, action);
+            int modifiers = in.has("mods") ? in.get("mods").getAsInt() : 0;
+            bind(id, key, action, modifiers);
+            keyPress(id, key, in.has("keycode") ? in.get("keycode").getAsInt() : key, modifiers, action);
+            return;
+        }
+        if (kind.equals("modmenu")) {
+            var player = HorizonServer.player(id);
+            if (player == null) return;
+            try {
+                Class<?> api = Class.forName("com.terraformersmc.modmenu.api.ModMenuApi", true,
+                        HorizonClient.class.getClassLoader());
+                var create = api.getMethod("createModsScreen", net.minecraft.client.gui.screens.Screen.class);
+                var screen = (net.minecraft.client.gui.screens.Screen) create.invoke(null, new HorizonModsPage());
+                as(player, () -> setScreen(screen));
+            } catch (Throwable t) {
+                Throwable root = t;
+                while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+                Natives.log("Horizon's client: Mod Menu screen failed: " + root);
+                HorizonFailures.report("Mod Menu screen", root);
+            }
             return;
         }
         // A mod's settings screen, from the player's Mods page (as /modconfig opens it).

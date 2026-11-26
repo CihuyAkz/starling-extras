@@ -4,18 +4,15 @@ name: native-mods
 # where the game looks for it (game/native_builds.rs): NAME.json (what went in, the library's SHA-256) and NAME.so,
 # NAME being v<version>__<mod ids, sorted, joined by __>.
 #
-# Asked for two ways: a player's issue from the game's Request button (the native-build issue form: the version and
-# the mods), and workflow_dispatch: by hand, or by android.yml once it published a release, with no mods, which builds
-# the sets in native-mods/prebuilt.txt. Only mods in native-mods/ build: each was read before it was added there, since
-# its code is compiled into a game players run.
+# Started manually through workflow_dispatch. With no mods selected, it builds the sets in
+# native-mods/prebuilt.txt. Only mods in native-mods/ build: each was read before it was added there, since its code is
+# compiled into a game players run.
 #
 # Until 2026-11-21 it builds on the build VM when that is set up (repository variable STARLING_VM = on, Azure's
 # federated login in the variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID): it starts the VM, builds
 # on its self-hosted runner (label starling-vm) and deallocates it when no other build waits. After that date, or
 # without the VM, on GitHub's runners.
 on:
-  issues:
-    types: [opened]
   workflow_dispatch:
     inputs:
       version:

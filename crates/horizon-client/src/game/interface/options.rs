@@ -547,6 +547,8 @@ impl Game<'_> {
                     self.apply_settings();
                     self.switch_mods(false);
                     self.sync_native_switches();
+                    #[cfg(feature = "java-mods")]
+                    self.sync_java_mod_keybindings();
                     self.sync_pregen_option();
                     self.sync_agent_control();
                     self.ui.options.agent_status = self.agent_status_lines();

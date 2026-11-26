@@ -5147,35 +5147,41 @@ impl Game<'_> {
                 if spectator {
                     g.draw_spectator_hotbar(batch);
                 } else {
-                    let partial = g.clock.fraction() as f32;
-                    let inputs = hud_layout::HotbarInputs {
-                        selected: g.selected as i32,
-                        right_handed: !g.settings.main_hand_left,
-                        offhand: g.offhand.is_some(),
-                        slots: std::array::from_fn(|i| {
-                            g.inventory[i]
-                                .as_ref()
-                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
-                        }),
-                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: (indicator == 2).then_some(strength),
-                    };
-                    let draws = hud_layout::hotbar_with_attack_side(
-                        wi,
-                        hi,
-                        &inputs,
-                        MOBILE_PLATFORM.then_some(g.settings.touch.attack_indicator_left),
-                    );
-                    hud_layout::paint(batch, &g.gui.atlas, &draws);
-                    for d in &draws {
-                        if let hud_layout::GuiDraw::Item { slot, x, y, .. } = *d {
-                            let stack = if slot == 40 {
-                                g.offhand.as_ref()
-                            } else {
-                                g.inventory[slot as usize].as_ref()
-                            };
-                            if let Some(stack) = stack {
-                                g.draw_item(batch, stack, x as f32, y as f32);
+                    #[cfg(feature = "java-mods")]
+                    let java_hotbar_drawn = java_gui::draw_hotbar(g, batch);
+                    #[cfg(not(feature = "java-mods"))]
+                    let java_hotbar_drawn = false;
+                    if !java_hotbar_drawn {
+                        let partial = g.clock.fraction() as f32;
+                        let inputs = hud_layout::HotbarInputs {
+                            selected: g.selected as i32,
+                            right_handed: !g.settings.main_hand_left,
+                            offhand: g.offhand.is_some(),
+                            slots: std::array::from_fn(|i| {
+                                g.inventory[i]
+                                    .as_ref()
+                                    .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
+                            }),
+                            offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
+                            attack: (indicator == 2).then_some(strength),
+                        };
+                        let draws = hud_layout::hotbar_with_attack_side(
+                            wi,
+                            hi,
+                            &inputs,
+                            MOBILE_PLATFORM.then_some(g.settings.touch.attack_indicator_left),
+                        );
+                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        for d in &draws {
+                            if let hud_layout::GuiDraw::Item { slot, x, y, .. } = *d {
+                                let stack = if slot == 40 {
+                                    g.offhand.as_ref()
+                                } else {
+                                    g.inventory[slot as usize].as_ref()
+                                };
+                                if let Some(stack) = stack {
+                                    g.draw_item(batch, stack, x as f32, y as f32);
+                                }
                             }
                         }
                     }
@@ -11923,7 +11929,10 @@ pub(crate) fn run_with(
             game.settings.save(&Game::options_path());
         }
         #[cfg(feature = "java-mods")]
-        crate::java_mods::wait_for_startup();
+        {
+            crate::java_mods::wait_for_startup();
+            game.refresh_java_mod_compatibility();
+        }
         let event_loop_result = run_event_loop(game);
         #[cfg(feature = "java-mods")]
         {

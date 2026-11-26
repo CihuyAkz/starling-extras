@@ -1698,7 +1698,13 @@ impl Game<'_> {
         self.native_game_act(act);
     }
     #[cfg(not(target_os = "android"))]
-    pub(super) fn native_game_button(&mut self, _act: mod_list::NativeGameAct) {}
+    pub(super) fn native_game_button(&mut self, act: mod_list::NativeGameAct) {
+        match act {
+            mod_list::NativeGameAct::OpenJavaModMenu => self.open_java_mod_menu(),
+            mod_list::NativeGameAct::OpenJavaModConfig(index) => self.open_java_mod_config(index),
+            _ => {}
+        }
+    }
 
     /// A native mod the catalog just put in the folder: its row on the Mods page, with Compile.
     #[cfg(target_os = "android")]
@@ -1711,6 +1717,36 @@ impl Game<'_> {
         );
         self.settings.mods.installed.extend(unbuilt);
         self.offer_compile();
+    }
+
+    pub(in crate::game) fn open_java_mod_menu(&mut self) {
+        #[cfg(feature = "java-mods")]
+        {
+            if !self.settings.mods.java_mod_menu {
+                return;
+            }
+            let uuid = horizon_protocol::crypto::uuid_string(self.own_uuid());
+            let input = serde_json::json!({"kind": "modmenu"}).to_string();
+            if let Err(error) = horizon_jvm::events::screen_input(&uuid, &input) {
+                log::warn!("Java mod settings: couldn't open Mod Menu: {error}");
+            }
+        }
+    }
+
+    pub(in crate::game) fn open_java_mod_config(&mut self, index: usize) {
+        #[cfg(feature = "java-mods")]
+        {
+            let Some((id, _)) = self.settings.mods.java_configs.get(index).cloned() else {
+                return;
+            };
+            let uuid = horizon_protocol::crypto::uuid_string(self.own_uuid());
+            let input = serde_json::json!({"kind": "modconfig", "mod": id}).to_string();
+            if let Err(error) = horizon_jvm::events::screen_input(&uuid, &input) {
+                log::warn!("Java mod settings: couldn't open {id}: {error}");
+            }
+        }
+        #[cfg(not(feature = "java-mods"))]
+        let _ = index;
     }
 
     /// Lists the installed mods on the Mods page. Content mods load with the resources
@@ -1791,6 +1827,24 @@ impl Game<'_> {
         }
         // A mod with a native version built in says so instead, and isn't news.
         self.list_native_mods();
+        #[cfg(feature = "java-mods")]
+        {
+            self.settings.mods.java_mod_menu =
+                horizon_jvm::events::mod_menu_available().unwrap_or_else(|error| {
+                    log::warn!("Java mod settings: couldn't detect Mod Menu: {error}");
+                    false
+                });
+            self.settings.mods.java_configs =
+                horizon_jvm::events::config_mods().unwrap_or_else(|error| {
+                    log::warn!("Java mod settings: couldn't list configuration screens: {error}");
+                    Vec::new()
+                });
+        }
+        #[cfg(not(feature = "java-mods"))]
+        {
+            self.settings.mods.java_mod_menu = false;
+            self.settings.mods.java_configs.clear();
+        }
         #[cfg(target_os = "android")]
         self.list_native_builds_row();
         self.sync_native_switches();

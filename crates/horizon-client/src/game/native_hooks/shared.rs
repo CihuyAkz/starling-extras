@@ -3191,6 +3191,11 @@ impl Game<'_> {
     }
     /// Options > Mods' rows for loaded code mods, after the content-only rows.
     pub(super) fn list_native_mods(&mut self) {
+        #[cfg(feature = "java-mods")]
+        self.settings
+            .mods
+            .installed
+            .retain(|row| !row.id.starts_with("javamod-"));
         let registered = super::mods::collect_key_mappings(
             self.options.execution_role,
             mod_api::__private::key_mappings(),
@@ -3251,6 +3256,95 @@ impl Game<'_> {
         }
         // Starling: and the mods made for the old hooks (native_compat.rs).
         self.list_old_native_mods();
+        #[cfg(feature = "java-mods")]
+        self.list_java_mod_keybindings();
+    }
+
+    #[cfg(feature = "java-mods")]
+    fn list_java_mod_keybindings(&mut self) {
+        use horizon_client::mod_list::{Installed, KeyConflictContext, KeyMapping, NativePage};
+
+        let mappings = match horizon_jvm::events::java_mod_key_mappings() {
+            Ok(mappings) => mappings,
+            Err(error) => {
+                log::warn!("Java mods: couldn't list Fabric key mappings: {error}");
+                return;
+            }
+        };
+        let mut grouped = std::collections::BTreeMap::<String, (String, Vec<KeyMapping>)>::new();
+        for mapping in mappings {
+            let entry = grouped
+                .entry(mapping.owner)
+                .or_insert_with(|| (mapping.title, Vec::new()));
+            entry.1.push(KeyMapping {
+                id: mapping.id,
+                label: mapping.label,
+                key: mapping.key,
+                modifiers: 0,
+                context: KeyConflictContext::Universal,
+                category: String::new(),
+            });
+        }
+        for (id, (title, mappings)) in grouped {
+            if mappings.is_empty() {
+                continue;
+            }
+            self.settings.mods.installed.push(Installed {
+                id,
+                title: format!("{title} · Java"),
+                description: "Java/Fabric key bindings".into(),
+                problem: None,
+                dev: true,
+                native: Some(NativePage {
+                    mappings,
+                    settings: Vec::new(),
+                }),
+            });
+        }
+        self.sync_java_mod_keybindings();
+    }
+
+    #[cfg(feature = "java-mods")]
+    pub(in crate::game) fn refresh_java_mod_compatibility(&mut self) {
+        self.settings
+            .mods
+            .installed
+            .retain(|row| !row.id.starts_with("javamod-"));
+        self.list_java_mod_keybindings();
+        self.settings.mods.java_mod_menu = horizon_jvm::events::mod_menu_available()
+            .unwrap_or_else(|error| {
+                log::warn!("Java mod settings: couldn't detect Mod Menu: {error}");
+                false
+            });
+        self.settings.mods.java_configs = horizon_jvm::events::config_mods()
+            .unwrap_or_else(|error| {
+                log::warn!("Java mod settings: couldn't list configuration screens: {error}");
+                Vec::new()
+            });
+    }
+
+    #[cfg(feature = "java-mods")]
+    pub(crate) fn sync_java_mod_keybindings(&self) {
+        let mut bindings = Vec::new();
+        for installed in &self.settings.mods.installed {
+            if !installed.id.starts_with("javamod-") {
+                continue;
+            }
+            let Some(page) = installed.native.as_ref() else {
+                continue;
+            };
+            for mapping in &page.mappings {
+                let (key, modifiers) = self.settings.mods.binding(
+                    &installed.id,
+                    &mapping.id,
+                    (&mapping.key, mapping.modifiers),
+                );
+                bindings.push((installed.id.clone(), mapping.id.clone(), key, modifiers));
+            }
+        }
+        if let Err(error) = horizon_jvm::events::set_java_mod_key_bindings(&bindings) {
+            log::warn!("Java mods: couldn't apply saved key bindings: {error}");
+        }
     }
     /// The settings mod `mod_id` registered, with their kept values, as its page shows them.
     fn native_page_settings(&self, mod_id: &str) -> Vec<NativeSetting> {

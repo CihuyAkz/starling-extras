@@ -378,6 +378,18 @@ fn java_damage_kind(
     })
 }
 
+pub(super) fn java_uuid_string(level: &horizon_client::save::Level) -> String {
+    let uuid = java_uuid(level);
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        (uuid >> 96) as u32,
+        (uuid >> 80) as u16,
+        (uuid >> 64) as u16,
+        (uuid >> 48) as u16,
+        uuid & 0x0000_ffff_ffff
+    )
+}
+
 pub(super) fn java_uuid(level: &horizon_client::save::Level) -> u128 {
     level.player_uuid.map_or_else(
         || horizon_protocol::crypto::offline_uuid("Player"),

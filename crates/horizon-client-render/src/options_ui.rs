@@ -2821,6 +2821,7 @@ fn installed_mod_rows(s: &Settings) -> Vec<Row> {
         .installed
         .iter()
         .enumerate()
+        .filter(|(_, installed)| !installed.id.starts_with("javamod-"))
         .map(|(i, installed)| {
             let on = s.mods.is_on(i);
             let not_built = installed.problem.as_deref() == Some(crate::mod_list::NOT_BUILT);
@@ -2873,7 +2874,35 @@ fn installed_mod_rows(s: &Settings) -> Vec<Row> {
 
 fn native_game_page_rows(s: &Settings) -> Vec<Row> {
     let mut rows = native_game_rows(s);
-    if !s.mods.installed.is_empty() {
+    if s.mods.java_mod_menu {
+        rows.push(Row::Heading("Java Mods".into()));
+        rows.push(Row::Buttons(
+            button(
+                0.0,
+                0.0,
+                310.0,
+                Text::literal("Open Mod Menu"),
+                Act::NativeGame(crate::mod_list::NativeGameAct::OpenJavaModMenu),
+            ),
+            None,
+        ));
+    }
+    if !s.mods.java_configs.is_empty() {
+        rows.push(Row::Heading("Java Mod Settings".into()));
+        for (index, (_, name)) in s.mods.java_configs.iter().enumerate() {
+            rows.push(Row::Buttons(
+                button(
+                    0.0,
+                    0.0,
+                    310.0,
+                    Text::literal(name.clone()),
+                    Act::NativeGame(crate::mod_list::NativeGameAct::OpenJavaModConfig(index)),
+                ),
+                None,
+            ));
+        }
+    }
+    if s.mods.installed.iter().any(|installed| !installed.id.starts_with("javamod-")) {
         rows.push(Row::Buttons(
             button(
                 0.0,
@@ -8447,10 +8476,15 @@ mod tests {
         let atlas = atlas();
         let mut s = Settings::default();
         let mut ui = OptionsUi::default();
-        let size = (480.0, 400.0);
+        let size = (480.0, 720.0);
         let now = "Now: Starling 0.8.0 from the APK, without native mods.";
         let old = "The build with Wrench was made for an earlier install of Starling, so it no \
                    longer loads. Compile again.";
+        s.mods.java_mod_menu = true;
+        s.mods.java_configs = vec![
+            ("modmenu".into(), "Mod Menu".into()),
+            ("punchy".into(), "Punchy".into()),
+        ];
         s.mods.native_game = Some(NativeGame {
             lines: vec![(now.into(), false), (old.into(), true)],
             buttons: vec![
@@ -8506,10 +8540,26 @@ mod tests {
         // Two to a row; the one left over takes the row.
         assert_eq!(shown(NativeGameAct::Compile).w, 150.0);
         assert_eq!(shown(NativeGameAct::CompileOnGithub).w, 150.0);
+        let java_menu = shown(NativeGameAct::OpenJavaModMenu);
+        assert_eq!(java_menu.w, 310.0);
+        let (x, y) = (java_menu.x + 1.0, java_menu.y + 1.0);
+        let events = ui.click(&mut s, &atlas, x, y, size, [480, 720], false, false);
+        assert_eq!(
+            events.last(),
+            Some(&Event::NativeGame(NativeGameAct::OpenJavaModMenu))
+        );
+        let java_config = shown(NativeGameAct::OpenJavaModConfig(0));
+        assert_eq!(java_config.w, 310.0);
+        let (x, y) = (java_config.x + 1.0, java_config.y + 1.0);
+        let events = ui.click(&mut s, &atlas, x, y, size, [480, 720], false, false);
+        assert_eq!(
+            events.last(),
+            Some(&Event::NativeGame(NativeGameAct::OpenJavaModConfig(0)))
+        );
         let without = shown(NativeGameAct::PlayWithout);
         assert_eq!(without.w, 310.0);
         let (x, y) = (without.x + 1.0, without.y + 1.0);
-        let events = ui.click(&mut s, &atlas, x, y, size, [480, 400], false, false);
+        let events = ui.click(&mut s, &atlas, x, y, size, [480, 720], false, false);
         assert_eq!(
             events.last(),
             Some(&Event::NativeGame(NativeGameAct::PlayWithout))
@@ -8552,11 +8602,11 @@ mod tests {
             (150.0, 150.0, toggle[1])
         );
         let (x, y) = (warning[0] + 1.0, warning[1] + 1.0);
-        let events = ui.click(&mut s, &atlas, x, y, size, [480, 400], false, false);
+        let events = ui.click(&mut s, &atlas, x, y, size, [480, 720], false, false);
         assert!(!events.contains(&Event::NativeSettings(0)), "{events:?}");
         // Not chosen, it has nothing to compile: the row is the box alone.
         let (x, y) = (toggle[0] + 1.0, toggle[1] + 1.0);
-        ui.click(&mut s, &atlas, x, y, size, [480, 400], false, false);
+        ui.click(&mut s, &atlas, x, y, size, [480, 720], false, false);
         assert!(!s.mods.is_on(0));
         let (widgets, ..) = ui.layout(&s, size.0, size.1);
         let ((toggle, label), warning) = row(&widgets);

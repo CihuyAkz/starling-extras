@@ -66,6 +66,9 @@ pub struct ModList {
     pub info: BTreeMap<String, ModInfo>,
     /// Android: which game runs and which the next start runs, above the mods.
     pub native_game: Option<NativeGame>,
+    /// Java/Fabric mods that expose a Mod Menu configuration screen.
+    pub java_mod_menu: bool,
+    pub java_configs: Vec<(String, String)>,
 }
 
 /// Android: the game with native mods as the Mods page says it (game/native_builds.rs): the APK's
@@ -90,6 +93,8 @@ pub enum NativeGameAct {
     PlayWithout,
     /// Another build server.
     BuildServer,
+    OpenJavaModMenu,
+    OpenJavaModConfig(usize),
 }
 
 /// What the Mods screen shows of a mod besides its row: the manifest's descriptive fields and
@@ -429,6 +434,8 @@ impl ModList {
             installed: Vec::new(),
             info: BTreeMap::new(),
             native_game: None,
+            java_mod_menu: false,
+            java_configs: Vec::new(),
         }
     }
     pub fn serialize(&self) -> String {
@@ -602,6 +609,30 @@ mod tests {
         );
         assert!(list.keys_of("other").is_empty());
         assert_eq!(ModList::parse(&list.serialize()), list);
+    }
+
+    #[test]
+    fn parsed_java_mod_menu_state_starts_empty() {
+        let list = ModList::parse("mod.example:true\n");
+        assert!(!list.java_mod_menu);
+        assert!(list.java_configs.is_empty());
+    }
+
+    #[test]
+    fn java_mod_key_mapping_ids_round_trip_with_namespaced_mapping_names() {
+        let mut list = ModList::default();
+        list.set_binding("javamod-litematica", "key.litematica.open_menu", "key.keyboard.g", SHIFT | CONTROL);
+        let serialized = list.serialize();
+        assert_eq!(serialized, "key.javamod-litematica.key.litematica.open_menu:shift+ctrl+key.keyboard.g\n");
+        let loaded = ModList::parse(&serialized);
+        assert_eq!(
+            loaded.binding(
+                "javamod-litematica",
+                "key.litematica.open_menu",
+                ("key.keyboard.unknown", 0),
+            ),
+            ("key.keyboard.g".to_owned(), SHIFT | CONTROL)
+        );
     }
 
     #[test]

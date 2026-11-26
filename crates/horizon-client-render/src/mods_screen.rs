@@ -264,6 +264,9 @@ impl ModsScreen {
         let mut icons = HashMap::new();
         let mut entries = vec![Entry::minecraft(), Entry::horizon()];
         for (index, installed) in mods.installed.iter().enumerate() {
+            if installed.id.starts_with("javamod-") {
+                continue;
+            }
             let info = mods.info.get(&installed.id);
             let key = format!("mod/{index}/icon");
             let png = info

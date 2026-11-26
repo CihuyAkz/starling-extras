@@ -816,6 +816,11 @@ fn boot(env: &mut JNIEnv, jars: &[PathBuf]) -> jni::errors::Result<String> {
                 fn_ptr: native_hud_frame as *mut c_void,
             },
             NativeMethod {
+                name: "view".into(),
+                sig: "(Ljava/lang/String;F)V".into(),
+                fn_ptr: native_view as *mut c_void,
+            },
+            NativeMethod {
                 name: "clientScreen".into(),
                 sig: "(Ljava/lang/String;Z)V".into(),
                 fn_ptr: native_client_screen as *mut c_void,
@@ -1347,6 +1352,21 @@ extern "system" fn native_screen_frame(
             uuid: uuid.into(),
             frame: frame.into(),
         });
+    }));
+}
+
+extern "system" fn native_view(
+    mut env: JNIEnv,
+    _class: JClass,
+    uuid: JString,
+    scale: sys::jfloat,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Ok(uuid) = env.get_string(&uuid) else {
+            return;
+        };
+        let uuid: String = uuid.into();
+        events::set_view_scale(&uuid, scale);
     }));
 }
 

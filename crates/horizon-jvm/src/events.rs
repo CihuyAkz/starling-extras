@@ -15,7 +15,34 @@ use jni::objects::{
     GlobalRef, JByteArray, JClass, JIntArray, JObject, JObjectArray, JString, JValue,
 };
 use jni::{JNIEnv, sys};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+
+static JAVA_VIEW_SCALES: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+
+pub fn set_view_scale(uuid: &str, scale: f32) {
+    let scales = JAVA_VIEW_SCALES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut scales = scales.lock().unwrap_or_else(|error| error.into_inner());
+    if scale.is_finite() && (0.01..=10.0).contains(&scale) {
+        scales.insert(uuid.to_owned(), scale);
+    } else {
+        scales.remove(uuid);
+    }
+}
+
+pub fn view_scale(uuid: &str) -> f32 {
+    JAVA_VIEW_SCALES
+        .get()
+        .and_then(|scales| {
+            scales
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .get(uuid)
+                .copied()
+        })
+        .unwrap_or(1.0)
+}
+
 
 /// A player on the server, as the game sees it this tick.
 #[derive(Clone, Debug, PartialEq)]
@@ -1689,6 +1716,71 @@ pub fn neighbours(dimension: &str, positions: &[[i32; 3]]) -> Result<(), String>
     Ok(())
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct JavaModKeyMapping {
+    pub owner: String,
+    pub title: String,
+    pub id: String,
+    pub label: String,
+    pub key: String,
+}
+
+pub fn java_mod_key_mappings() -> Result<Vec<JavaModKeyMapping>, String> {
+    let Some(class) = client_class() else {
+        return Ok(Vec::new());
+    };
+    let bridge = crate::get().ok_or("Java isn't running")?;
+    let mut env = bridge
+        .vm()
+        .attach_current_thread_permanently()
+        .map_err(|e| e.to_string())?;
+    let json = env
+        .with_local_frame(8, |env| -> jni::errors::Result<String> {
+            let class = <&JClass>::from(class.as_obj());
+            let value = env
+                .call_static_method(class, "javaModKeyMappings", "()Ljava/lang/String;", &[])?
+                .l()?;
+            Ok(env.get_string(&JString::from(value))?.into())
+        })
+        .map_err(|e| crate::describe(&mut env, e))?;
+    serde_json::from_str(&json).map_err(|e| e.to_string())
+}
+
+pub fn set_java_mod_key_bindings(bindings: &[(String, String, String, u32)]) -> Result<(), String> {
+    let values: Vec<_> = bindings
+        .iter()
+        .map(|(owner, id, key, modifiers)| {
+            serde_json::json!({
+                "owner": owner,
+                "id": id,
+                "key": key,
+                "modifiers": modifiers,
+            })
+        })
+        .collect();
+    let json = serde_json::to_string(&values).map_err(|e| e.to_string())?;
+    let Some(class) = client_class() else {
+        return Ok(());
+    };
+    let bridge = crate::get().ok_or("Java isn't running")?;
+    let mut env = bridge
+        .vm()
+        .attach_current_thread_permanently()
+        .map_err(|e| e.to_string())?;
+    env.with_local_frame(16, |env| -> jni::errors::Result<()> {
+        let class = <&JClass>::from(class.as_obj());
+        let json = env.new_string(json)?;
+        env.call_static_method(
+            class,
+            "setJavaModKeys",
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&json)],
+        )?;
+        Ok(())
+    })
+    .map_err(|e| crate::describe(&mut env, e))
+}
+
 /// Input to the player's open mod screen (JSON: `size`, `move`, `press`, `release`, `drag`,
 /// `scroll`, `key`, `char`), run by the screen's own code.
 /// The keys Java mods' key bindings are set to (`KeyMapping`s they registered), as 26.3's
@@ -1713,6 +1805,24 @@ pub fn bound_keys() -> Result<Vec<i32>, String> {
         })
         .map_err(|e| crate::describe(&mut env, e))?;
     serde_json::from_str(&json).map_err(|e| e.to_string())
+}
+
+pub fn mod_menu_available() -> Result<bool, String> {
+    let Some(class) = client_class() else {
+        return Ok(false);
+    };
+    let bridge = crate::get().ok_or("Java isn't running")?;
+    let mut env = bridge
+        .vm()
+        .attach_current_thread_permanently()
+        .map_err(|e| e.to_string())?;
+    env.with_local_frame(8, |env| -> jni::errors::Result<bool> {
+        let class = <&JClass>::from(class.as_obj());
+        Ok(env
+            .call_static_method(class, "modMenuAvailable", "()Z", &[])?
+            .z()?)
+    })
+    .map_err(|e| crate::describe(&mut env, e))
 }
 
 /// The Java mods with a settings screen (HorizonClient.configMods): `[id, name]` pairs, for
@@ -2988,5 +3098,25 @@ mod extra_level_tests {
             "coordinate_scale": 4.0
         });
         assert!(extra_level(&value).unwrap().dimension_type_data.is_none());
+    }
+}
+
+
+#[cfg(test)]
+mod java_view_scale_tests {
+    use super::{set_view_scale, view_scale};
+
+    #[test]
+    fn java_view_scale_is_per_player_and_rejects_invalid_values() {
+        let first = "00000000-0000-0000-0000-000000000001";
+        let second = "00000000-0000-0000-0000-000000000002";
+        assert_eq!(view_scale(first), 1.0);
+        set_view_scale(first, 0.5);
+        set_view_scale(second, 1.25);
+        assert_eq!(view_scale(first), 0.5);
+        assert_eq!(view_scale(second), 1.25);
+        set_view_scale(first, f32::NAN);
+        assert_eq!(view_scale(first), 1.0);
+        set_view_scale(second, 1.0);
     }
 }
