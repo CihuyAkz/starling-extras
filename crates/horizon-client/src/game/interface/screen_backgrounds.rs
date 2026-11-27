@@ -89,7 +89,12 @@ impl Game<'_> {
     /// `Screen.extractBlurredBackground` over the panorama or the world and
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
     pub(super) fn menu_blur(&self) -> Option<f32> {
-        let blurred = self.remote_loading()
+        #[cfg(feature = "java-mods")]
+        let java_screen = self.java_title_custom();
+        #[cfg(not(feature = "java-mods"))]
+        let java_screen = false;
+        let blurred = java_screen
+            || self.remote_loading()
             || self.title.as_ref().is_some_and(|t| {
                 matches!(self.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, horizon_client::title::Mode::Main)

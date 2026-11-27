@@ -88,7 +88,7 @@ impl Game<'_> {
         self.turn_player(x * zoom, y * zoom);
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
-    pub(super) fn pauses_game(&self) -> bool {
+    pub(in crate::game) fn pauses_game(&self) -> bool {
         self.has_singleplayer_server()
             && !self.is_published()
             && !self.has_split_players()

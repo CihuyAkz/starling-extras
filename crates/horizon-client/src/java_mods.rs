@@ -406,8 +406,6 @@ fn release_startup_claim() {
 /// The exported folder packages use the same native content loader as ordinary Starling mods.
 #[cfg(feature = "java-mods")]
 pub fn prepare_content(game_home: &Path, resources: &Path) -> Vec<PathBuf> {
-    use std::sync::atomic::Ordering;
-
     if !compatibility_enabled() {
         return Vec::new();
     }
@@ -425,43 +423,66 @@ pub fn prepare_content(game_home: &Path, resources: &Path) -> Vec<PathBuf> {
         log::info!("Java mods: reused {} generated content package(s)", paths.len());
         return paths;
     }
-    if STARTED.swap(true, Ordering::SeqCst) {
-        log::warn!("Java mods: registrations changed after the JVM started; restart Starling to rebuild Java content");
-        return Vec::new();
+    #[cfg(target_os = "android")]
+    {
+        if spawn_startup(
+            game_home.to_path_buf(),
+            Some(ContentWarmup {
+                resources: resources.to_path_buf(),
+                cache,
+            }),
+        ) {
+            log::info!("Java mods: first-run content is being prepared in the background; it will be available after restarting Starling");
+        } else {
+            log::warn!("Java mods: content preparation is already running; generated content will be available after a later restart");
+        }
+        Vec::new()
     }
+    #[cfg(not(target_os = "android"))]
+    {
+        use std::sync::atomic::Ordering;
 
-    let startup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        start(game_home)
-    }));
-    let (content_jars, fabric_loaded) = match startup {
-        Ok(Ok(result)) => result,
-        Ok(Err(error)) => {
-            release_startup_claim();
-            crate::lan::packet_tap::want(false);
-            log::warn!("Java mods: couldn't prepare registry content: {error}");
+        if STARTED.swap(true, Ordering::SeqCst) {
+            log::warn!("Java mods: registrations changed after the JVM started; restart Starling to rebuild Java content");
             return Vec::new();
         }
-        Err(_) => {
+
+        let startup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| start(game_home)));
+        let (content_jars, fabric_loaded) = match startup {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => {
+                release_startup_claim();
+                crate::lan::packet_tap::want(false);
+                log::warn!("Java mods: couldn't prepare registry content: {error}");
+                return Vec::new();
+            }
+            Err(_) => {
+                release_startup_claim();
+                crate::lan::packet_tap::want(false);
+                log::error!("Java mods: registry startup panicked before Fabric became ready");
+                return Vec::new();
+            }
+        };
+        if !fabric_loaded || content_jars.is_empty() {
             release_startup_claim();
             crate::lan::packet_tap::want(false);
-            log::error!("Java mods: registry startup panicked before Fabric became ready");
+            log::warn!("Java mods: Fabric was not available; custom Java registries are not imported");
             return Vec::new();
         }
-    };
-    if !fabric_loaded || content_jars.is_empty() {
-        release_startup_claim();
-        crate::lan::packet_tap::want(false);
-        log::warn!("Java mods: Fabric was not available; custom Java registries are not imported");
-        return Vec::new();
-    }
-    match horizon_jvm::content::build(&content_jars, resources, &cache, &|line| log::info!("{line}")) {
-        Ok(paths) => {
-            log::info!("Java mods: imported {} Java content package(s) into Starling's native registry pipeline", paths.len());
-            paths
-        }
-        Err(error) => {
-            log::warn!("Java mods: Java registry/content import failed: {error}");
-            Vec::new()
+        match horizon_jvm::content::build(
+            &content_jars,
+            resources,
+            &cache,
+            &|line| log::info!("{line}"),
+        ) {
+            Ok(paths) => {
+                log::info!("Java mods: imported {} Java content package(s) into Starling's native registry pipeline", paths.len());
+                paths
+            }
+            Err(error) => {
+                log::warn!("Java mods: Java registry/content import failed: {error}");
+                Vec::new()
+            }
         }
     }
 }
@@ -602,16 +623,19 @@ static STARTUP_THREAD: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
     std::sync::Mutex::new(None);
 
 #[cfg(feature = "java-mods")]
-pub fn start_if_present(game_home: PathBuf) {
+struct ContentWarmup {
+    resources: PathBuf,
+    cache: PathBuf,
+}
+
+#[cfg(feature = "java-mods")]
+fn spawn_startup(game_home: PathBuf, warmup: Option<ContentWarmup>) -> bool {
     use std::sync::atomic::Ordering;
 
-    if !compatibility_enabled() {
-        return;
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return false;
     }
     let jars = installed_jars(&game_home);
-    if jars.is_empty() || STARTED.swap(true, Ordering::SeqCst) {
-        return;
-    }
     log::info!(
         "Java mods: starting Fabric from {} with {} mod jar(s)",
         mods_directory(&game_home).display(),
@@ -625,7 +649,28 @@ pub fn start_if_present(game_home: PathBuf) {
                 start(&game_home)
             }));
             match startup {
-                Ok(Ok((_, true))) => {}
+                Ok(Ok((content_jars, true))) => {
+                    if let Some(warmup) = warmup {
+                        if content_jars.is_empty() {
+                            log::warn!("Java mods: no compatible jars were available for content preparation");
+                        } else {
+                            match horizon_jvm::content::build(
+                                &content_jars,
+                                &warmup.resources,
+                                &warmup.cache,
+                                &|line| log::info!("{line}"),
+                            ) {
+                                Ok(paths) => log::info!(
+                                    "Java mods: prepared {} content package(s) for the next Starling launch",
+                                    paths.len()
+                                ),
+                                Err(error) => log::warn!(
+                                    "Java mods: background registry/content preparation failed: {error}"
+                                ),
+                            }
+                        }
+                    }
+                }
                 Ok(Ok((_, false))) => {
                     crate::lan::packet_tap::want(false);
                     release_startup_claim();
@@ -646,13 +691,32 @@ pub fn start_if_present(game_home: PathBuf) {
     match spawned {
         Ok(thread) => {
             *STARTUP_THREAD.lock().unwrap_or_else(|e| e.into_inner()) = Some(thread);
+            true
         }
         Err(error) => {
             STARTED.store(false, Ordering::SeqCst);
             crate::lan::packet_tap::want(false);
             log::warn!("Java mods: couldn't start the runtime thread: {error}");
+            false
         }
     }
+}
+
+#[cfg(feature = "java-mods")]
+pub fn start_if_present(game_home: PathBuf) {
+    if !compatibility_enabled() || installed_jars(&game_home).is_empty() {
+        return;
+    }
+    let _ = spawn_startup(game_home, None);
+}
+
+#[cfg(feature = "java-mods")]
+pub(super) fn startup_finished() -> bool {
+    STARTUP_THREAD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_none_or(std::thread::JoinHandle::is_finished)
 }
 
 #[cfg(feature = "java-mods")]

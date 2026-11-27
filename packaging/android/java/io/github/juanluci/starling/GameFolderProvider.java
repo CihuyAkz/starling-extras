@@ -50,7 +50,7 @@ public final class GameFolderProvider extends DocumentsProvider {
         return getContext().getPackageName() + ".documents";
     }
 
-    /** The app's name, as the phone lists it: Starling Extras, StarExtras: Preview... */
+    /** The app's name, as the phone lists it: Starling Extras, Extras: Preview... */
     private String title() {
         Context context = getContext();
         return context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();

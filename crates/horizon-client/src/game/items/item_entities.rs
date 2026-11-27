@@ -577,8 +577,15 @@ impl Game<'_> {
                     && o.position.z + 0.25 > min[2]
                     && o.position.z - 0.25 < max[2];
                 if touching && self.xp_delay == 0 {
-                    // ExperienceOrb.playerTouch: one orb every 2 ticks; a
-                    // merged orb gives its value once per count.
+                    #[cfg(feature = "java-mods")]
+                    if let Some((left, delay)) = self.java_orb_touch(o) {
+                        self.xp_delay = delay.max(0) as u32;
+                        if left < o.count {
+                            taken.push(o.clone());
+                            o.count = left;
+                        }
+                        return o.count > 0;
+                    }
                     self.xp_delay = 2;
                     gained += o.points();
                     taken.push(o.clone());

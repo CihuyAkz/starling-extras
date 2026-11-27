@@ -1389,6 +1389,10 @@ impl Game<'_> {
         }
     }
     pub(in crate::game) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
+        #[cfg(feature = "java-mods")]
+        if self.java_add_effect(&effect) {
+            return false;
+        }
         // `LivingEntity.addEffect` refuses what cannot affect the entity;
         // players pass the tag check, but the `mob_effect_applicable` hook
         // is asked for every add.

@@ -224,6 +224,6 @@ jobs:
           apk="$RUNNER_TEMP/starling-preview-nightly-$short-arm64-v8a.apk"
           cp target/android/starling-*-arm64-v8a.apk "$apk"
           gh release create "nightly-$short" "$apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "StarExtras: Preview nightly $(date -u +%Y-%m-%d) · $short (native mods)" \
-            --notes "StarExtras: Preview built from $GITHUB_SHA with the game as Rust libraries ($PROFILE profile), so native mods from Horizon's catalog load beside it. arm64-v8a only."
+            --title "Extras: Preview nightly $(date -u +%Y-%m-%d) · $short (native mods)" \
+            --notes "Extras: Preview built from $GITHUB_SHA with the game as Rust libraries ($PROFILE profile), so native mods from Horizon's catalog load beside it. arm64-v8a only."
           echo "APK: https://github.com/$GITHUB_REPOSITORY/releases/download/nightly-$short/$(basename "$apk")"

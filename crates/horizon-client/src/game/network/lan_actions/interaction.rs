@@ -551,6 +551,21 @@ impl Game<'_> {
         if self.guest_attack_stops(gi, id) {
             return Ok(false);
         }
+        #[cfg(feature = "java-mods")]
+        if let Ok(Some(answer)) = self.as_guest_at(gi, conn, |game| {
+            let mob_id = game.level_entity(id).and_then(|target| match target {
+                crate::game::commands::Target::Mob(mob_id) => Some(mob_id),
+                _ => None,
+            })?;
+            let answer = game.java_vanilla_entity(mob_id, false, 0, [0.0; 3]);
+            if answer.is_some_and(|answer| answer.swing) {
+                game.swing_arm();
+            }
+            answer
+        }) && answer.taken
+        {
+            return Ok(false);
+        }
         // Native mods, where Player.attack starts: the global `attack_entity`,
         // then the held item's `on_left_click_entity` Part. A canceled blow
         // does nothing (game/native_hooks.rs).

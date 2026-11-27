@@ -76,49 +76,60 @@ impl Game<'_> {
             let before = stack.count;
             let kind = stack.item.clone();
             let thrower = self.dropped[i].thrower;
-            let Some(rest) = self.as_guest(conn, |g| g.native_pickup_insert(&stack)) else {
-                continue;
-            };
-            // Where the entity is and what it holds once the pickup is told: `None` when a mod
-            // removed it.
-            let after = match rest {
-                Some(rest) if rest.count >= before => continue,
-                // `item_picked_up_partial`: the remainder is the entity's while mods hear it, and
-                // the count after comes from the entity.
-                Some(rest)
-                    if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPartial) =>
-                {
-                    self.dropped[i].stack = rest.clone();
-                    let told = self.as_guest(conn, |g| g.native_pickup_partial(&stack, rest));
-                    let at = self.dropped.iter().position(|d| d.id == item_id);
-                    if let (Some(at), Some(remaining)) = (at, told) {
-                        match remaining {
-                            Some(remaining) => self.dropped[at].stack = remaining,
-                            None => self.dropped[at].stack.count = 0,
+            #[cfg(feature = "java-mods")]
+            let java_item = self.dropped[i].clone();
+            #[cfg(feature = "java-mods")]
+            let java_left = self
+                .as_guest(conn, |game| game.java_item_touch(&java_item))
+                .flatten();
+            #[cfg(not(feature = "java-mods"))]
+            let java_left: Option<u32> = None;
+            let after = if let Some(left) = java_left {
+                let left = left.min(before);
+                if left >= before {
+                    continue;
+                }
+                self.dropped[i].stack.count = left;
+                Some(i)
+            } else {
+                let Some(rest) = self.as_guest(conn, |g| g.native_pickup_insert(&stack)) else {
+                    continue;
+                };
+                match rest {
+                    Some(rest) if rest.count >= before => continue,
+                    Some(rest)
+                        if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPartial) =>
+                    {
+                        self.dropped[i].stack = rest.clone();
+                        let told = self.as_guest(conn, |g| g.native_pickup_partial(&stack, rest));
+                        let at = self.dropped.iter().position(|d| d.id == item_id);
+                        if let (Some(at), Some(remaining)) = (at, told) {
+                            match remaining {
+                                Some(remaining) => self.dropped[at].stack = remaining,
+                                None => self.dropped[at].stack.count = 0,
+                            }
                         }
+                        at
                     }
-                    at
-                }
-                Some(rest) => {
-                    self.dropped[i].stack = rest;
-                    Some(i)
-                }
-                // ItemEntityPickupEvent.Post, only on a whole pickup: the empty remainder is the
-                // entity's while mods hear it, and the count after comes from the entity.
-                None if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPost) => {
-                    self.dropped[i].stack.count = 0;
-                    let raised = self
-                        .as_guest(conn, |g| g.native_pickup_post(item_id, &stack))
-                        .flatten();
-                    let at = self.dropped.iter().position(|d| d.id == item_id);
-                    if let (Some(at), Some(raised)) = (at, raised) {
-                        self.dropped[at].stack = raised;
+                    Some(rest) => {
+                        self.dropped[i].stack = rest;
+                        Some(i)
                     }
-                    at
-                }
-                None => {
-                    self.dropped[i].stack.count = 0;
-                    Some(i)
+                    None if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPost) => {
+                        self.dropped[i].stack.count = 0;
+                        let raised = self
+                            .as_guest(conn, |g| g.native_pickup_post(item_id, &stack))
+                            .flatten();
+                        let at = self.dropped.iter().position(|d| d.id == item_id);
+                        if let (Some(at), Some(raised)) = (at, raised) {
+                            self.dropped[at].stack = raised;
+                        }
+                        at
+                    }
+                    None => {
+                        self.dropped[i].stack.count = 0;
+                        Some(i)
+                    }
                 }
             };
             let left = after.map_or(0, |at| self.dropped[at].stack.count);
@@ -306,6 +317,38 @@ impl Game<'_> {
         // A merged orb gives its value once per count and goes at zero.
         let index = touching[pick];
         let mut orb = self.orbs[index].clone();
+        #[cfg(feature = "java-mods")]
+        if let Some((left, delay)) = self
+            .as_guest(conn, |game| game.java_orb_touch(&orb))
+            .flatten()
+        {
+            let delay = delay.max(0) as u32;
+            if let Some(host) = self.lan.as_mut() {
+                host.play.entry(conn).or_default().xp_delay = delay;
+            }
+            self.native_player_exp_cooldown_change(player, &name, delay);
+            if left < orb.count {
+                if left == 0 {
+                    self.remove_orb(index);
+                } else {
+                    self.orbs[index].count = left;
+                }
+                if let Some(host) = self.lan.as_ref() {
+                    host.hub.take_item(orb.id as i32, id, 1, at);
+                }
+                let pitch = (self.world.random.next_float() - self.world.random.next_float())
+                    * 0.35
+                    + 0.9;
+                let position = [orb.position.x, orb.position.y, orb.position.z];
+                self.audio.play(
+                    "minecraft:entity.experience_orb.pickup",
+                    Some(position),
+                    0.1,
+                    pitch,
+                );
+            }
+            return;
+        }
         let mut canceled = false;
         // Swapping the guest in costs: only when a mod hears the pickup.
         let listened = (self.serving.is_some() || self.options.dedicated.is_some())

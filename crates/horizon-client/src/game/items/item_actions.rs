@@ -144,6 +144,27 @@ impl Game<'_> {
             };
             let kind = self.target_type(entity);
             let stack = self.held().cloned();
+            #[cfg(feature = "java-mods")]
+            if let commands::Target::Mob(mob_id) = entity {
+                let hit = location
+                    .zip(self.target_position(entity))
+                    .map(|(offset, position)| {
+                        std::array::from_fn(|axis| position[axis] + offset[axis])
+                    })
+                    .unwrap_or_default();
+                if let Some(answer) = self.java_vanilla_entity(
+                    mob_id,
+                    true,
+                    i32::from(self.hand == Hand::Off),
+                    hit,
+                ) && answer.taken
+                {
+                    if answer.swing {
+                        self.swing_arm();
+                    }
+                    return Ok(true);
+                }
+            }
             let mut claimed = false;
             if let Some(location) = location {
                 self.native_entity_interact_specific(

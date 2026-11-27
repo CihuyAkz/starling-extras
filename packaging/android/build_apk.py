@@ -11,7 +11,7 @@ horizon-prepare makes from the player's own copy are made on the phone, or copie
     python3 packaging/android/build_apk.py                 # build the APK
     python3 packaging/android/build_apk.py --install       # and adb install it
     python3 packaging/android/build_apk.py --zip           # and a zip of it to send
-    python3 packaging/android/build_apk.py --preview       # StarExtras: Preview, the organisation's CI build
+    python3 packaging/android/build_apk.py --preview       # Extras: Preview, the organisation's CI build
 
 Needs the Android SDK (ANDROID_HOME, else the default folder) with the build-tools, platform and
 NDK pinned below, the aarch64-linux-android Rust target, cargo-ndk and a JDK (javac, keytool,
@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 
 APPLICATION_ID = "io.github.cihuyakz.starling.extras"
 LABEL = "Starling Extras"
-VARIANTS = {"preview": (".dev", "StarExtras: Preview")}
+VARIANTS = {"preview": (".dev", "Extras: Preview")}
 VERSION_NAME = "0.9.0"
 VERSION_CODE = 14
 MIN_SDK = 26  # AAudio (cpal)
@@ -612,7 +612,7 @@ def main():
     )
     parser.add_argument(
         "--preview", action="store_true",
-        help=f"StarExtras: Preview ({APPLICATION_ID}{VARIANTS['preview'][0]}), the organisation's CI build",
+        help=f"Extras: Preview ({APPLICATION_ID}{VARIANTS['preview'][0]}), the organisation's CI build",
     )
     parser.add_argument("--abi", choices=TARGETS, default=ABI, help="Android ABI (default: arm64-v8a)")
     args = parser.parse_args()

@@ -32,7 +32,7 @@ class GameFolderManifest(unittest.TestCase):
         self.assertEqual(action.get(NS + "name"), "android.content.action.DOCUMENTS_PROVIDER")
 
     def test_authority_follows_the_package(self):
-        # The release and StarExtras: Preview can't install together with one authority.
+        # The release and Extras: Preview can't install together with one authority.
         self.assertEqual(provider().get(NS + "authorities"), "@APPLICATION_ID@.documents")
 
     def test_the_game_ending_does_not_end_it(self):
@@ -44,7 +44,7 @@ class PlayerFiles(unittest.TestCase):
     def test_android_application_ids_and_preview_label(self):
         build = (ANDROID / "build_apk.py").read_text(encoding="utf-8")
         self.assertIn('APPLICATION_ID = "io.github.cihuyakz.starling.extras"', build)
-        self.assertIn('VARIANTS = {"preview": (".dev", "StarExtras: Preview")}', build)
+        self.assertIn('VARIANTS = {"preview": (".dev", "Extras: Preview")}', build)
         self.assertNotIn('"dev":', build)
         self.assertNotIn('"--dev", action="store_true"', build)
     def test_release_uses_extras_folder_and_migrates_the_previous_folder(self):

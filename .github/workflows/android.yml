@@ -350,12 +350,12 @@ jobs:
             APK_FILES=(target/android/starling-preview-"$VERSION"-*.apk)
             test "${#APK_FILES[@]}" -eq 4 || { echo "Expected four Preview APKs, found ${#APK_FILES[@]}"; exit 1; }
             PREVIEW_NOTES="$RUNNER_TEMP/preview-notes.md"
-            printf 'StarExtras: Preview %s\n\nThis Preview release is replaced in place by later Preview builds. All APKs use the same persistent application signing key.\n' "$VERSION" > "$PREVIEW_NOTES"
+            printf 'Extras: Preview %s\n\nThis Preview release is replaced in place by later Preview builds. All APKs use the same persistent application signing key.\n' "$VERSION" > "$PREVIEW_NOTES"
             if gh release view "$TAG" >/dev/null 2>&1; then
               gh release upload "$TAG" "${APK_FILES[@]}" --clobber
-              gh release edit "$TAG" --title "StarExtras: Preview $VERSION" --notes-file "$PREVIEW_NOTES" --prerelease
+              gh release edit "$TAG" --title "Extras: Preview $VERSION" --notes-file "$PREVIEW_NOTES" --prerelease
             else
-              gh release create "$TAG" "${APK_FILES[@]}" --title "StarExtras: Preview $VERSION" \
+              gh release create "$TAG" "${APK_FILES[@]}" --title "Extras: Preview $VERSION" \
                 --notes-file "$PREVIEW_NOTES" --prerelease --target "$GITHUB_SHA"
             fi
           fi

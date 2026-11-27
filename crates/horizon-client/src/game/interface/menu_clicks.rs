@@ -610,6 +610,7 @@ impl Game<'_> {
         let brewed_potion_takes = std::mem::take(&mut menu.brewed_potion_takes);
         let equipped = std::mem::take(&mut menu.equipped);
         let item_crafted = std::mem::take(&mut menu.item_crafted);
+        let crafted_takes = std::mem::take(&mut menu.crafted_takes);
         for (_, stack, _) in &item_crafted {
             if !predicting {
                 self.award_stat("crafted", &stack.item, stack.count as i32);
@@ -636,6 +637,8 @@ impl Game<'_> {
                 self.player_drop(stack);
             }
             self.award_crafted(&crafted);
+            #[cfg(feature = "java-mods")]
+            java_gameplay::crafted_takes(self, &crafted_takes);
             for stack in &brewed {
                 self.trigger_brewed_potion(stack);
             }

@@ -37,6 +37,29 @@ impl Game<'_> {
         use mod_api::TriState;
         let on_block = matches!(self.guest_use, Some(GuestUse::OnBlock(_)));
         let mut block_hit = block_hit;
+        #[cfg(feature = "java-mods")]
+        if on_block
+            && let Some(hit) = block_hit
+            && let Some(swing) = java_gameplay::use_player_block(
+                self,
+                hit.pos,
+                match hit.face {
+                    [0, -1, 0] => 0,
+                    [0, 1, 0] => 1,
+                    [0, 0, -1] => 2,
+                    [0, 0, 1] => 3,
+                    [-1, 0, 0] => 4,
+                    _ => 5,
+                },
+                hit.point,
+                self.hand == Hand::Off,
+            )
+        {
+            if swing && self.lan_acting.is_none() {
+                self.swing_arm();
+            }
+            return Ok(true);
+        }
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
         let block_phase = horizon_client::spans::guard("use_block");
         if let Some(hit) = block_hit {
@@ -428,6 +451,20 @@ impl Game<'_> {
                 self.use_failed = true;
                 return Ok(true);
             }
+        }
+        #[cfg(feature = "java-mods")]
+        if !on_block
+            && let Some(swing) = java_gameplay::use_player_item(
+                self,
+                self.hand == Hand::Off,
+                self.yaw,
+                self.pitch,
+            )
+        {
+            if swing && self.lan_acting.is_none() {
+                self.swing_arm();
+            }
+            return Ok(true);
         }
         if let Some(used) = self.use_item_fallthrough(&stack, on_block) {
             return Ok(used);

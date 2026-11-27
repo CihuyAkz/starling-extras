@@ -213,6 +213,20 @@ impl Game<'_> {
         if !self.before_block(distance) || !self.held_range_allows(distance) {
             return false;
         }
+        #[cfg(feature = "java-mods")]
+        if let Some(answer) = self.java_vanilla_entity(
+            self.mobs[index].id,
+            false,
+            0,
+            [0.0; 3],
+        ) && answer.taken
+        {
+            self.reset_attack_strength();
+            if answer.swing {
+                self.swing_arm();
+            }
+            return true;
+        }
         self.attack_mob(index);
         // Minecraft.startAttack swings after the attack.
         self.swing_arm();

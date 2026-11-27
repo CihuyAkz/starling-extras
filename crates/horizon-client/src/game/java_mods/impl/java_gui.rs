@@ -12,6 +12,8 @@ const MAX_FRAME_OPS: usize = 4096;
 const MAX_DYNAMIC_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_FRAME_IMAGE_BYTES: usize = 24 * 1024 * 1024;
 
+pub(in crate::game) type TitleImages = HashMap<String, (u32, u32, Arc<Vec<u8>>)>;
+
 #[derive(Clone)]
 struct DynamicImage {
     width: u32,
@@ -32,6 +34,7 @@ struct Frame {
     operations: Vec<Value>,
     hotbar: Option<HotbarLayer>,
     images: HashMap<String, DynamicImage>,
+    typing: bool,
 }
 
 #[derive(Clone, Default)]
@@ -42,6 +45,7 @@ struct UiState {
     client_screen_open: bool,
     screen: Option<Arc<Frame>>,
     hud: Option<Arc<Frame>>,
+    overlay_enabled: bool,
     overlay: Option<Arc<Frame>>,
     sent_size: Option<[u32; 2]>,
     dynamic_images: HashMap<String, DynamicImage>,
@@ -90,6 +94,19 @@ impl UiState {
     }
 }
 
+#[derive(Default)]
+struct DeviceUiState {
+    screen_open: bool,
+    screen: Option<Arc<Frame>>,
+    hud: Option<Arc<Frame>>,
+    overlay_enabled: bool,
+    overlay: Option<Arc<Frame>>,
+    dynamic_images: HashMap<String, DynamicImage>,
+}
+
+static DEVICE_UI: LazyLock<Mutex<DeviceUiState>> =
+    LazyLock::new(|| Mutex::new(DeviceUiState::default()));
+
 static UI: LazyLock<Mutex<UiState>> = LazyLock::new(|| {
     Mutex::new(UiState {
         local_uuid: None,
@@ -98,6 +115,7 @@ static UI: LazyLock<Mutex<UiState>> = LazyLock::new(|| {
         client_screen_open: false,
         screen: None,
         hud: None,
+        overlay_enabled: false,
         overlay: None,
         sent_size: None,
         dynamic_images: HashMap::new(),
@@ -118,6 +136,7 @@ pub(in crate::game) fn set_local_uuid(uuid: &str) {
         ui.local_uuid = Some(uuid.to_owned());
         ui.clear_screen();
         ui.hud = None;
+        ui.overlay_enabled = false;
         ui.overlay = None;
         ui.sent_size = None;
         ui.dynamic_images.clear();
@@ -159,12 +178,144 @@ pub(in crate::game) fn set_hud_frame(json: &str) {
 
 pub(in crate::game) fn set_overlay_frame(json: &str) {
     set_frame(json, |ui, frame| {
+        ui.overlay_enabled = true;
         if frame.operations.is_empty() {
             ui.overlay = None;
         } else {
             ui.overlay = Some(Arc::new(frame));
         }
     });
+}
+
+pub(in crate::game) fn overlay_enabled() -> bool {
+    UI.lock().unwrap_or_else(|error| error.into_inner()).overlay_enabled
+        || DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner()).overlay_enabled
+}
+
+pub(in crate::game) fn reset_device() {
+    *DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner()) = DeviceUiState::default();
+}
+
+pub(in crate::game) fn device_screen_open() -> bool {
+    DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner()).screen_open
+}
+
+pub(in crate::game) fn device_screen_typing() -> bool {
+    DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner())
+        .screen.as_ref().is_some_and(|frame| frame.typing)
+}
+
+pub(in crate::game) fn set_device_screen_open(open: bool) {
+    let mut ui = DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner());
+    ui.screen_open = open;
+    if !open {
+        ui.screen = None;
+    }
+}
+
+pub(in crate::game) fn set_device_screen_frame(json: &str) {
+    set_device_frame(json, |ui, frame| {
+        if ui.screen_open {
+            ui.screen = Some(Arc::new(frame));
+        }
+    });
+}
+
+pub(in crate::game) fn set_device_hud_frame(json: &str) {
+    set_device_frame(json, |ui, frame| ui.hud = Some(Arc::new(frame)));
+}
+
+pub(in crate::game) fn set_device_overlay_frame(json: &str) {
+    set_device_frame(json, |ui, frame| {
+        ui.overlay_enabled = true;
+        ui.overlay = if frame.operations.is_empty() {
+            None
+        } else {
+            Some(Arc::new(frame))
+        };
+    });
+}
+
+pub(in crate::game) fn device_overlay_open() -> bool {
+    DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner()).overlay_enabled
+}
+
+pub(in crate::game) fn device_overlay_typing() -> bool {
+    DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner())
+        .overlay.as_ref().is_some_and(|frame| frame.typing)
+}
+
+fn set_device_frame(json: &str, store: impl FnOnce(&mut DeviceUiState, Frame)) {
+    if json.len() > MAX_FRAME_BYTES {
+        log::warn!("Java device GUI: rejected a frame larger than {MAX_FRAME_BYTES} bytes");
+        return;
+    }
+    let parsed: Value = match serde_json::from_str(json) {
+        Ok(value) => value,
+        Err(error) => {
+            log::warn!("Java device GUI: invalid frame JSON: {error}");
+            return;
+        }
+    };
+    let Some(operations) = parsed.as_array() else {
+        log::warn!("Java device GUI: frame root is not an operation array");
+        return;
+    };
+    let operation_count = frame_operation_count(operations);
+    if operation_count > MAX_FRAME_OPS {
+        log::warn!("Java device GUI: rejected a frame with {operation_count} operations");
+        return;
+    }
+    let mut frame = Frame::default();
+    frame.typing = operations.iter().any(|operation| {
+        operation.get("op").and_then(Value::as_str) == Some("typing")
+    });
+    let mut frame_operations = operations.clone();
+    frame.hotbar = extract_hotbar_layer(&mut frame_operations);
+    let mut frame_image_bytes = 0usize;
+    collect_frame_images(&mut frame_operations, &mut frame, &mut frame_image_bytes);
+    if let Some(mut hotbar) = frame.hotbar.take() {
+        collect_frame_images(&mut hotbar.operations, &mut frame, &mut frame_image_bytes);
+        frame.hotbar = Some(hotbar);
+    }
+    frame.operations = frame_operations;
+    let mut ui = DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner());
+    for (name, image) in frame.images.drain() {
+        ui.dynamic_images.insert(name, image);
+    }
+    let mut total = ui.dynamic_images.values().map(|image| image.rgba.len()).sum::<usize>();
+    while total > 32 * 1024 * 1024 || ui.dynamic_images.len() > 128 {
+        let Some(name) = ui.dynamic_images.keys().next().cloned() else { break };
+        if let Some(old) = ui.dynamic_images.remove(&name) {
+            total = total.saturating_sub(old.rgba.len());
+        }
+    }
+    frame.images = ui.dynamic_images.clone();
+    store(&mut ui, frame);
+}
+
+pub(in crate::game) fn draw_device_hud(game: &mut super::Game, batch: &mut HudBatch) {
+    let hud = DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner()).hud.clone();
+    if let Some(frame) = hud.as_deref() {
+        draw_frame(game, batch, frame);
+    }
+}
+
+pub(in crate::game) fn draw_device_screens(
+    game: &mut super::Game,
+    batch: &mut HudBatch,
+    inventory_visible: bool,
+) {
+    let (screen, overlay, open) = {
+        let ui = DEVICE_UI.lock().unwrap_or_else(|error| error.into_inner());
+        (ui.screen.clone(), ui.overlay.clone(), ui.screen_open)
+    };
+    if open && let Some(frame) = screen.as_deref() {
+        draw_frame(game, batch, frame);
+    }
+    if inventory_visible && let Some(frame) = overlay.as_deref() {
+        draw_frame(game, batch, frame);
+    }
 }
 
 fn frame_operation_count(operations: &[Value]) -> usize {
@@ -270,6 +421,9 @@ fn set_frame(json: &str, store: impl FnOnce(&mut UiState, Frame)) {
         return;
     }
     let mut frame = Frame::default();
+    frame.typing = operations.iter().any(|operation| {
+        operation.get("op").and_then(Value::as_str) == Some("typing")
+    });
     let mut frame_operations = operations.clone();
     frame.hotbar = extract_hotbar_layer(&mut frame_operations);
     let mut frame_image_bytes = 0usize;
@@ -491,12 +645,72 @@ pub(in crate::game) fn mouse_scroll(x: f32, y: f32, horizontal: f64, vertical: f
     input(&format!(r#"{{"kind":"scroll","x":{x},"y":{y},"h":{horizontal},"v":{vertical}}}"#))
 }
 
-pub(in crate::game) fn keyboard_input(key: i32, mods: u32, pressed: bool) -> bool {
-    input(&format!(r#"{{"kind":"key","key":{key},"keycode":{key},"mods":{mods},"down":{pressed}}}"#))
+pub(in crate::game) fn keyboard_input(key: i32, keycode: i32, mods: u32, pressed: bool) -> bool {
+    if pressed {
+        input(&format!(r#"{{"kind":"key","key":{key},"keycode":{keycode},"mods":{mods}}}"#))
+    } else {
+        true
+    }
 }
 
 pub(in crate::game) fn character_input(character: char) -> bool {
     input(&format!(r#"{{"kind":"char","char":{}}}"#, character as u32))
+}
+
+pub(in crate::game) fn title_ops_valid(operations: &[Value]) -> bool {
+    frame_operation_count(operations) <= MAX_FRAME_OPS
+        && serde_json::to_vec(operations).is_ok_and(|bytes| bytes.len() <= MAX_FRAME_BYTES)
+}
+
+pub(in crate::game) fn store_title_images(images: &mut TitleImages, incoming: Vec<horizon_jvm::events::UiImage>) {
+    let mut total = images.values().map(|(_, _, rgba)| rgba.len()).sum::<usize>();
+    for image in incoming {
+        if image.name.is_empty() || image.name.len() > 256 {
+            continue;
+        }
+        let [width, height] = image.size;
+        if width == 0 || height == 0 || width > 2048 || height > 2048 {
+            continue;
+        }
+        let expected = width as usize * height as usize * 4;
+        if expected > MAX_DYNAMIC_IMAGE_BYTES || image.rgba.len() != expected {
+            continue;
+        }
+        let previous = images.get(&image.name).map_or(0, |(_, _, rgba)| rgba.len());
+        if images.get(&image.name).is_none() && images.len() >= 128 {
+            continue;
+        }
+        let next_total = total.saturating_sub(previous).saturating_add(expected);
+        if next_total > MAX_FRAME_IMAGE_BYTES {
+            continue;
+        }
+        total = next_total;
+        images.insert(image.name, (width, height, Arc::new(image.rgba)));
+    }
+}
+
+pub(in crate::game) fn draw_title_ops(
+    game: &mut super::Game,
+    batch: &mut HudBatch,
+    operations: &[Value],
+    images: &TitleImages,
+) {
+    let frame = Frame {
+        operations: operations.to_vec(),
+        hotbar: None,
+        images: images
+            .iter()
+            .map(|(name, (width, height, rgba))| {
+                (name.clone(), DynamicImage {
+                    width: *width,
+                    height: *height,
+                    rgba: rgba.clone(),
+                })
+            })
+            .collect(),
+        typing: false,
+    };
+    draw_frame(game, batch, &frame);
 }
 
 fn draw_frame(game: &mut super::Game, batch: &mut HudBatch, frame: &Frame) {

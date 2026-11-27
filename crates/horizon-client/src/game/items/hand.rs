@@ -330,6 +330,10 @@ impl Game<'_> {
     /// `handleKeybinds`' number keys (`keyHotbarSlots[i].consumeClick`).
     pub(super) fn select_queued_hotbar(&mut self) {
         for slot in self.hotbar_presses.take_tick() {
+            #[cfg(feature = "java-mods")]
+            if crate::game::java_gameplay::select_player_slot(self, slot as i32) {
+                continue;
+            }
             self.selected = slot;
         }
     }

@@ -38,6 +38,15 @@ The raw injection schema in `crates/horizon-mod-package/src/manifest.rs` is adap
 Copyright (c) 2026 levzzz, under the MIT license
 (`crates/horizon-mod-package/HORIZON_MIXINS_LICENSE`).
 
+## Horizon Java bridge gameplay integration
+
+The Java gameplay-event integration in `crates/horizon-client/src/game/java_mods/impl/java_gameplay.rs`
+and `crates/horizon-client/src/menu/java.rs` is adapted from the user-provided
+`horizon-java-bridge-my-version` reference source. Copyright (c) 2026 Ludovic Marie and the Horizon
+contributors, under the MIT license; the repository [LICENSE](LICENSE) retains the license text.
+The Starling integration routes supported Java callbacks through Starling's native world, player,
+menu and LAN state.
+
 ## Code removed for its license
 
 Horizon once shipped three pieces of code under MIT that came from projects whose licenses don't allow that. All

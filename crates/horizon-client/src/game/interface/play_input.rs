@@ -344,11 +344,16 @@ impl Game<'_> {
                 );
             }
         } else {
-            self.selected = horizon_client::mouse::ScrollWheelHandler::next_selection(
+            let slot = horizon_client::mouse::ScrollWheelHandler::next_selection(
                 f64::from(wheel),
                 self.selected as i32,
                 9,
-            ) as usize;
+            );
+            #[cfg(feature = "java-mods")]
+            if crate::game::java_gameplay::select_player_slot(self, slot) {
+                return;
+            }
+            self.selected = slot as usize;
         }
     }
     /// A step of the hotbar from a controller's bumper: one wheel notch, down for the next slot,

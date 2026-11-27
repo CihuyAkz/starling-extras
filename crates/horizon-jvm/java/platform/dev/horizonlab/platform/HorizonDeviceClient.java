@@ -372,14 +372,33 @@ public final class HorizonDeviceClient {
     }
 
     /** A key of the player's game while playing (a device mod's key binding, its key handlers). */
-    public static void key(int key, int keycode, int mods, boolean down) {
-        if (!on) return;
-        HorizonClient.bind(local.getUUID(), key, down);
+    public static void key(int key, int keycode, int mods, int action) {
+        UUID player = own != null ? own : on && local != null ? local.getUUID() : null;
+        if (player == null || action < 0 || action > 2) return;
+        HorizonClient.bind(player, key, action, mods);
         try {
-            HorizonClient.firePress(key, keycode, mods, down);
+            if (own != null) HorizonClient.keyPress(player, key, keycode, mods, action);
+            else HorizonClient.firePress(key, keycode, mods, action);
         } catch (Throwable t) {
             Natives.log("Java mods: a key press in the device client failed: " + t);
         }
+    }
+
+    public static String boundKeys() {
+        return HorizonClient.boundKeys();
+    }
+
+    public static void mouse(int button, int mods, boolean down) {
+        UUID player = own != null ? own : on && local != null ? local.getUUID() : null;
+        if (player == null) return;
+        HorizonClient.bindMouse(player, button, down, mods);
+        HorizonClient.deviceMousePress(player, button, mods, down);
+    }
+
+    public static void scroll(double horizontal, double vertical, int slot) {
+        UUID player = own != null ? own : on && local != null ? local.getUUID() : null;
+        if (player == null) return;
+        HorizonClient.deviceScroll(player, horizontal, vertical, slot);
     }
 
     /** Input to the device client's screen ({"kind": move press release drag scroll key char close, ...}). */
@@ -510,6 +529,7 @@ public final class HorizonDeviceClient {
                 Natives.log("Java mods: this game's own client couldn't leave cleanly: " + t);
             }
             HorizonServer.ownClientLeft(id);
+            HorizonLoop.ownPlayer("");
             own = null;
             Natives.log("Java mods: this game's own client left " + ownServer);
             return;

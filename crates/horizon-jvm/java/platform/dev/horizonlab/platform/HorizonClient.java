@@ -2998,17 +2998,20 @@ public final class HorizonClient {
         Thread.currentThread().setContextClassLoader(HorizonClient.class.getClassLoader());
         var out = new com.google.gson.JsonArray();
         java.util.Set<Integer> seen = new java.util.TreeSet<>();
-        if (!keyPressHandlers().isEmpty() || !sdlKeyHandlers.isEmpty()) out.add(-1);
+        var keyboard = keyPressHandlers();
+        if (keyboard.stream().anyMatch(HorizonDeviceMods::runs)
+                || sdlKeyHandlers.stream().anyMatch(HorizonDeviceMods::runs)) out.add(-1);
         // -200: mods take the mouse wheel while playing (MouseHandler.onScroll's injections).
-        if (!scrollHandlers().isEmpty()) out.add(-200);
+        if (scrollHandlers().stream().anyMatch(HorizonDeviceMods::runs)) out.add(-200);
         // Mouse buttons as -100 - button: the mods' KeyMappings set to one (TACZ's shoot and aim
         // on the left and right buttons), and every button when mods handle them themselves
         // (MouseHandler.onButton's injections).
-        if (!mouseButtonHandlers().isEmpty()) {
+        if (mouseButtonHandlers().stream().anyMatch(HorizonDeviceMods::runs)) {
             // (SDL's buttons, as 26.3's mouse keys are: left 1, middle 2, right 3, back 4, forward 5.)
             for (int b = 1; b <= 5; b++) if (seen.add(-100 - b)) out.add(-100 - b);
         }
         for (KeyMapping mapping : modKeys()) {
+            if (!runsKeyMapping(mapping)) continue;
             var key = key(mapping);
             if (key == null || key.getValue() < 0) continue;
             if (key.getType() == com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD && seen.add(key.getValue())) {
@@ -3043,6 +3046,10 @@ public final class HorizonClient {
         if (separator <= 0 || separator == rest.length() - 1) return null;
         String id = rest.substring(0, separator);
         return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(id) ? id : null;
+    }
+
+    private static boolean runsKeyMapping(KeyMapping mapping) {
+        return HorizonDeviceMods.runs(keyModId(mapping.getName()));
     }
 
     public static String javaModKeyMappings() {
@@ -3136,6 +3143,14 @@ public final class HorizonClient {
         bind(player, com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(button), down ? 1 : 0, modifiers);
     }
 
+    private static int bindingModifiers(int modifiers) {
+        int held = 0;
+        if ((modifiers & 0x0003) != 0) held |= 1;
+        if ((modifiers & 0x00c0) != 0) held |= 2;
+        if ((modifiers & 0x0300) != 0) held |= 4;
+        return held;
+    }
+
     private static void bind(java.util.UUID player, com.mojang.blaze3d.platform.InputConstants.Key pressed, int action, int modifiers) {
         boolean down = action != 0;
         Keys keys = KEYS.computeIfAbsent(player, p -> new Keys(
@@ -3148,8 +3163,9 @@ public final class HorizonClient {
                 USE_HELD.remove(player);
             }
         }
-        int heldModifiers = modifiers & 7;
+        int heldModifiers = bindingModifiers(modifiers);
         for (KeyMapping mapping : modKeys()) {
+            if (!runsKeyMapping(mapping)) continue;
             boolean matchesKey = pressed.equals(key(mapping));
             int requiredModifiers = MOD_KEY_MODIFIERS.getOrDefault(mapping, 0);
             if (!matchesKey) {
@@ -3203,6 +3219,72 @@ public final class HorizonClient {
         }
     }
 
+    static void deviceMousePress(java.util.UUID id, int button, int mods, boolean down) {
+        var player = HorizonServer.player(id);
+        if (player != null) {
+            mousePress(id, button, mods, down);
+            return;
+        }
+        var handlers = mouseButtonHandlers();
+        if (handlers.isEmpty() || minecraft == null || minecraft.mouseHandler == null) return;
+        long window = HorizonScreenEvents.windowHandle(minecraft);
+        try {
+            fireKey(handlers, minecraft.mouseHandler, "onButton", window,
+                    new net.minecraft.client.input.MouseButtonInfo(button, mods), down ? 1 : 0);
+        } catch (Throwable t) {
+            Natives.log("Horizon's device client: a mouse button failed: " + t);
+        }
+    }
+
+    static void deviceScroll(java.util.UUID id, double x, double y, int slot) {
+        var player = HorizonServer.player(id);
+        if (player != null) {
+            scroll(id, x, y, slot);
+            return;
+        }
+        var handlers = scrollHandlers();
+        if (handlers.isEmpty() || minecraft == null || minecraft.player == null || minecraft.mouseHandler == null) return;
+        long window = HorizonScreenEvents.windowHandle(minecraft);
+        boolean[] taken = {false};
+        var inventory = minecraft.player.getInventory();
+        if (slot >= 0 && slot < 9) inventory.setSelectedSlot(slot);
+        try {
+            boolean discrete = minecraft.options.discreteMouseScroll().get();
+            double sensitivity = minecraft.options.mouseWheelSensitivity().get();
+            double scaledY = (discrete ? Math.signum(y) : y) * sensitivity;
+            var info = new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("onScroll", true);
+            for (var handler : handlers) {
+                if (!HorizonDeviceMods.runs(handler)) continue;
+                Class<?>[] params = handler.getParameterTypes();
+                Object[] call = new Object[params.length];
+                call[0] = window;
+                call[1] = x;
+                call[2] = y;
+                call[3] = info;
+                for (int i = 4; i < params.length; i++) {
+                    if (params[i] == double.class) call[i] = scaledY;
+                    else if (params[i] == int.class) call[i] = (int) Math.signum(scaledY);
+                    else if (params[i] == float.class) call[i] = (float) scaledY;
+                    else if (params[i] == boolean.class) call[i] = discrete;
+                    else if (params[i] == long.class) call[i] = window;
+                }
+                try {
+                    handler.invoke(java.lang.reflect.Modifier.isStatic(handler.getModifiers()) ? null : minecraft.mouseHandler, call);
+                } catch (ReflectiveOperationException e) {
+                    HorizonFailures.report("the device client's mouse wheel", e.getCause() != null ? e.getCause() : e, handler);
+                }
+                if (info.isCancelled()) {
+                    taken[0] = true;
+                    break;
+                }
+            }
+            tasks();
+        } catch (Throwable t) {
+            Natives.log("Horizon's device client: the mouse wheel failed: " + t);
+        }
+        if (taken[0] && slot >= 0 && slot < 9) inventory.setSelectedSlot(slot);
+    }
+
     private static java.util.List<java.lang.reflect.Method> scrollHandlers;
 
     /** The mods' handlers merged into MouseHandler.onScroll, at whatever point (Create's schematics, trains, elevators). */
@@ -3244,6 +3326,7 @@ public final class HorizonClient {
                 double scaledY = (discrete ? Math.signum(y) : y) * sensitivity;
                 var info = new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("onScroll", true);
                 for (var handler : handlers) {
+                    if (!HorizonDeviceMods.runs(handler)) continue;
                     Class<?>[] params = handler.getParameterTypes();
                     Object[] call = new Object[params.length];
                     call[0] = window;
@@ -3351,13 +3434,14 @@ public final class HorizonClient {
                     sdlEvents = Natives.allocate(com.mojang.blaze3d.platform.SDLEventHandler.class);
                     set(com.mojang.blaze3d.platform.SDLEventHandler.class, sdlEvents, "minecraft", minecraft);
                 }
-                int scan = sdlScancode(key);
-                if (scan != 0) {
+                int scan = key;
+                if (scan > 0 && scan <= 512) {
+                    int code = keycode != 0 ? keycode : 0x40000000 | scan;
                     var sdlEvent = org.lwjgl.sdl.SDL_Event.calloc();
                     try {
                         sdlEvent.type(down ? 0x300 : 0x301);
-                        sdlEvent.key().type(down ? 0x300 : 0x301).scancode(scan).key(sdlKeycode(key, scan))
-                                .mod((short) sdlModifiers(mods)).down(down).repeat(action == 2);
+                        sdlEvent.key().type(down ? 0x300 : 0x301).scancode(scan).key(code)
+                                .mod((short) mods).down(down).repeat(action == 2);
                         taken = fireKey(sdl, sdlEvents, "handleKeyEvent", sdlEvent);
                     } finally {
                         sdlEvent.free();
@@ -3374,83 +3458,6 @@ public final class HorizonClient {
         if (DEBUG_INPUT) Natives.log("key " + key + " action " + action + " to " + sdl.size() + "+"
                 + handlers.size() + " mod key handler(s)" + (taken ? ", taken" : "") + "; screen now "
                 + minecraft.gui.screen());
-    }
-
-    private static int sdlScancode(int key) {
-        if (key >= 65 && key <= 90) return key - 61;
-        if (key >= 49 && key <= 57) return key - 19;
-        if (key == 48) return 39;
-        if (key >= 290 && key <= 301) return key - 232;
-        if (key >= 302 && key <= 313) return key - 198;
-        if (key >= 321 && key <= 329) return key - 232;
-        return switch (key) {
-            case 32 -> 44;
-            case 39 -> 52;
-            case 44 -> 54;
-            case 45 -> 45;
-            case 46 -> 55;
-            case 47 -> 56;
-            case 59 -> 51;
-            case 61 -> 46;
-            case 91 -> 47;
-            case 92 -> 49;
-            case 93 -> 48;
-            case 96 -> 53;
-            case 256 -> 41;
-            case 257 -> 40;
-            case 258 -> 43;
-            case 259 -> 42;
-            case 260 -> 73;
-            case 261 -> 76;
-            case 262 -> 79;
-            case 263 -> 80;
-            case 264 -> 81;
-            case 265 -> 82;
-            case 266 -> 75;
-            case 267 -> 78;
-            case 268 -> 74;
-            case 269 -> 77;
-            case 280 -> 57;
-            case 281 -> 71;
-            case 282 -> 83;
-            case 283 -> 70;
-            case 284 -> 72;
-            case 320 -> 98;
-            case 330 -> 99;
-            case 331 -> 84;
-            case 332 -> 85;
-            case 333 -> 86;
-            case 334 -> 87;
-            case 335 -> 88;
-            case 336 -> 103;
-            case 340 -> 225;
-            case 341 -> 224;
-            case 342 -> 226;
-            case 343 -> 227;
-            case 344 -> 229;
-            case 345 -> 228;
-            case 346 -> 230;
-            case 347 -> 231;
-            case 348 -> 101;
-            default -> 0;
-        };
-    }
-
-    private static int sdlKeycode(int key, int scan) {
-        if (key >= 65 && key <= 90) return key + 32;
-        if (key >= 48 && key <= 57) return key;
-        if (key == 32 || key == 39 || key == 44 || key == 45 || key == 46 || key == 47
-                || key == 59 || key == 61 || key == 91 || key == 92 || key == 93 || key == 96) return key;
-        return 0x40000000 | scan;
-    }
-
-    private static int sdlModifiers(int mods) {
-        int result = 0;
-        if ((mods & 0x0001) != 0) result |= 0x0003;
-        if ((mods & 0x0002) != 0) result |= 0x00c0;
-        if ((mods & 0x0004) != 0) result |= 0x0300;
-        if ((mods & 0x0008) != 0) result |= 0x0c00;
-        return result;
     }
 
     /** Calls handlers (the method's arguments, then a CallbackInfo): whether one cancelled. */
@@ -3478,7 +3485,7 @@ public final class HorizonClient {
      */
     static void withKeys(java.util.UUID player, ThrowingRunnable run) throws Throwable {
         Keys keys = KEYS.get(player);
-        var mappings = modKeys();
+        var mappings = modKeys().stream().filter(HorizonClient::runsKeyMapping).toList();
         Field clickCount = KeyMapping.class.getDeclaredField("clickCount");
         clickCount.setAccessible(true);
         for (KeyMapping mapping : mappings) {

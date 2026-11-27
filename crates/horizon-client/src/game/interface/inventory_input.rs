@@ -318,14 +318,14 @@ impl Game<'_> {
     /// on the way from the OS (a stuck Shift then kept every screen's Shift
     /// and a sneak the key no longer held: #4166's in-game report), so a
     /// cached key set is not vanilla's answer.
-    pub(super) fn has_shift_down(&self) -> bool {
+    pub(in crate::game) fn has_shift_down(&self) -> bool {
         if self.platform_shift_down() {
             return true;
         }
         self.modifiers.shift_key()
     }
     /// The same live word for Control (`InputWithModifiers.hasControlDown`).
-    pub(super) fn has_control_down(&self) -> bool {
+    pub(in crate::game) fn has_control_down(&self) -> bool {
         if self.platform_control_down() {
             return true;
         }

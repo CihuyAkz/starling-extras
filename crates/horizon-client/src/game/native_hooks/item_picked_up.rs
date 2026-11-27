@@ -144,6 +144,26 @@ impl Game<'_> {
                 continue;
             }
             let before = items[i].stack.count;
+            #[cfg(feature = "java-mods")]
+            if let Some(left) = self.java_item_touch(&items[i]) {
+                let left = left.min(before);
+                let taken = before.saturating_sub(left);
+                if taken > 0 {
+                    let mut taken_item = items[i].clone();
+                    taken_item.stack.count = taken;
+                    if let Some(thrower) = taken_item.thrower {
+                        self.trigger_thrown_picked_up_by_player(&taken_item.stack, thrower);
+                    }
+                    self.native_take_item(taken_item, feet);
+                }
+                if left == 0 {
+                    items.remove(i);
+                } else {
+                    items[i].stack.count = left;
+                    i += 1;
+                }
+                continue;
+            }
             let kind = items[i].stack.item.clone();
             let thrower = items[i].thrower;
             let rows = items.len();

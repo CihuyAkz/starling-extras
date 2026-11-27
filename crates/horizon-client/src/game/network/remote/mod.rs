@@ -1727,6 +1727,8 @@ impl Game<'_> {
         if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
             return self.begin_closing_save(false);
         }
+        #[cfg(feature = "java-mods")]
+        crate::game::java_device::left();
         self.client_logging_out();
         self.finish_perf();
         if reason.is_none() {
@@ -3972,6 +3974,9 @@ impl Game<'_> {
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
+            #[cfg(feature = "java-mods")]
+            C::CustomPayload(payload)
+                if crate::game::java_device::remote_payload(self, &payload.channel, &payload.data) => {}
             #[cfg(feature = "java-mods")]
             C::CustomPayload(payload) if payload.channel == crate::game::java_entities::CHANNEL => {
                 self.remote_java_entities(&payload.data);
@@ -7058,6 +7063,8 @@ impl Game<'_> {
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
     pub(super) fn tick_remote(&mut self) -> Result<()> {
         self.tick_remote_level()?;
+        #[cfg(feature = "java-mods")]
+        self.tick_device_client();
         // The rockets boosting this player tick after it, also while it waits
         // for chunks.
         self.tick_own_rockets();

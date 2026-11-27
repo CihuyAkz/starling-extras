@@ -1901,21 +1901,42 @@ pub fn title_ui(input: &str) -> Result<(String, Vec<UiImage>), String> {
         let operations = JString::from(env.get_object_array_element(&result, 0)?);
         let images = JObjectArray::from(env.get_object_array_element(&result, 1)?);
         let mut decoded = Vec::new();
-        for i in 0..env.get_array_length(&images)? {
-            let image = env.with_local_frame(8, |env| -> jni::errors::Result<UiImage> {
+        let mut total_bytes = 0usize;
+        let image_count = env.get_array_length(&images)?.clamp(0, 512);
+        for i in 0..image_count {
+            if decoded.len() >= 128 {
+                break;
+            }
+            let image = env.with_local_frame(8, |env| -> jni::errors::Result<Option<UiImage>> {
                 let entry = JObjectArray::from(env.get_object_array_element(&images, i)?);
                 let name = JString::from(env.get_object_array_element(&entry, 0)?);
                 let size = JIntArray::from(env.get_object_array_element(&entry, 1)?);
                 let rgba = JByteArray::from(env.get_object_array_element(&entry, 2)?);
                 let mut dimensions = [0; 2];
                 env.get_int_array_region(&size, 0, &mut dimensions)?;
-                Ok(UiImage {
-                    name: env.get_string(&name)?.into(),
-                    size: dimensions.map(|n| n.max(0) as u32),
+                let [width, height] = dimensions.map(|n| n.max(0) as u32);
+                let name: String = env.get_string(&name)?.into();
+                if name.is_empty() || name.len() > 256 || width == 0 || height == 0 || width > 2048 || height > 2048 {
+                    return Ok(None);
+                }
+                let expected = width as usize * height as usize * 4;
+                let length = env.get_array_length(&rgba)? as usize;
+                if expected > 16 * 1024 * 1024
+                    || length != expected
+                    || total_bytes.saturating_add(expected) > 24 * 1024 * 1024
+                {
+                    return Ok(None);
+                }
+                Ok(Some(UiImage {
+                    name,
+                    size: [width, height],
                     rgba: env.convert_byte_array(&rgba)?,
-                })
+                }))
             })?;
-            decoded.push(image);
+            if let Some(image) = image {
+                total_bytes += image.rgba.len();
+                decoded.push(image);
+            }
         }
         Ok((env.get_string(&operations)?.into(), decoded))
     })

@@ -21,6 +21,41 @@ use horizon_client::{
 };
 use horizon_protocol::packets::play::{self, Clientbound as C};
 
+#[cfg(feature = "java-mods")]
+mod java {
+    use super::*;
+
+    impl Game<'_> {
+        pub(super) fn lan_java_crafted(
+            &mut self,
+            gi: usize,
+            conn: u32,
+            takes: &[horizon_client::menu::CraftedTake],
+        ) {
+            if takes.is_empty() {
+                return;
+            }
+            let Some(before) = self.lan.as_ref().map(|host| {
+                (5..46)
+                    .map(|slot| host.hub.guests[gi].menu_slot(slot))
+                    .collect::<Vec<_>>()
+            }) else {
+                return;
+            };
+            self.as_guest(conn, |guest| {
+                super::super::super::java_gameplay::crafted_takes(guest, takes);
+            });
+            let Some(host) = self.lan.as_mut() else {
+                return;
+            };
+            let changed: Vec<usize> = (5..46)
+                .filter(|&slot| host.hub.guests[gi].menu_slot(slot) != before[slot - 5])
+                .collect();
+            host.hub.send_inventory_slots(gi, &changed);
+        }
+    }
+}
+
 /// `AbstractContainerMenu.dropOrPlaceInInventory`: actual network disconnects
 /// drop inputs; a live close still returns them to the inventory.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -249,6 +284,7 @@ impl Game<'_> {
         let brewed_potion_takes = std::mem::take(&mut menu.brewed_potion_takes);
         let crafted = std::mem::take(&mut menu.crafted);
         let item_crafted = std::mem::take(&mut menu.item_crafted);
+        let crafted_takes = std::mem::take(&mut menu.crafted_takes);
         let crafted_counts = std::mem::take(&mut menu.crafted_counts);
         menu.drops.clear();
         let host = self.lan.as_mut()?;
@@ -257,6 +293,8 @@ impl Game<'_> {
             .update(gi, |guest| store_player(menu, guest));
         let guest = &host.hub.guests[gi];
         let (conn, uuid, entity_id) = (guest.conn, guest.uuid, guest.entity_id);
+        #[cfg(feature = "java-mods")]
+        self.lan_java_crafted(gi, conn, &crafted_takes);
         // `ItemStack.onCraftedBy`'s `Stats.ITEM_CRAFTED` count, before the
         // recipe the take used.
         if !crafted_counts.is_empty() {

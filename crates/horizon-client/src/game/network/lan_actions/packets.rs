@@ -209,7 +209,12 @@ impl Game<'_> {
                     // block back on the client).
                     let canceled = self.as_guest(conn, |g| {
                         let state = g.world.block(a.pos[0], a.pos[1], a.pos[2]);
-                        let mut canceled = false;
+                        let mut canceled = {
+                            #[cfg(feature = "java-mods")]
+                            { g.java_attack_block(a.pos, i32::from(a.direction)) }
+                            #[cfg(not(feature = "java-mods"))]
+                            { false }
+                        };
                         g.native_left_click_block(a.pos, face, state, &mut canceled);
                         canceled
                     });
@@ -457,6 +462,28 @@ impl Game<'_> {
                     (g.uuid, g.entity_id, g.selected)
                 };
                 let changed = old_slot != p.slot as usize;
+                #[cfg(feature = "java-mods")]
+                if changed
+                    && self
+                        .as_guest(conn, |guest| {
+                            crate::game::java_gameplay::select_player_slot(
+                                guest,
+                                i32::from(p.slot),
+                            )
+                        })
+                        .unwrap_or(false)
+                {
+                    let Some(host) = self.lan.as_mut() else {
+                        return;
+                    };
+                    host.hub.send_to(
+                        conn,
+                        &C::SetHeldSlot(play::SetHeldSlot {
+                            slot: old_slot as i32,
+                        }),
+                    );
+                    return;
+                }
                 if changed {
                     let mut cancel = false;
                     self.native_player_switch_hotbar_slot_pre(

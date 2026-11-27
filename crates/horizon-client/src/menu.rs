@@ -20,6 +20,8 @@ use crate::{
 use horizon_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
 use horizon_world::native_load_context::{LoopContext, LoopSide};
 pub use mod_api::item::menu::{LogicalSide, MenuButtonContext};
+mod java;
+pub use java::CraftedTake;
 mod models;
 pub use models::{
     AnvilCraft, AnvilUpdate, AnvilVanilla, CarriedAccess, GrindstonePlace, GrindstoneTake,
@@ -914,6 +916,7 @@ impl Menu {
                 player_sounds: Vec::new(),
                 crafted: Vec::new(),
                 item_crafted: Vec::new(),
+                crafted_takes: Vec::new(),
                 crafted_counts: Vec::new(),
                 merchant_remove_count: 0,
                 brewed: Vec::new(),

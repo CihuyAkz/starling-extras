@@ -126,6 +126,12 @@ mod java_gameplay;
 #[path = "game/java_mods/impl/java_gui.rs"]
 mod java_gui;
 #[cfg(feature = "java-mods")]
+#[path = "game/java_mods/impl/java_device.rs"]
+mod java_device;
+#[cfg(feature = "java-mods")]
+#[path = "game/java_mods/impl/java_title.rs"]
+mod java_title;
+#[cfg(feature = "java-mods")]
 #[path = "game/java_mods/impl/java_entities.rs"]
 mod java_entities;
 #[cfg(not(feature = "java-mods"))]
@@ -1350,6 +1356,8 @@ struct Game<'a> {
     particles: horizon_client::particles::ParticleEngine,
     #[cfg(feature = "java-mods")]
     java_entities: java_entities::JavaEntities,
+    #[cfg(feature = "java-mods")]
+    java_title: java_title::JavaTitle,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
     pickups: pickups::Pickups,
     /// Sign text being edited (`SignEditScreen`).
@@ -4147,27 +4155,27 @@ impl Game<'_> {
         {
             return Ok(false);
         }
-        // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
-        // on the client): a GameMasterBlock stays when the player cannot use
-        // game master blocks (Player.canUseGameMasterBlocks).
         let state = self.world.block(pos[0], pos[1], pos[2]);
+        #[cfg(feature = "java-mods")]
+        let after_java = {
+            let result = java_gameplay::break_player_block(self, pos, state);
+            match result.horizon() {
+                Some(after) => after,
+                None => return Ok(matches!(result, java_gameplay::JavaBreak::Java)),
+            }
+        };
+        #[cfg(not(feature = "java-mods"))]
+        let after_java = false;
         if !self.can_use_game_master_blocks()
             && is_game_master_block(&self.res.facts().get(state).name)
         {
             return Ok(false);
         }
-        // Native mods, once the game allowed the break: a canceled one keeps
-        // the block, and a guest's acknowledgement puts it back in its world.
         let mut canceled = false;
         let mut exp_to_drop = None;
         self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        // Starling: the old hook, for the mods made for it (native_compat.rs).
         if !canceled {
             self.native_destroy_block(pos, state, &mut canceled);
-        }
-        #[cfg(feature = "java-mods")]
-        if !canceled && !java_gameplay::before_player_break(self, pos, state) {
-            canceled = true;
         }
         if canceled {
             return Ok(false);
@@ -4304,6 +4312,10 @@ impl Game<'_> {
         }
         self.pending.clear(pos);
         self.process_level_events()?;
+        #[cfg(feature = "java-mods")]
+        if after_java && removed {
+            java_gameplay::after_player_break(self, pos, broken);
+        }
         Ok(removed)
     }
     /// The `ItemStack.interactLivingEntity` fallback in `Player.interactOn`,
@@ -4403,6 +4415,21 @@ impl Game<'_> {
             return Ok(());
         }
         if self.mining.as_ref().is_none_or(|m| m.pos != hit.pos) {
+            #[cfg(feature = "java-mods")]
+            {
+                let face = match hit.face {
+                    [0, -1, 0] => 0,
+                    [0, 1, 0] => 1,
+                    [0, 0, -1] => 2,
+                    [0, 0, 1] => 3,
+                    [-1, 0, 0] => 4,
+                    _ => 5,
+                };
+                if java_gameplay::attack_player_block(self, hit.pos, face) {
+                    self.mining = None;
+                    return Ok(());
+                }
+            }
             self.attack_block(hit.pos)?;
             self.mining = Some(Mining {
                 pos: hit.pos,
@@ -4961,7 +4988,19 @@ impl Game<'_> {
             self.hud_layers(size)
         };
         #[cfg(feature = "java-mods")]
-        java_gui::draw_hud(self, &mut batch);
+        {
+            java_gameplay::draw_client_hud_frame(self);
+            java_device::gui_size(batch.width as i32, batch.height as i32);
+            java_device::device_overlay_frame(
+                self,
+                batch.width as i32,
+                batch.height as i32,
+                matches!(self.screen, Screen::Inventory | Screen::Creative),
+            );
+            java_device::draw_own_client_hud_frame(self);
+            java_gui::draw_hud(self, &mut batch);
+            java_gui::draw_device_hud(self, &mut batch);
+        }
         self.draw_interface_overlays(&mut batch);
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
@@ -4978,6 +5017,11 @@ impl Game<'_> {
         self.draw_imports(&mut batch);
         #[cfg(feature = "java-mods")]
         java_gui::draw_screens(
+            self,
+            &mut batch,
+            matches!(self.screen, Screen::Inventory | Screen::Creative),
+        );
+        java_gui::draw_device_screens(
             self,
             &mut batch,
             matches!(self.screen, Screen::Inventory | Screen::Creative),
@@ -5080,6 +5124,8 @@ impl Game<'_> {
             // over them here (a pack browser over Create New World, say), and the
             // toasts still come after, as over any screen.
             self.draw_title_screen_with_post_hook(&mut batch);
+            #[cfg(feature = "java-mods")]
+            self.draw_java_title(&mut batch);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
             self.draw_pack_toasts(&mut batch, false);
@@ -5403,7 +5449,11 @@ impl Game<'_> {
         let drawn = self.draw_screen_with_pre_hook(&mut batch);
         match screen {
             _ if !drawn => {}
-            Screen::Paused if self.pause_menu => self.draw_pause_menu(&mut batch),
+            Screen::Paused if self.pause_menu => {
+                self.draw_pause_menu(&mut batch);
+                #[cfg(feature = "java-mods")]
+                self.draw_java_title(&mut batch);
+            }
             // PauseScreen(false): only its title, at the top.
             Screen::Paused => {
                 self.draw_screen_phase(
@@ -8251,6 +8301,8 @@ impl Game<'_> {
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,
     ) -> Result<bool> {
+        #[cfg(feature = "java-mods")]
+        self.close_java_pause_if_hidden();
         self.begin_frame_draws();
         let prepare = spans::guard("prepare");
         let mut pr = spans::laps();
@@ -9268,14 +9320,20 @@ impl Game<'_> {
         #[cfg(feature = "java-mods")]
         if let WindowEvent::KeyboardInput { event: key_event, .. } = &event
             && let PhysicalKey::Code(key) = key_event.physical_key
-            && let Some(code) = java_gui::key_code(key)
+            && let Some(code) = java_device::sdl_key(key)
         {
             let action = match (key_event.state, key_event.repeat) {
                 (ElementState::Released, _) => 0,
                 (_, true) => 2,
                 (_, false) => 1,
             };
-            java_gui::mod_key_input(code, code, glfw_modifiers(self.modifiers), action);
+            let keycode = java_device::sdl_keycode(key, code);
+            let modifiers = java_device::sdl_modifiers(self.modifiers);
+            java_gui::mod_key_input(code, keycode, modifiers as u32, action);
+            if self.screen == Screen::Playing || action == 0 {
+                java_device::key(code, keycode, modifiers, action);
+                java_device::remote_key(self, code, keycode, modifiers, action);
+            }
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
@@ -9332,6 +9390,10 @@ impl Game<'_> {
                 return;
             }
         }
+        #[cfg(feature = "java-mods")]
+        if self.java_title_input(&event) {
+            return;
+        }
         // KeyboardHandler.keyPress: the narrator hotkey, on every screen and
         // in game, before the screen takes the key.
         if let WindowEvent::KeyboardInput { event, .. } = &event {
@@ -9339,13 +9401,19 @@ impl Game<'_> {
         }
         #[cfg(feature = "java-mods")]
         match &event {
-            WindowEvent::Focused(false) => java_gui::release_mod_inputs(),
+            WindowEvent::Focused(false) => {
+                java_gui::release_mod_inputs();
+                java_device::release_inputs(self);
+            }
             WindowEvent::MouseInput { state, button, .. } if !self.pad_synthetic_input() => {
-                java_gui::mod_mouse_input(
-                    glfw_button(*button),
-                    glfw_modifiers(self.modifiers),
-                    *state == ElementState::Pressed,
-                );
+                let button = java_device::screen_button(*button);
+                let modifiers = java_device::sdl_modifiers(self.modifiers);
+                let down = *state == ElementState::Pressed;
+                java_gui::mod_mouse_input(button, modifiers as u32, down);
+                if self.screen == Screen::Playing || !down {
+                    java_device::device_mouse(button, modifiers, down);
+                    java_device::remote_mouse(self, button, modifiers, down);
+                }
             }
             WindowEvent::MouseWheel { delta, .. } if !self.pad_synthetic_input() => {
                 let (horizontal, vertical) = match delta {
@@ -9353,6 +9421,10 @@ impl Game<'_> {
                     MouseScrollDelta::PixelDelta(p) => (p.x / 30.0, p.y / 30.0),
                 };
                 java_gui::mod_scroll_input(horizontal, vertical, self.selected as i32);
+                if self.screen == Screen::Playing {
+                    java_device::device_scroll(horizontal, vertical, self.selected as i32);
+                    java_device::remote_scroll(self, horizontal, vertical, self.selected as i32);
+                }
             }
             _ => {}
         }
@@ -9478,9 +9550,15 @@ impl Game<'_> {
             }
             return;
         }
-        // A Java mod's client-only Screen is interactive: send the same GUI-pixel
-        // coordinates and GLFW key/button codes the Pojav-style Java client expects.
-        // Window shortcuts above (fullscreen/screenshot) retain priority.
+        #[cfg(feature = "java-mods")]
+        {
+            if java_device::device_overlay_event(self, &event) {
+                return;
+            }
+            if java_device::device_screen_event(self, &event) {
+                return;
+            }
+        }
         #[cfg(feature = "java-mods")]
         if java_gui::screen_open() {
             match &event {
@@ -9498,8 +9576,8 @@ impl Game<'_> {
                     let _ = java_gui::mouse_input(
                         self.cursor.0,
                         self.cursor.1,
-                        glfw_button(*button),
-                        glfw_modifiers(self.modifiers),
+                        java_device::screen_button(*button),
+                        java_device::sdl_modifiers(self.modifiers) as u32,
                         *state == ElementState::Pressed,
                     );
                     return;
@@ -9514,11 +9592,12 @@ impl Game<'_> {
                 }
                 WindowEvent::KeyboardInput { event: key_event, .. } => {
                     if let PhysicalKey::Code(key) = key_event.physical_key
-                        && let Some(code) = java_gui::key_code(key)
+                        && let Some(code) = java_device::sdl_key(key)
                     {
                         let _ = java_gui::keyboard_input(
                             code,
-                            glfw_modifiers(self.modifiers),
+                            java_device::sdl_keycode(key, code),
+                            java_device::sdl_modifiers(self.modifiers) as u32,
                             key_event.state == ElementState::Pressed,
                         );
                     }
@@ -11163,6 +11242,8 @@ impl<'a> Game<'a> {
             particles,
             #[cfg(feature = "java-mods")]
             java_entities: Default::default(),
+            #[cfg(feature = "java-mods")]
+            java_title: Default::default(),
             pickups: Default::default(),
             sign_edit: None,
             book: None,

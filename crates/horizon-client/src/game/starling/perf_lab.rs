@@ -293,7 +293,7 @@ pub(super) struct PerfLab {
     guided: Option<Guided>,
     /// The guided test's fastest way of drawing, when it beat the device's own.
     fastest: Option<(Choices, f64, f64)>,
-    /// This APK's version when it is a test build (StarExtras: Preview), looked up once.
+    /// This APK's version when it is a test build (Extras: Preview), looked up once.
     test_build: Option<Option<String>>,
     /// Seconds of counted play, and when the setups were last sent.
     played: f64,
@@ -320,7 +320,7 @@ fn folder() -> PathBuf {
     horizon_client::logging::private_home().join("performance")
 }
 
-/// This APK's version where it is a test build: a StarExtras: Preview, never a release, started with
+/// This APK's version where it is a test build: an Extras: Preview, never a release, started with
 /// `STARLING_PERF_TEST=1` (a line of `horizon-args.txt`). Only then does the guided test start on
 /// its own and reports go out. Every Preview started it, once per version, so again with each new
 /// development APK, and `REPORTS` is the Azure gateway, gone since 2026-11-14. A Calibrate button

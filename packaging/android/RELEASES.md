@@ -21,7 +21,7 @@ Local builds reuse `.local/android/debug.keystore` when it exists, matching the 
 
 Open **Actions → android → Run workflow** and select `release_mode`:
 
-- `preview`: builds `StarExtras: Preview` (`io.github.cihuyakz.starling.extras.dev`).
+- `preview`: builds `Extras: Preview` (`io.github.cihuyakz.starling.extras.dev`).
 - `public`: builds `Starling Extras` (`io.github.cihuyakz.starling.extras`).
 - `auto`: reads the repository Actions variable `STARLING_RELEASE_MODE`; without that variable, `v*` tags use Public and other runs use Preview.
 

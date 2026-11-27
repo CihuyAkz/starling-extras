@@ -1,3 +1,4 @@
+
 name: Download Latest Release
 
 on:
@@ -28,33 +29,22 @@ jobs:
           GH_TOKEN: ${{ secrets.REPO_TOKEN }}
           SOURCE_REPO: ${{ inputs.source_repo }}
         run: |
-          SOURCE_REPO="$(printf '%s' "$SOURCE_REPO" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-
-          if [[ ! "$SOURCE_REPO" =~ ^[[:alnum:]_.-]+/[[:alnum:]_.-]+$ ]]; then
-            echo "::error::Invalid source repository. Use the owner/repo format without extra characters."
-            exit 1
-          fi
-
-          if ! TAG=$(gh release view \
+          TAG=$(gh release view \
             --repo "$SOURCE_REPO" \
             --json tagName \
-            --jq '.tagName'); then
-            echo "::error::Could not read the latest release from $SOURCE_REPO. Check that the repository has a published release and that REPO_TOKEN can access it."
+            --jq '.tagName')
+
+          if [ -z "$TAG" ]; then
+            echo "No release found."
             exit 1
           fi
 
-          if [[ -z "$TAG" ]]; then
-            echo "::error::No published release found in $SOURCE_REPO."
-            exit 1
-          fi
-
-          echo "repository=$SOURCE_REPO" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download Latest Release Assets
         env:
           GH_TOKEN: ${{ secrets.REPO_TOKEN }}
-          SOURCE_REPO: ${{ steps.release.outputs.repository }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$RELEASE_TAG" \

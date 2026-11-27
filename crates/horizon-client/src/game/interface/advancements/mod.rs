@@ -893,6 +893,16 @@ impl Game<'_> {
             let a = &tree.list[ai];
             let was = self.adv.progress.done(a);
             let criterion = &a.criteria[ci].name;
+            let done: Vec<&str> = a
+                .criteria
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .filter(|name| self.adv.progress.has(&a.id, name))
+                .collect();
+            #[cfg(feature = "java-mods")]
+            if self.java_award_refused(&a.id, criterion, &done) {
+                continue;
+            }
             if self.adv.progress.grant(&a.id, criterion, &date) {
                 self.advancement_progress(a, criterion, ProgressType::Grant);
             }
@@ -2541,6 +2551,18 @@ impl Game<'_> {
         let mut changed = false;
         for c in names {
             let was = self.adv.progress.done(a);
+            if !self.adv.progress.has(&a.id, c) {
+                let done: Vec<&str> = a
+                    .criteria
+                    .iter()
+                    .map(|entry| entry.name.as_str())
+                    .filter(|name| self.adv.progress.has(&a.id, name))
+                    .collect();
+                #[cfg(feature = "java-mods")]
+                if self.java_award_refused(&a.id, c, &done) {
+                    continue;
+                }
+            }
             if self.adv.progress.grant(&a.id, c, &date) {
                 changed = true;
                 self.advancement_progress(a, c, ProgressType::Grant);

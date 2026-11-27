@@ -949,6 +949,10 @@ impl Loading {
         if self.setup.onboarding_visible() {
             return None;
         }
+        #[cfg(feature = "java-mods")]
+        if !crate::java_mods::startup_finished() {
+            return None;
+        }
         // Offscreen there is no boot renderer: the world's is built at the handoff, on the main
         // thread, from the loading renderer's device.
         let threaded = self.boot_renderer.is_some() || self.world_renderer.is_some();
@@ -1087,8 +1091,6 @@ impl Loading {
             ));
         });
         let pack_error = loaded.pack_error.or_else(|| self.pack_error.take());
-        #[cfg(feature = "java-mods")]
-        crate::java_mods::wait_for_startup();
         // The game borrows its shared resources for the process's lifetime,
         // like the single copy an integrated server would share.
         let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));

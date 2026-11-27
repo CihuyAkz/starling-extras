@@ -320,6 +320,10 @@ impl Game<'_> {
                 .map(|g| (g.uuid, g.name.clone()))
         };
         self.as_guest(conn, |game| {
+            #[cfg(feature = "java-mods")]
+            if game.java_jump_refused() {
+                return;
+            }
             let Some(player) = game.player.as_mut() else {
                 return;
             };
@@ -341,9 +345,14 @@ impl Game<'_> {
                 damage_hooks: &game.damage_hooks,
                 block_registries: Some(&game.pack.block_registries),
             };
-            let _ = w.jump_from_ground();
+            let jumped = w.jump_from_ground().is_ok();
             (w.player.position, w.player.yaw, w.player.ground.on_ground) =
                 (position, yaw_after, ground);
+            drop(w);
+            #[cfg(feature = "java-mods")]
+            if jumped {
+                game.java_jumped();
+            }
             if let Some((uuid, name)) = identity {
                 game.native_player_jump(uuid, &name);
             }

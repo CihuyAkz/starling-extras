@@ -202,7 +202,7 @@ pub fn tick(state: &str) -> Result<String, String> {
 }
 
 /// Game: a key pressed or released while playing (SDL scancode, keycode, modifiers).
-pub fn key(key: i32, keycode: i32, mods: i32, down: bool) -> Result<(), String> {
+pub fn key(key: i32, keycode: i32, mods: i32, action: u8) -> Result<(), String> {
     let Some(class) = client_class() else {
         return Ok(());
     };
@@ -210,16 +210,76 @@ pub fn key(key: i32, keycode: i32, mods: i32, down: bool) -> Result<(), String> 
         env.call_static_method(
             class,
             "key",
-            "(IIIZ)V",
+            "(IIII)V",
             &[
                 JValue::Int(key),
                 JValue::Int(keycode),
+                JValue::Int(mods),
+                JValue::Int(i32::from(action)),
+            ],
+        )?;
+        Ok(())
+    })
+}
+
+/// Game: the key bindings registered by mods running in the device client.
+pub fn mouse(button: i32, mods: i32, down: bool) -> Result<(), String> {
+    let Some(class) = client_class() else {
+        return Ok(());
+    };
+    call(class, |env, class| {
+        env.call_static_method(
+            class,
+            "mouse",
+            "(IIZ)V",
+            &[
+                JValue::Int(button),
                 JValue::Int(mods),
                 JValue::Bool(down.into()),
             ],
         )?;
         Ok(())
     })
+}
+
+pub fn scroll(horizontal: f64, vertical: f64, slot: i32) -> Result<(), String> {
+    let Some(class) = client_class() else {
+        return Ok(());
+    };
+    call(class, |env, class| {
+        env.call_static_method(
+            class,
+            "scroll",
+            "(DDI)V",
+            &[
+                JValue::Double(horizontal),
+                JValue::Double(vertical),
+                JValue::Int(slot),
+            ],
+        )?;
+        Ok(())
+    })
+}
+
+pub fn bound_keys() -> Result<Vec<i32>, String> {
+    let Some(class) = client_class() else {
+        return Ok(Vec::new());
+    };
+    let bridge = crate::get().ok_or("Java isn't running")?;
+    let mut env = bridge
+        .vm()
+        .attach_current_thread_permanently()
+        .map_err(|error| error.to_string())?;
+    let json = env
+        .with_local_frame(8, |env| -> jni::errors::Result<String> {
+            let class = <&JClass>::from(class.as_obj());
+            let value = env
+                .call_static_method(class, "boundKeys", "()Ljava/lang/String;", &[])?
+                .l()?;
+            Ok(env.get_string(&JString::from(value))?.into())
+        })
+        .map_err(|error| crate::describe(&mut env, error))?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
 }
 
 /// Game: input to the device client's screen (`java_screen`'s input JSON). Returns what the
@@ -262,13 +322,18 @@ pub fn payload(channel: &str, data: &[u8]) -> Result<(), String> {
 
 /// Game: it left the server.
 pub fn leave() -> Result<(), String> {
-    let Some(class) = client_class() else {
-        return Ok(());
-    };
-    call(class, |env, class| {
-        env.call_static_method(class, "leave", "()V", &[])?;
+    let result = if let Some(class) = client_class() {
+        call(class, |env, class| {
+            env.call_static_method(class, "leave", "()V", &[])?;
+            Ok(())
+        })
+    } else {
         Ok(())
-    })
+    };
+    if let Ok(mut out) = OUT.lock() {
+        out.clear();
+    }
+    result
 }
 
 /// A channel's namespace is one of these mods' ids.

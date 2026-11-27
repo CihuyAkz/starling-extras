@@ -1466,7 +1466,31 @@ impl Game<'_> {
         relative: [bool; 3],
         turn_riders: bool,
     ) {
+        #[cfg(feature = "java-mods")]
+        let player = matches!(t, Target::Player);
+        #[cfg(feature = "java-mods")]
+        if player
+            && self.java_player_teleport_current(
+                self.dim.id(),
+                pos,
+                rotation.unwrap_or_else(|| self.target_rotation(t)),
+                false,
+            )
+        {
+            return;
+        }
         let from = self.place_teleport_filed(t, pos, rotation, relative, turn_riders);
+        #[cfg(feature = "java-mods")]
+        if player
+            && let Some(to) = self.target_position(t)
+        {
+            self.java_player_teleport_current(
+                self.dim.id(),
+                to,
+                self.target_rotation(t).unwrap_or([self.yaw, self.pitch]),
+                true,
+            );
+        }
         if let (Some(entity), Some(to)) = (self.network_entity_id(t), self.target_position(t))
             && let (true, Some(from)) = (self.options.dedicated.is_some(), from)
         {

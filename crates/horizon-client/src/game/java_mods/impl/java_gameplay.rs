@@ -20,9 +20,30 @@ static JAVA_UNHANDLED_ACTIONS_WARNED: std::sync::atomic::AtomicBool =
 static JAVA_MOB_EFFECT_TYPES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 static JAVA_MENU_WINDOWS: LazyLock<Mutex<std::collections::HashMap<String, (u32, i32, String)>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+static JAVA_ROUTED_ACTIONS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn java_routed(action: &str) -> bool {
+    if JAVA_ROUTED_ACTIONS.get().is_none() {
+        if !horizon_jvm::events::ready() {
+            return false;
+        }
+        let routed = horizon_jvm::events::routed_actions().unwrap_or_else(|error| {
+            log::warn!("Java mods: routed actions: {error}");
+            Vec::new()
+        });
+        if !routed.is_empty() {
+            log::info!("Java mods: {} go to the mods", routed.join(", "));
+        }
+        let _ = JAVA_ROUTED_ACTIONS.set(routed);
+    }
+    JAVA_ROUTED_ACTIONS
+        .get()
+        .is_some_and(|actions| actions.iter().any(|value| value == action))
+}
 
 pub(in crate::game) fn reset() {
     super::java_gui::reset();
+    super::java_device::reset_server_state();
     JAVA_PLAYER_STATE
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -234,6 +255,17 @@ impl horizon_jvm::world::Blocks for StarlingJavaBlocks<'_> {
         }
         Some(palette)
     }
+}
+
+pub(super) fn with_java_world<R>(game: &mut super::Game<'_>, f: impl FnOnce() -> R) -> R {
+    let dimension = game.dim.id().to_owned();
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    horizon_jvm::world::with_blocks(&blocks, f)
 }
 
 fn java_state_string(registry: &BlockRegistry, state: BlockStateId) -> String {
@@ -463,38 +495,312 @@ pub(in crate::game) fn queue_chat_uuid(uuid: u128, text: &str) {
         });
 }
 
-pub(in crate::game) fn before_player_break(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum JavaBreak {
+    Cancelled,
+    Horizon { after: bool },
+    Java,
+}
+
+impl JavaBreak {
+    pub(in crate::game) fn horizon(self) -> Option<bool> {
+        match self {
+            Self::Cancelled | Self::Java => None,
+            Self::Horizon { after } => Some(after),
+        }
+    }
+}
+
+pub(in crate::game) fn break_player_block(
     game: &mut super::Game<'_>,
     position: [i32; 3],
     state: BlockStateId,
-) -> bool {
+) -> JavaBreak {
     if !horizon_jvm::events::enabled() || game.remote.is_some() {
-        return true;
+        return JavaBreak::Horizon { after: false };
     }
     let uuid = game
         .lan_acting_uuid
         .unwrap_or_else(|| java_uuid(&game.level));
-    let uuid_string = horizon_protocol::crypto::uuid_string(uuid);
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
     let dimension = game.dim.id().to_owned();
     let state = java_state_string(game.pack.assets.registry, state);
-    let allowed = {
-        let blocks = StarlingJavaBlocks {
-            world: &game.world,
-            registry: game.pack.assets.registry,
-            biomes: world_biomes!(game),
-            dimension: &dimension,
-        };
-        horizon_jvm::world::with_blocks(&blocks, || {
-            horizon_jvm::events::before_break(&uuid_string, &dimension, position, &state)
-        })
+    let selected = game.selected as i32;
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
     };
-    game.apply_java_actions(&uuid_string);
-    match allowed {
-        Ok(allowed) => allowed,
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::break_block(&uuid, &dimension, position, &state, selected)
+    });
+    game.apply_java_actions(&uuid);
+    match result {
+        Ok(horizon_jvm::events::BreakResult::Cancelled) => JavaBreak::Cancelled,
+        Ok(horizon_jvm::events::BreakResult::Horizon { after }) => {
+            JavaBreak::Horizon { after }
+        }
+        Ok(horizon_jvm::events::BreakResult::Java) => JavaBreak::Java,
         Err(error) => {
             log::warn!("Java mods: block-break callback failed: {error}");
-            true
+            JavaBreak::Horizon { after: false }
         }
+    }
+}
+
+pub(in crate::game) fn after_player_break(
+    game: &mut super::Game<'_>,
+    position: [i32; 3],
+    state: BlockStateId,
+) {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let dimension = game.dim.id().to_owned();
+    let state = java_state_string(game.pack.assets.registry, state);
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::after_break(&uuid, &dimension, position, &state)
+    });
+    game.apply_java_actions(&uuid);
+    if let Err(error) = result {
+        log::warn!("Java mods: post-break callback failed: {error}");
+    }
+}
+
+pub(in crate::game) fn attack_player_block(
+    game: &mut super::Game<'_>,
+    position: [i32; 3],
+    face: i32,
+) -> bool {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return false;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let dimension = game.dim.id().to_owned();
+    let selected = game.selected as i32;
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::attack_block(&uuid, &dimension, position, face, selected)
+    });
+    game.apply_java_actions(&uuid);
+    match result {
+        Ok(taken) => taken,
+        Err(error) => {
+            log::warn!("Java mods: block-attack callback failed: {error}");
+            false
+        }
+    }
+}
+
+pub(in crate::game) fn use_player_block(
+    game: &mut super::Game<'_>,
+    position: [i32; 3],
+    face: i32,
+    point: [f64; 3],
+    off_hand: bool,
+) -> Option<bool> {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return None;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let dimension = game.dim.id().to_owned();
+    let selected = game.selected as i32;
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::use_block(
+            &uuid,
+            &dimension,
+            position,
+            face,
+            point,
+            i32::from(off_hand),
+            selected,
+        )
+    });
+    game.apply_java_actions(&uuid);
+    match result {
+        Ok(horizon_jvm::events::UseResult::Pass) => None,
+        Ok(horizon_jvm::events::UseResult::Taken) => Some(false),
+        Ok(horizon_jvm::events::UseResult::TakenSwing) => Some(true),
+        Err(error) => {
+            log::warn!("Java mods: block-use callback failed: {error}");
+            None
+        }
+    }
+}
+
+pub(in crate::game) fn use_player_item(
+    game: &mut super::Game<'_>,
+    off_hand: bool,
+    yaw: f32,
+    pitch: f32,
+) -> Option<bool> {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return None;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let dimension = game.dim.id().to_owned();
+    let selected = game.selected as i32;
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::use_item(
+            &uuid,
+            &dimension,
+            i32::from(off_hand),
+            selected,
+            yaw,
+            pitch,
+        )
+    });
+    game.apply_java_actions(&uuid);
+    match result {
+        Ok(horizon_jvm::events::UseResult::Pass) => None,
+        Ok(horizon_jvm::events::UseResult::Taken) => Some(false),
+        Ok(horizon_jvm::events::UseResult::TakenSwing) => Some(true),
+        Err(error) => {
+            log::warn!("Java mods: item-use callback failed: {error}");
+            None
+        }
+    }
+}
+
+pub(in crate::game) fn select_player_slot(game: &mut super::Game<'_>, slot: i32) -> bool {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return false;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    match horizon_jvm::events::select_slot(&uuid, slot) {
+        Ok(cancelled) => {
+            game.apply_java_actions(&uuid);
+            cancelled
+        }
+        Err(error) => {
+            log::warn!("Java mods: hotbar-select callback failed: {error}");
+            false
+        }
+    }
+}
+
+pub(in crate::game) fn crafted_takes(
+    game: &mut super::Game<'_>,
+    takes: &[horizon_client::menu::CraftedTake],
+) {
+    if takes.is_empty() || !horizon_jvm::events::enabled() || game.remote.is_some() {
+        return;
+    }
+    let uuid = game
+        .lan_acting_uuid
+        .unwrap_or_else(|| java_uuid(&game.level));
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let snbt = |stack: &horizon_client::items::ItemStack| {
+        horizon_client::snbt::to_snbt(&horizon_items::item_nbt::item_to_nbt(stack))
+    };
+    let dimension = game.dim.id().to_owned();
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    for take in takes {
+        let grid: Vec<String> = take
+            .grid
+            .iter()
+            .map(|cell| cell.as_ref().map(snbt).unwrap_or_default())
+            .collect();
+        let result = snbt(&take.taken);
+        let called = horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::crafted(
+                &uuid,
+                &take.recipe,
+                &result,
+                take.taken.count as i32,
+                take.width as i32,
+                &grid,
+            )
+        });
+        if let Err(error) = called {
+            log::warn!("Java mods: crafting callback failed: {error}");
+        }
+    }
+    game.apply_java_actions(&uuid);
+}
+
+impl super::Game<'_> {
+    pub(in crate::game) fn java_attack_block(&mut self, position: [i32; 3], face: i32) -> bool {
+        attack_player_block(self, position, face)
+    }
+}
+
+static JAVA_HUD_FRAME_LAST: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+pub(in crate::game) fn draw_client_hud_frame(game: &mut super::Game<'_>) {
+    if !horizon_jvm::events::enabled() || game.remote.is_some() || game.player.is_none() {
+        return;
+    }
+    let now = std::time::Instant::now();
+    {
+        let mut last = JAVA_HUD_FRAME_LAST
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if last.is_some_and(|last| now.duration_since(last).as_nanos() < 8_333_333) {
+            return;
+        }
+        *last = Some(now);
+    }
+    let uuid = java_uuid(&game.level);
+    let uuid = horizon_protocol::crypto::uuid_string(uuid);
+    let dimension = game.dim.id().to_owned();
+    let blocks = StarlingJavaBlocks {
+        world: &game.world,
+        registry: game.pack.assets.registry,
+        biomes: world_biomes!(game),
+        dimension: &dimension,
+    };
+    let result = horizon_jvm::world::with_blocks(&blocks, || {
+        horizon_jvm::events::client_hud_frame(&uuid, [game.yaw, game.pitch])
+    });
+    game.apply_java_actions(&uuid);
+    if let Err(error) = result {
+        log::warn!("Java mods: local HUD frame failed: {error}");
     }
 }
 
@@ -558,7 +864,7 @@ fn java_rules_string(game: &super::Game<'_>) -> String {
         .join(";")
 }
 
-fn java_text(text: &str) -> horizon_client::text::Text {
+pub(super) fn java_text(text: &str) -> horizon_client::text::Text {
     match serde_json::from_str::<serde_json::Value>(text) {
         Ok(component) if component.is_object() || component.is_array() || component.is_string() => {
             horizon_client::packs::component(&component).with_component(component)
@@ -690,11 +996,18 @@ impl super::Game<'_> {
     }
 
     pub(super) fn java_guest_payload(
-        &self,
+        &mut self,
         conn: u32,
         channel: &str,
         body: &[u8],
     ) -> bool {
+        let routed = self
+            .lan
+            .as_ref()
+            .and_then(|host| super::java_device::guest_payload(host, conn, channel, body));
+        if let Some(handled) = routed {
+            return handled;
+        }
         let Some(uuid) = self.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
@@ -704,6 +1017,18 @@ impl super::Game<'_> {
         }) else {
             return false;
         };
+        if channel == super::java_device::SCREEN_INPUT_CHANNEL {
+            let Ok(input) = std::str::from_utf8(body) else {
+                log::warn!("Java mods: invalid UTF-8 screen input from {uuid}");
+                return true;
+            };
+            if let Err(error) = horizon_jvm::events::screen_input(&uuid, input) {
+                log::warn!("Java mods: screen input from {uuid} failed: {error}");
+            }
+            let local_id = horizon_protocol::crypto::uuid_string(java_uuid(&self.level));
+            self.apply_java_actions(&local_id);
+            return true;
+        }
         match horizon_jvm::events::guest_payload(&uuid, channel, body) {
             Ok(handled) => handled,
             Err(error) => {
@@ -893,6 +1218,11 @@ impl super::Game<'_> {
             .retain(|uuid, _| connected.contains(uuid));
         let local_uuid = java_uuid(&self.level);
         let local_id = horizon_protocol::crypto::uuid_string(local_uuid);
+        let owner = self.lan.as_ref().and_then(|host| host.hub.singleplayer_owner);
+        super::java_device::own_player(owner);
+        if let Some(host) = self.lan.as_ref() {
+            super::java_device::sync_guest_join_state(host);
+        }
         super::java_gui::set_local_uuid(&local_id);
         let mut players = Vec::new();
         let mut events = std::mem::take(
@@ -1137,6 +1467,33 @@ impl super::Game<'_> {
             return false;
         };
         self.remove_player_effects(Some(def.index));
+        true
+    }
+
+    fn send_java_guest_payload(&self, uuid: &str, channel: &str, data: Vec<u8>) -> bool {
+        if super::java_device::guest_owns_client(uuid) {
+            return true;
+        }
+        let Some(host) = self.lan.as_ref() else {
+            return false;
+        };
+        let Some(conn) = host
+            .hub
+            .online_players()
+            .find(|guest| horizon_protocol::crypto::uuid_string(guest.uuid) == uuid)
+            .map(|guest| guest.conn)
+        else {
+            return false;
+        };
+        host.hub.send_to(
+            conn,
+            &horizon_protocol::packets::play::Clientbound::CustomPayload(
+                horizon_protocol::packets::configuration::CustomPayload {
+                    channel: channel.to_owned(),
+                    data,
+                },
+            ),
+        );
         true
     }
 
@@ -1627,21 +1984,57 @@ impl super::Game<'_> {
                 horizon_jvm::events::Action::ScreenFrame { uuid, frame } => {
                     if uuid == local_id {
                         super::java_gui::set_screen_frame(&frame);
+                    } else {
+                        let operations = serde_json::from_str::<Value>(&frame)
+                            .unwrap_or_else(|_| Value::Array(Vec::new()));
+                        let packet = serde_json::json!({
+                            "window": -1,
+                            "open": true,
+                            "ops": operations,
+                        });
+                        if !self.send_java_guest_payload(
+                            &uuid,
+                            super::java_device::SCREEN_CHANNEL,
+                            packet.to_string().into_bytes(),
+                        ) {
+                            unhandled += 1;
+                        }
                     }
                 }
                 horizon_jvm::events::Action::HudFrame { uuid, frame } => {
                     if uuid == local_id {
                         super::java_gui::set_hud_frame(&frame);
+                    } else if !self.send_java_guest_payload(
+                        &uuid,
+                        super::java_device::HUD_CHANNEL,
+                        frame.into_bytes(),
+                    ) {
+                        unhandled += 1;
                     }
                 }
                 horizon_jvm::events::Action::OverlayFrame { uuid, frame } => {
                     if uuid == local_id {
                         super::java_gui::set_overlay_frame(&frame);
+                    } else if !self.send_java_guest_payload(
+                        &uuid,
+                        super::java_device::OVERLAY_CHANNEL,
+                        frame.into_bytes(),
+                    ) {
+                        unhandled += 1;
                     }
                 }
                 horizon_jvm::events::Action::ClientScreen { uuid, open } => {
                     if uuid == local_id {
                         super::java_gui::set_screen_open(open);
+                    } else {
+                        let packet = serde_json::json!({ "window": -1, "open": open });
+                        if !self.send_java_guest_payload(
+                            &uuid,
+                            super::java_device::SCREEN_CHANNEL,
+                            packet.to_string().into_bytes(),
+                        ) {
+                            unhandled += 1;
+                        }
                     }
                 }
                 horizon_jvm::events::Action::MenuContent { uuid, open, items, carried } => {
@@ -1705,6 +2098,306 @@ impl super::Game<'_> {
             log::warn!(
                 "Java mods: {unhandled} action(s) were ignored because Starling does not yet provide a compatible gameplay operation for them"
             );
+        }
+    }
+
+    pub(in crate::game) fn java_add_effect(
+        &mut self,
+        effect: &horizon_client::effects::EffectInstance,
+    ) -> bool {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("effects")
+        {
+            return false;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        let id = format!("minecraft:{}", effect.id);
+        match horizon_jvm::events::add_effect(
+            &uuid,
+            &id,
+            effect.duration,
+            effect.amplifier,
+            effect.ambient,
+            effect.visible,
+        ) {
+            Ok(refused) => refused,
+            Err(error) => {
+                log::warn!("Java mods: effect callback failed: {error}");
+                false
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_jump_refused(&mut self) -> bool {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("jumps")
+        {
+            return false;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        match horizon_jvm::events::jump_start(&uuid) {
+            Ok(refused) => refused,
+            Err(error) => {
+                log::warn!("Java mods: jump callback failed: {error}");
+                false
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_jumped(&mut self) {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("jumps")
+        {
+            return;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        if let Err(error) = horizon_jvm::events::jump_end(&uuid) {
+            log::warn!("Java mods: jump callback failed: {error}");
+        }
+    }
+
+    pub(in crate::game) fn java_award_refused(
+        &mut self,
+        id: &str,
+        criterion: &str,
+        done: &[&str],
+    ) -> bool {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("advancements")
+        {
+            return false;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        let dimension = self.dim.id().to_owned();
+        let blocks = StarlingJavaBlocks {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            biomes: world_biomes!(self),
+            dimension: &dimension,
+        };
+        let result = horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::award(&uuid, id, criterion, done)
+        });
+        self.apply_java_actions(&uuid);
+        match result {
+            Ok(refused) => refused,
+            Err(error) => {
+                log::warn!("Java mods: advancement callback failed: {error}");
+                false
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_player_teleport_current(
+        &mut self,
+        dimension: &str,
+        position: [f64; 3],
+        look: [f32; 2],
+        end: bool,
+    ) -> bool {
+        let player = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        self.java_player_teleport(player, dimension, position, look, end)
+    }
+
+    pub(in crate::game) fn java_player_teleport(
+        &mut self,
+        player: u128,
+        dimension: &str,
+        position: [f64; 3],
+        look: [f32; 2],
+        end: bool,
+    ) -> bool {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("teleports")
+        {
+            return false;
+        }
+        let uuid = horizon_protocol::crypto::uuid_string(player);
+        let blocks = StarlingJavaBlocks {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            biomes: world_biomes!(self),
+            dimension,
+        };
+        match horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::teleport(&uuid, dimension, position, look, end)
+        }) {
+            Ok(refused) => refused,
+            Err(error) => {
+                log::warn!("Java mods: player teleport callback failed: {error}");
+                false
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_orb_touch(
+        &mut self,
+        orb: &horizon_client::entities::ExperienceOrb,
+    ) -> Option<(u32, i32)> {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("experience_orbs")
+        {
+            return None;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        let dimension = self.dim.id().to_owned();
+        let position = [orb.position.x, orb.position.y, orb.position.z];
+        let experience = self.experience;
+        let blocks = StarlingJavaBlocks {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            biomes: world_biomes!(self),
+            dimension: &dimension,
+        };
+        let result = horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::orb_touch(
+                &uuid,
+                &dimension,
+                position,
+                orb.value,
+                orb.count.min(i32::MAX as u32) as i32,
+                experience.level,
+                experience.progress,
+                experience.total,
+            )
+        });
+        self.apply_java_actions(&uuid);
+        match result {
+            Ok(Some(touched)) => {
+                let level_before = self.experience.level;
+                self.experience.level = touched.level.max(0);
+                self.experience.progress = touched.progress.clamp(0.0, 1.0);
+                self.experience.total = touched.total.max(0);
+                if self.experience.level > level_before
+                    && self.experience.level % 5 == 0
+                    && self.ticks > self.last_level_up + 100
+                {
+                    self.last_level_up = self.ticks;
+                    let level = self.experience.level;
+                    let volume = if level > 30 { 1.0 } else { level as f32 / 30.0 };
+                    self.audio.play(
+                        "minecraft:entity.player.levelup",
+                        self.eye_position(),
+                        volume * 0.75,
+                        1.0,
+                    );
+                }
+                Some((touched.count.max(0) as u32, touched.delay))
+            }
+            Ok(None) => None,
+            Err(error) => {
+                log::warn!("Java mods: experience-orb callback failed: {error}");
+                None
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_item_touch(
+        &mut self,
+        item: &horizon_client::entities::ItemEntity,
+    ) -> Option<u32> {
+        if self.remote.is_some()
+            || !horizon_jvm::events::enabled()
+            || !java_routed("item_pickup")
+        {
+            return None;
+        }
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        let dimension = self.dim.id().to_owned();
+        let stack = horizon_client::snbt::to_snbt(
+            &horizon_items::item_nbt::item_to_nbt(&item.stack),
+        );
+        let position = [item.position.x, item.position.y, item.position.z];
+        let blocks = StarlingJavaBlocks {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            biomes: world_biomes!(self),
+            dimension: &dimension,
+        };
+        let result = horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::item_touch(&uuid, &dimension, position, &stack)
+        });
+        self.apply_java_actions(&uuid);
+        match result {
+            Ok(left) => left.map(|count| count.max(0) as u32),
+            Err(error) => {
+                log::warn!("Java mods: item-pickup callback failed: {error}");
+                None
+            }
+        }
+    }
+
+    pub(in crate::game) fn java_vanilla_entity(
+        &mut self,
+        id: u32,
+        using: bool,
+        hand: i32,
+        hit: [f64; 3],
+    ) -> Option<horizon_jvm::events::EntityResult> {
+        if self.remote.is_some() || !horizon_jvm::events::enabled() {
+            return None;
+        }
+        let index = self
+            .mobs
+            .iter()
+            .position(|mob| mob.id == id && mob.alive() && !mob.removed)?;
+        let uuid = self
+            .lan_acting_uuid
+            .unwrap_or_else(|| java_uuid(&self.level));
+        let uuid = horizon_protocol::crypto::uuid_string(uuid);
+        let dimension = self.dim.id().to_owned();
+        let snbt = horizon_client::snbt::to_snbt(&self.mob_tree_nbt(index));
+        let blocks = StarlingJavaBlocks {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            biomes: world_biomes!(self),
+            dimension: &dimension,
+        };
+        let result = horizon_jvm::world::with_blocks(&blocks, || {
+            horizon_jvm::events::vanilla_entity(
+                &uuid, &dimension, &snbt, using, hand, hit, self.selected as i32,
+            )
+        });
+        self.apply_java_actions(&uuid);
+        match result {
+            Ok(answer) => {
+                if answer.removed
+                    && let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id)
+                {
+                    mob.removed = true;
+                }
+                Some(answer)
+            }
+            Err(error) => {
+                log::warn!("Java mods: vanilla entity interaction failed: {error}");
+                None
+            }
         }
     }
 
