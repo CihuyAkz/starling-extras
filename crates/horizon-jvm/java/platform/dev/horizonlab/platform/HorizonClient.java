@@ -182,7 +182,7 @@ public final class HorizonClient {
         // RenderSystem.getDevice(): "Can't getDevice() before it was initialized").
         HorizonGpu.install();
         var equipmentAssets = new net.minecraft.client.resources.model.EquipmentAssetManager();
-        set(Minecraft.class, mc, "equipmentAssets", equipmentAssets);
+        HorizonEntityRender.setEquipmentAssets(equipmentAssets);
         ((net.minecraft.server.packs.resources.ReloadableResourceManager) mc.getResourceManager())
                 .registerReloadListener(equipmentAssets);
         // Its frame rate limiter, which options.txt's load sets (maxFps): a value holder here.

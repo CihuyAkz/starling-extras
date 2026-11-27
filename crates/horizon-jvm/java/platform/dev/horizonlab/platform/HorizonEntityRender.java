@@ -45,6 +45,7 @@ public final class HorizonEntityRender {
     private HorizonEntityRender() {}
 
     private static EntityRendererProvider.Context context;
+    private static net.minecraft.client.resources.model.EquipmentAssetManager equipmentAssets;
     private static final Map<EntityType<?>, EntityRenderer<?, ?>> RENDERERS = new IdentityHashMap<>();
     /** Types whose renderer could not be made (logged once). */
     private static final Map<EntityType<?>, Boolean> NO_RENDERER = new IdentityHashMap<>();
@@ -57,6 +58,10 @@ public final class HorizonEntityRender {
     private static Field setupField;
     private static Field texturesField;
 
+    static void setEquipmentAssets(net.minecraft.client.resources.model.EquipmentAssetManager assets) {
+        equipmentAssets = assets;
+    }
+
     /**
      * The renderers' context, as Minecraft.onResourceLoadFinished's EntityRenderDispatcher
      * makes it: the models of every layer (vanilla's and those mods registered through
@@ -67,6 +72,13 @@ public final class HorizonEntityRender {
     private static EntityRendererProvider.Context context() throws ReflectiveOperationException {
         if (context != null) return context;
         var mc = HorizonClient.minecraft();
+        var assets = equipmentAssets;
+        if (assets == null) {
+            assets = new net.minecraft.client.resources.model.EquipmentAssetManager();
+            equipmentAssets = assets;
+            ((net.minecraft.server.packs.resources.ReloadableResourceManager) mc.getResourceManager())
+                    .registerReloadListener(assets);
+        }
         var models = new net.minecraft.client.model.geom.EntityModelSet(
                 net.minecraft.client.model.geom.LayerDefinitions.createRoots());
         var dispatcher = (net.minecraft.client.renderer.entity.EntityRenderDispatcher)
@@ -81,10 +93,11 @@ public final class HorizonEntityRender {
         // Item models: none (ItemModelResolverMixin), so held and worn items draw nothing.
         var items = new net.minecraft.client.renderer.item.ItemModelResolver(null);
         HorizonClient.set(net.minecraft.client.renderer.entity.EntityRenderDispatcher.class, dispatcher, "itemModelResolver", items);
+        HorizonClient.set(net.minecraft.client.renderer.entity.EntityRenderDispatcher.class, dispatcher, "equipmentAssets", assets);
         // Block models once the client's are loaded (modelsLoaded): renderers that draw blocks
         // (Create's contraptions: their blocks through the model set) need the resolver.
         var blocks = HorizonClient.modelsReady() ? new net.minecraft.client.renderer.block.BlockModelResolver(mc.getModelManager()) : null;
-        context = new EntityRendererProvider.Context(dispatcher, blocks, items, null, null, models, null,
+        context = new EntityRendererProvider.Context(dispatcher, blocks, items, null, null, models, assets,
                 mc.getAtlasManager(), mc.font, null, null);
         // Its renderers by type (renderer(): vanilla's and the mods'), for renderers that draw
         // another entity through it (Carry On's carried mob), and the players' (AvatarRenderer,
