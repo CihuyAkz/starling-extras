@@ -3529,6 +3529,21 @@ public final class HorizonClient {
      * blocks, fluids, light and block entities are Horizon's (LevelMixin), isClientSide true.
      * No chunks, entities or renderer of its own.
      */
+    static void resetWorldMirrors() {
+        CLIENT_LEVELS.clear();
+        CONNECTIONS.clear();
+        JOINED.clear();
+        PLAYERS.clear();
+        SERVER_PLAYERS.clear();
+        RENDERED_LEVELS.clear();
+        CLIENT_CHUNKS.clear();
+        if (minecraft != null) {
+            minecraft.player = null;
+            minecraft.level = null;
+            minecraft.gameMode = null;
+        }
+    }
+
     static net.minecraft.client.multiplayer.ClientLevel clientLevel(net.minecraft.world.level.Level server) {
         return CLIENT_LEVELS.computeIfAbsent(server.dimension(), key -> {
             var level = HorizonServer.mirror(net.minecraft.client.multiplayer.ClientLevel.class);
@@ -3563,7 +3578,12 @@ public final class HorizonClient {
                 set(owner, level, "dragonParts", new java.util.ArrayList<>());
                 set(owner, level, "worldBorder", new net.minecraft.world.level.border.WorldBorder());
                 set(owner, level, "environmentAttributes", server.environmentAttributes());
-                set(owner, level, "seaLevel", server.getSeaLevel());
+                int seaLevel = 63;
+                if (server instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                    var generator = HorizonServer.generator(serverLevel);
+                    if (generator != null) seaLevel = generator.getSeaLevel();
+                }
+                set(owner, level, "seaLevel", seaLevel);
                 // Its tick rate (ClientboundTickingStatePacket's): the server's (potions'
                 // tooltips read it for their durations; JEI's search reads every tooltip).
                 set(owner, level, "tickRateManager", server.tickRateManager());

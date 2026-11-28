@@ -59,6 +59,7 @@ public final class HorizonServer {
 
     private static MinecraftServer server;
     private static PlayerList playerList;
+    private static volatile boolean dedicatedMirror;
     private static final Map<ResourceKey<Level>, ServerLevel> LEVELS = new LinkedHashMap<>();
     private static final List<ServerPlayer> PLAYERS = new ArrayList<>();
     private static final Map<ServerLevel, List<ServerPlayer>> LEVEL_PLAYERS = new IdentityHashMap<>();
@@ -294,6 +295,7 @@ public final class HorizonServer {
                 : "net.minecraft.client.server.IntegratedPlayerList";
         ClassLoader loader = HorizonServer.class.getClassLoader();
         server = (MinecraftServer) allocate(Class.forName(serverClass, true, loader));
+        dedicatedMirror = dedicated;
         playerList = (PlayerList) allocate(Class.forName(listClass, true, loader));
         ((PlayerListAccess) playerList).horizon$setPlayers(PLAYERS);
         ((PlayerListAccess) playerList).horizon$setPlayersByUUID(BY_UUID);
@@ -400,15 +402,83 @@ public final class HorizonServer {
         }
     }
 
-    /** The mirrored server, made now if no tick made it yet (a single player's, until one does). */
-    static synchronized void ensureServer() {
+    private static synchronized void ensureMirror(boolean dedicated) {
+        if (server != null && dedicatedMirror != dedicated) resetMirror();
         if (server != null) return;
         try {
-            setUp(false);
+            setUp(dedicated);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }
         HorizonHooks.scan();
+    }
+
+    private static synchronized void resetWorldState() {
+        LEVELS.clear();
+        PLAYERS.clear();
+        LEVEL_PLAYERS.clear();
+        BY_UUID.clear();
+        KNOWN.clear();
+        CONTEXTS.clear();
+        MODES.clear();
+        STATS.clear();
+        ADVANCEMENTS.clear();
+        PERMISSIONS.clear();
+        FAILURES.clear();
+        CONNECTIONS.clear();
+        CHUNK_MAPS.clear();
+        CONSTRUCTED.clear();
+        LOADED_LEVELS.clear();
+        RANDOM_STATES.clear();
+        STRUCTURE_STATES.clear();
+        FORWARDED.clear();
+        OPENING.clear();
+        SHOWN.clear();
+        SHOWN_CONTENT.clear();
+        RESEND.clear();
+        WRITTEN.clear();
+        WRITTEN_AT.clear();
+        WAITING_CHUNK.clear();
+        CLICK_TAKEN.clear();
+        USE_HELD.clear();
+        LIGHT.clear();
+        KEPT.clear();
+        SEEN.clear();
+        FOOD_SEEN.clear();
+        DROPPED.clear();
+        TICK_FAILURES.clear();
+        routedBreak = false;
+        syncing = false;
+        OPS = null;
+        clientConnection = null;
+        storage = null;
+        storageRoot = null;
+        worldDir = null;
+        started = false;
+        RULES_SEEN = false;
+        statesSeed = Long.MIN_VALUE;
+        statesPreset = "";
+        currentTick = 0L;
+        anyWritten = false;
+        HorizonWorldgen.reset();
+        HorizonClient.resetWorldMirrors();
+    }
+
+    private static synchronized void resetMirror() {
+        resetWorldState();
+        server = null;
+        playerList = null;
+        dedicatedMirror = false;
+        serverThread = null;
+        seed = 0L;
+        synchronized (MIRRORS) {
+            MIRRORS.clear();
+            MIRROR_VIEW = Set.of();
+        }
+    }
+
+    static synchronized void ensureServer() {
+        if (server == null) ensureMirror(false);
     }
 
     /**
@@ -638,25 +708,25 @@ public final class HorizonServer {
                     Natives.log("Java mods: a level's data could not be set: " + e);
                 }
                 // The dimension's type: the level stem's, as vanilla's server binds it.
-                var stem = registries.lookupOrThrow(Registries.LEVEL_STEM)
-                        .get(ResourceKey.create(Registries.LEVEL_STEM, k.identifier()));
-                stem.ifPresent(s -> access.horizon$setDimensionType(s.value().type()));
+                var stem = HorizonData.stem(k.identifier());
+                if (stem == null) stem = HorizonData.stem(Identifier.withDefaultNamespace("overworld"));
+                if (stem != null) access.horizon$setDimensionType(stem.type());
                 // Its environment attributes (what mobs read of the sky and the moon:
                 // EnvironmentAttributeSystem.addDefaultLayers): the dimension's own values. The
                 // mirror has no world clocks for the time-based layers, nor biomes for theirs.
-                stem.ifPresent(s -> {
+                if (stem != null) {
                     try {
                         var builder = net.minecraft.world.attribute.EnvironmentAttributeSystem.builder();
                         java.lang.reflect.Method layer = net.minecraft.world.attribute.EnvironmentAttributeSystem.class
                                 .getDeclaredMethod("addDimensionLayer", builder.getClass(),
                                         net.minecraft.world.level.dimension.DimensionType.class);
                         layer.setAccessible(true);
-                        layer.invoke(null, builder, s.value().type().value());
+                        layer.invoke(null, builder, stem.type().value());
                         level.setEnvironmentAttributes(builder.build());
                     } catch (ReflectiveOperationException | RuntimeException e) {
                         Natives.log("Java mods: a level has no environment attributes: " + e);
                     }
-                });
+                }
             }
             return level;
         });
@@ -715,6 +785,7 @@ public final class HorizonServer {
     public static void clientClosed() {
         HorizonPacketTap.close(true);
         if (client) HorizonClient.worldClosed();
+        resetMirror();
     }
 
     /** Mods Horizon left out of Fabric's (Sodium, Iris), one line each: told at the players' join. */
@@ -783,8 +854,8 @@ public final class HorizonServer {
      * (Nature's Compass searches its biome source), and Horizon's generation is vanilla's.
      */
     public static net.minecraft.world.level.chunk.ChunkGenerator generator(ServerLevel level) {
-        // The world's preset's stem (a mod's world type) or the registries'.
         var stem = HorizonData.stem(level.dimension().identifier());
+        if (stem == null) stem = HorizonData.stem(net.minecraft.resources.Identifier.withDefaultNamespace("overworld"));
         return stem == null ? null : stem.generator();
     }
 
@@ -872,10 +943,11 @@ public final class HorizonServer {
     static void world(String world) {
         if (world != null && !world.isEmpty()) {
             java.nio.file.Path dir = java.nio.file.Paths.get(world).toAbsolutePath().normalize();
-            // A world made with a mod's world type: its dimensions are that preset's.
-            if (!dir.equals(worldDir)) {
-                String preset = worldPreset(dir);
-                if (preset != null) HorizonData.usePreset(preset);
+            String preset = worldPreset(dir);
+            String selectedPreset = preset == null ? (dir.equals(worldDir) ? HorizonData.preset() : "") : preset;
+            if (!dir.equals(worldDir) || !selectedPreset.equals(HorizonData.preset())) {
+                HorizonData.usePreset(selectedPreset);
+                resetWorldState();
             }
             worldDir = dir;
         }
@@ -949,12 +1021,7 @@ public final class HorizonServer {
         HorizonData.Loaded data = HorizonData.loaded;
         java.util.TreeSet<Identifier> ids = new java.util.TreeSet<>();
         if (data == null) return new ArrayList<>(ids);
-        try {
-            data.registries().compositeAccess().lookupOrThrow(Registries.LEVEL_STEM).listElementIds()
-                    .forEach(k -> ids.add(k.identifier()));
-        } catch (RuntimeException e) {
-            Natives.log("Java mods: the level stems can't be listed: " + e);
-        }
+        ids.addAll(HorizonData.stemIds());
         ids.removeIf(HorizonServer::vanillaLevel);
         return new ArrayList<>(ids);
     }
@@ -1171,11 +1238,8 @@ public final class HorizonServer {
         Thread.currentThread().setContextClassLoader(HorizonServer.class.getClassLoader());
         serverThread = Thread.currentThread();
         try {
-            if (server == null) {
-                // A server's mirror, not single player's: the client is connected to another's
-                // (mods name their per-server data by it, not by a world folder of this game's).
-                setUp(true);
-                HorizonHooks.scan();
+            if (server == null || !dedicatedMirror) {
+                ensureMirror(true);
                 Natives.log("Java mods: this game's own client runs on a mirror of what it sees");
             }
         } catch (Throwable t) {
@@ -1215,6 +1279,7 @@ public final class HorizonServer {
         ServerPlayer player = BY_UUID.remove(id);
         if (player != null) PLAYERS.remove(player);
         if (client) HorizonClient.left(id);
+        if (dedicatedMirror && PLAYERS.isEmpty()) resetMirror();
     }
 
     /** A local HUD frame while its simulation waits for the next tick. */
@@ -1554,10 +1619,7 @@ public final class HorizonServer {
         Thread.currentThread().setContextClassLoader(HorizonServer.class.getClassLoader());
         serverThread = Thread.currentThread();
         try {
-            if (server == null) {
-                setUp(dedicated);
-                HorizonHooks.scan();
-            }
+            ensureMirror(dedicated);
         } catch (Throwable t) {
             Natives.log("Horizon's server mirror could not be set up: " + t);
             for (StackTraceElement frame : t.getStackTrace()) Natives.log("    at " + frame);

@@ -47,6 +47,7 @@ public final class HorizonData {
      * before a world is chosen).
      */
     private static volatile Map<net.minecraft.resources.Identifier, net.minecraft.world.level.dimension.LevelStem> presetStems = Map.of();
+    private static volatile Map<net.minecraft.resources.Identifier, net.minecraft.world.level.dimension.LevelStem> datapackStems = Map.of();
     private static volatile String preset = "";
 
     /** The world's mod preset (an id, or empty for the default): its stems from now on. */
@@ -86,11 +87,32 @@ public final class HorizonData {
     public static net.minecraft.world.level.dimension.LevelStem stem(net.minecraft.resources.Identifier id) {
         var own = presetStems.get(id);
         if (own != null) return own;
+        var datapack = datapackStems.get(id);
+        if (datapack != null) return datapack;
         Loaded data = loaded;
         if (data == null) return null;
-        return data.registries().compositeAccess().lookupOrThrow(Registries.LEVEL_STEM)
-                .get(net.minecraft.resources.ResourceKey.create(Registries.LEVEL_STEM, id))
-                .map(net.minecraft.core.Holder::value).orElse(null);
+        try {
+            return data.registries().compositeAccess().lookupOrThrow(Registries.LEVEL_STEM)
+                    .get(net.minecraft.resources.ResourceKey.create(Registries.LEVEL_STEM, id))
+                    .map(net.minecraft.core.Holder::value).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    static java.util.Set<net.minecraft.resources.Identifier> stemIds() {
+        var ids = new java.util.TreeSet<net.minecraft.resources.Identifier>(datapackStems.keySet());
+        ids.addAll(presetStems.keySet());
+        Loaded data = loaded;
+        if (data != null) {
+            try {
+                data.registries().compositeAccess().lookupOrThrow(Registries.LEVEL_STEM).listElementIds()
+                        .forEach(key -> ids.add(key.identifier()));
+            } catch (RuntimeException e) {
+                Natives.log("Java mods: the level stems can't be listed: " + e);
+            }
+        }
+        return java.util.Collections.unmodifiableSet(ids);
     }
 
     /**
@@ -128,6 +150,10 @@ public final class HorizonData {
      */
     public static void prepare(String datapacks) throws Exception {
         long started = System.nanoTime();
+        loaded = null;
+        preset = "";
+        presetStems = Map.of();
+        datapackStems = Map.of();
         // Vanilla finds its data pack through the context class loader; a thread Horizon
         // attached to the JVM has none.
         Thread.currentThread().setContextClassLoader(HorizonData.class.getClassLoader());
@@ -150,8 +176,11 @@ public final class HorizonData {
         WorldLoader.WorldDataSupplier<net.minecraft.world.level.storage.PrimaryLevelData> world = context -> {
             // The preset's dimensions under the data packs' own (`dimension/overworld.json`:
             // Simply OneBlock's void overworld), as vanilla bakes a new world's.
-            var dimensions = defaultDimensions(context.datapackWorldRegistries())
-                    .bake(context.datapackDimensions().lookupOrThrow(Registries.LEVEL_STEM));
+            var worldDimensions = defaultDimensions(context.datapackWorldRegistries());
+            Map<net.minecraft.resources.Identifier, net.minecraft.world.level.dimension.LevelStem> stems = new java.util.HashMap<>();
+            worldDimensions.dimensions().forEach((key, stem) -> stems.put(key.identifier(), stem));
+            datapackStems = Map.copyOf(stems);
+            var dimensions = worldDimensions.bake(context.datapackDimensions().lookupOrThrow(Registries.LEVEL_STEM));
             // The world's settings, as the game-test server makes them. Horizon's own (game
             // mode, difficulty, rules) are mirrored over them as it hands them over.
             net.minecraft.world.level.LevelSettings settings = new net.minecraft.world.level.LevelSettings(

@@ -112,6 +112,13 @@ public final class HorizonWorldgen {
     private static final Map<String, Integer> FAILURES = new ConcurrentHashMap<>();
     private static boolean serverReady;
 
+    static synchronized void reset() {
+        DIMENSIONS.clear();
+        FAILURES.clear();
+        serverReady = false;
+        readyStructures = false;
+    }
+
     // ---- Start ----------------------------------------------------------------------------
 
     /**
