@@ -832,7 +832,7 @@ impl Game<'_> {
             return true;
         }
         #[cfg(feature = "java-mods")]
-        if super::super::java_gui::screen_open() || super::super::java_gui::device_screen_open() {
+        if crate::game::java_gui::screen_open() || crate::game::java_gui::device_screen_open() {
             let layout = self.touch_layout();
             let slop = touch::slop(layout.width, layout.height);
             self.touch_menu_pointer(event_loop, id, t, p, slop);
