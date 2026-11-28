@@ -883,6 +883,8 @@ public final class HorizonClient {
             set(net.minecraft.world.entity.Entity.class, local, "stringUUID", player.getStringUUID());
             set(net.minecraft.world.entity.Entity.class, local, "id", player.getId());
             set(net.minecraft.world.entity.player.Player.class, local, "gameProfile", player.getGameProfile());
+            set(net.minecraft.client.player.AbstractClientPlayer.class, local, "playerInfo",
+                    new net.minecraft.client.multiplayer.PlayerInfo(player.getGameProfile(), false));
             // Its keys (isShiftKeyDown: a collision context's descending): none pressed.
             set(net.minecraft.client.player.LocalPlayer.class, local, "input", new net.minecraft.client.player.ClientInput());
             // Its first-person hands and items, as its constructor makes them (26.3:

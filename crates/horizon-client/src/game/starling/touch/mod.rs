@@ -831,6 +831,13 @@ impl Game<'_> {
             }
             return true;
         }
+        #[cfg(feature = "java-mods")]
+        if super::super::java_gui::screen_open() || super::super::java_gui::device_screen_open() {
+            let layout = self.touch_layout();
+            let slop = touch::slop(layout.width, layout.height);
+            self.touch_menu_pointer(event_loop, id, t, p, slop);
+            return true;
+        }
         #[cfg(target_os = "android")]
         if self.mobile_controls_enabled() {
             self.mobile_touch(t, event_loop, id);

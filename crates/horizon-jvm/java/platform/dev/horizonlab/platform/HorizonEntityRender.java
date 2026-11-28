@@ -666,7 +666,7 @@ public final class HorizonEntityRender {
      * and held items itself), and, in first person, what vanilla's own arm and held item
      * aren't (handStack: the hand's item; vanillaHand: vanilla's own drawing was seen).
      */
-    private static boolean onlyMods, inModLayer, firstPerson, vanillaHand;
+    private static boolean onlyMods, inModLayer, firstPerson, vanillaHand, vanillaArm;
     private static net.minecraft.world.item.ItemStack handStack;
 
     private static boolean kept(Object model) {
@@ -677,6 +677,7 @@ public final class HorizonEntityRender {
             // AvatarRenderer submits the arm as a single part wrapped in Model.Simple.
             // Horizon renders this arm with the live skin, equip progress and swing.
             vanillaHand = true;
+            vanillaArm = true;
             return false;
         }
         return !onlyMods || inModLayer || submittedByMod();
@@ -1083,28 +1084,48 @@ public final class HorizonEntityRender {
         JsonArray out = new JsonArray();
         JsonArray held = new JsonArray();
         boolean[] hide = new boolean[2];
-        int n = 0;
-        for (var hand : net.minecraft.world.InteractionHand.values()) {
-            var stack = p.getItemInHand(hand);
-            int before = out.size() + held.size();
-            items = held;
-            firstPerson = true;
-            handStack = stack;
+        int beforeHands = out.size();
+        items = held;
+        firstPerson = true;
+        handStack = null;
+        vanillaHand = false;
+        vanillaArm = false;
+        var pose = new PoseStack();
+        var c = collector(out);
+        try {
+            HorizonClient.as(p, () -> {
+                var owner = net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer.class;
+                Object[] hookArgs = {PARTIAL_TICK, pose, c, level, fp};
+                var head = HorizonHooks.fireMerged(hands, owner, "submitHandsWithItems", "HEAD", hookArgs);
+                flush(c);
+                boolean customHandsDrawn = out.size() > beforeHands;
+                if (!head.cancelled()) {
+                    int n = 0;
+                    for (var hand : net.minecraft.world.InteractionHand.values()) {
+                        var stack = p.getItemInHand(hand);
+                        int before = out.size();
+                        handStack = stack;
+                        vanillaHand = false;
+                        vanillaArm = false;
+                        submitArm.invoke(hands, level, fp, PARTIAL_TICK, a.getXRot(), hand, 0.0F, stack, 0.0F,
+                                new PoseStack(), c, 0xF000F0);
+                        flush(c);
+                        boolean drew = out.size() > before;
+                        hide[n++] = !vanillaArm && (drew || customHandsDrawn);
+                    }
+                } else if (customHandsDrawn) {
+                    hide[0] = true;
+                    hide[1] = true;
+                }
+                HorizonHooks.fireMerged(hands, owner, "submitHandsWithItems", "RETURN", hookArgs);
+                flush(c);
+            });
+        } finally {
+            firstPerson = false;
+            handStack = null;
+            items = null;
             vanillaHand = false;
-            var c = collector(out);
-            try {
-                HorizonClient.as(p, () -> {
-                    submitArm.invoke(hands, level, fp, PARTIAL_TICK, a.getXRot(), hand, 0.0F, stack, 0.0F,
-                            new PoseStack(), c, 0xF000F0);
-                    flush(c);
-                });
-            } finally {
-                firstPerson = false;
-                handStack = null;
-                items = null;
-            }
-            boolean drew = out.size() + held.size() > before;
-            hide[n++] = drew && !vanillaHand;
+            vanillaArm = false;
         }
         if (out.isEmpty() && held.isEmpty()) return;
         JsonObject o = new JsonObject();
