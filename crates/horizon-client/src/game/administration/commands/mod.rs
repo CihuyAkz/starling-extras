@@ -1487,7 +1487,7 @@ impl Game<'_> {
             self.java_player_teleport_current(
                 self.dim.id(),
                 to,
-                self.target_rotation(t).unwrap_or([self.yaw, self.pitch]),
+                self.target_rotation(t),
                 true,
             );
         }

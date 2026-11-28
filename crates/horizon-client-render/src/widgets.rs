@@ -416,6 +416,10 @@ pub fn last_steps_value(focus: [f32; 4]) -> bool {
     STEPPERS.with_borrow(|(_, last)| last.iter().any(same))
 }
 
+pub fn current_button_bounds() -> Vec<[f32; 4]> {
+    TARGETS.with_borrow(|(current, _, _)| current.iter().map(|target| target.rect).collect())
+}
+
 /// The focus targets of the last drawn frame.
 pub fn last_targets() -> Vec<Target> {
     TARGETS.with_borrow(|(_, last, _)| last.clone())

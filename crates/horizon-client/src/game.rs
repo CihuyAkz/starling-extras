@@ -4675,6 +4675,7 @@ impl Game<'_> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
+        self.level_up_sound.tick();
         self.repro_tick();
         self.track_experience_display();
         self.tick_enchanting_book();
@@ -4991,13 +4992,12 @@ impl Game<'_> {
         {
             java_gameplay::draw_client_hud_frame(self);
             java_device::gui_size(batch.width as i32, batch.height as i32);
-            java_device::device_overlay_frame(
-                self,
+            self.device_overlay_frame(
                 batch.width as i32,
                 batch.height as i32,
                 matches!(self.screen, Screen::Inventory | Screen::Creative),
             );
-            java_device::draw_own_client_hud_frame(self);
+            self.draw_own_client_hud_frame();
             java_gui::draw_hud(self, &mut batch);
             java_gui::draw_device_hud(self, &mut batch);
         }
@@ -9552,10 +9552,10 @@ impl Game<'_> {
         }
         #[cfg(feature = "java-mods")]
         {
-            if java_device::device_overlay_event(self, &event) {
+            if self.device_overlay_event(&event) {
                 return;
             }
-            if java_device::device_screen_event(self, &event) {
+            if self.device_screen_event(&event) {
                 return;
             }
         }

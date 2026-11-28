@@ -1,6 +1,8 @@
 use std::hash::{Hash, Hasher};
 use std::sync::{LazyLock, Mutex};
 
+use serde_json::Value;
+
 use horizon_core::random::RandomSource;
 
 use super::stations::{Kind as StationKind, Station};
@@ -2291,17 +2293,14 @@ impl super::Game<'_> {
                 self.experience.level = touched.level.max(0);
                 self.experience.progress = touched.progress.clamp(0.0, 1.0);
                 self.experience.total = touched.total.max(0);
-                if self.experience.level > level_before
-                    && self.experience.level % 5 == 0
-                    && self.ticks > self.last_level_up + 100
-                {
-                    self.last_level_up = self.ticks;
-                    let level = self.experience.level;
-                    let volume = if level > 30 { 1.0 } else { level as f32 / 30.0 };
+                if let Some(volume) = self.level_up_sound.give_levels(
+                    self.experience.level - level_before,
+                    self.experience.level,
+                ) {
                     self.audio.play(
                         "minecraft:entity.player.levelup",
                         self.eye_position(),
-                        volume * 0.75,
+                        volume,
                         1.0,
                     );
                 }

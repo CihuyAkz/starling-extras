@@ -43,7 +43,7 @@ mod java {
                 return;
             };
             self.as_guest(conn, |guest| {
-                super::super::super::java_gameplay::crafted_takes(guest, takes);
+                crate::game::java_gameplay::crafted_takes(guest, takes);
             });
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -51,7 +51,9 @@ mod java {
             let changed: Vec<usize> = (5..46)
                 .filter(|&slot| host.hub.guests[gi].menu_slot(slot) != before[slot - 5])
                 .collect();
-            host.hub.send_inventory_slots(gi, &changed);
+            if !changed.is_empty() {
+                host.hub.send_inventory(gi);
+            }
         }
     }
 }
