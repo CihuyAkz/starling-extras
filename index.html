@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080b12">
-  <meta name="description" content="Download Starling/Horizon stable releases and pre-releases directly from GitHub.">
+  <meta name="description" content="Download Starling/Horizon stable releases and previews directly from GitHub.">
   <title>Starling/Horizon — Download Center</title>
   <style>
     :root {
@@ -446,7 +446,7 @@
           Release <span class="channel-count" id="release-count">0</span>
         </button>
         <button class="channel-btn" id="prerelease-tab" type="button" role="tab" aria-selected="false" aria-controls="release-panel" data-channel="prerelease" tabindex="-1">
-          Pre-release <span class="channel-count" id="prerelease-count">0</span>
+          Preview <span class="channel-count" id="prerelease-count">0</span>
         </button>
       </div>
       <article class="release-card" id="release-panel" role="tabpanel" aria-labelledby="release-tab">
@@ -483,9 +483,9 @@
               <path d="M8 14h8M9.3 11h5.4"/>
             </svg>
           </div>
-          <span class="channel-empty-label" id="channel-empty-label"><span class="pulse"></span> PRE-RELEASE · 0 AVAILABLE</span>
-          <h3 class="channel-empty-title" id="channel-empty-title">No pre-releases yet</h3>
-          <p class="channel-empty-description" id="channel-empty-description">Belum ada build pre-release yang dipublikasikan. Kalau developer merilis build testing baru, versinya akan muncul otomatis di sini.</p>
+          <span class="channel-empty-label" id="channel-empty-label"><span class="pulse"></span> PREVIEW · 0 AVAILABLE</span>
+          <h3 class="channel-empty-title" id="channel-empty-title">No previews yet</h3>
+          <p class="channel-empty-description" id="channel-empty-description">Belum ada build preview yang dipublikasikan. Kalau developer merilis build testing baru, versinya akan muncul otomatis di sini.</p>
           <div class="channel-empty-actions">
             <button class="empty-button primary" id="empty-switch-release" type="button">Browse stable releases</button>
             <a class="empty-button" href="https://github.com/CihuyAkz/horizon-android-more-mods/releases" target="_blank" rel="noopener noreferrer">View GitHub Releases ↗</a>
@@ -760,12 +760,12 @@
         } else if (releaseLoadFailed && !releaseDataLoaded) {
           emptyLabel.innerHTML = '<span class="pulse"></span> CONNECTION ISSUE';
           emptyTitle.textContent = "Couldn't load release data";
-          emptyDescription.textContent = "GitHub belum bisa dihubungi, jadi ketersediaan " + (isPrerelease ? "pre-release" : "stable release") + " belum dapat dipastikan. Coba buka halaman GitHub Releases secara langsung.";
+          emptyDescription.textContent = "GitHub belum bisa dihubungi, jadi ketersediaan " + (isPrerelease ? "preview" : "stable release") + " belum dapat dipastikan. Coba buka halaman GitHub Releases secara langsung.";
           switchButton.hidden = true;
         } else if (isPrerelease) {
-          emptyLabel.innerHTML = '<span class="pulse"></span> PRE-RELEASE · 0 AVAILABLE';
-          emptyTitle.textContent = "No pre-releases yet";
-          emptyDescription.textContent = "Belum ada build pre-release yang dipublikasikan. Build testing terbaru akan muncul otomatis di sini setelah developer merilisnya.";
+          emptyLabel.innerHTML = '<span class="pulse"></span> PREVIEW · 0 AVAILABLE';
+          emptyTitle.textContent = "No previews yet";
+          emptyDescription.textContent = "Belum ada build preview yang dipublikasikan. Build testing terbaru akan muncul otomatis di sini setelah developer merilisnya.";
           switchButton.textContent = "Browse stable releases";
           switchButton.hidden = false;
         } else {
@@ -776,10 +776,10 @@
         }
 
         $("history-list").innerHTML = isPrerelease
-          ? '<div class="empty">No previous pre-release versions are available.</div>'
+          ? '<div class="empty">No previous preview versions are available.</div>'
           : '<div class="empty">No previous stable versions are available.</div>';
         $("history-subtitle").textContent = isPrerelease
-          ? "Pre-release version history."
+          ? "Preview version history."
           : "Stable release version history.";
         return;
       }
@@ -798,7 +798,7 @@
         releaseAge >= twoDays;
 
       $("release-channel-label").textContent = activeReleaseChannel === "prerelease"
-        ? "Latest pre-release"
+        ? "Latest preview"
         : "Latest stable";
       $("version").textContent = latest.tag_name || "Latest";
       $("release-title").textContent = latest.name || latest.tag_name || "Latest Release";
@@ -807,8 +807,8 @@
       renderAssets(latest.assets);
       renderHistory(channelReleases);
       $("history-subtitle").textContent = activeReleaseChannel === "prerelease"
-        ? "Pre-release version history, separate from stable builds."
-        : "Stable release version history, separate from pre-release builds.";
+        ? "Preview version history, separate from stable builds."
+        : "Stable release version history, separate from preview builds.";
     }
 
     const RELEASE_CACHE_KEY = "horizon-android-releases-cache";
