@@ -49,12 +49,15 @@ impl Game<'_> {
     }
 
     fn java_title_available(&self) -> bool {
-        (self.java_pause_available()
-            || self
-                .title
-                .as_ref()
-                .is_some_and(|title| matches!(title.mode, horizon_client::title::Mode::Main)))
-            && self.screen != Screen::Options
+        let title_main = self
+            .title
+            .as_ref()
+            .is_some_and(|title| matches!(title.mode, horizon_client::title::Mode::Main));
+        let title_mod_screen = self.title.is_some()
+            && self.screen == Screen::Options
+            && self.java_title.custom;
+        (self.java_pause_available() || title_main || title_mod_screen)
+            && self.screen != Screen::DebugOptions
             && !self.java_title.failed
             && horizon_jvm::events::ready()
     }
@@ -75,7 +78,7 @@ impl Game<'_> {
         }
     }
 
-    fn java_title_exchange(&mut self, mut input: Value) -> bool {
+    pub(super) fn java_title_exchange(&mut self, mut input: Value) -> bool {
         if matches!(input["kind"].as_str(), Some("press" | "release" | "scroll" | "key")) {
             self.java_title.last_activity = Some(Instant::now());
             self.java_title.next_frame = None;
@@ -175,6 +178,7 @@ impl Game<'_> {
             self.java_title.next_frame = Some(if next > now { next } else { now + interval });
             self.java_title_exchange(json!({
                 "kind": "frame",
+                "mods": java_device::sdl_modifiers(self.modifiers),
                 "occupied": horizon_client::widgets::current_button_bounds()
             }));
         }
@@ -217,8 +221,7 @@ impl Game<'_> {
                     MouseButton::Forward => 5,
                     _ => return self.java_title.custom,
                 };
-                let mods = i32::from(self.has_shift_down()) * 3
-                    | i32::from(self.has_control_down()) * 192;
+                let mods = java_device::sdl_modifiers(self.modifiers);
                 json!({
                     "kind": if *state == ElementState::Pressed { "press" } else { "release" },
                     "button": button,
@@ -239,8 +242,7 @@ impl Game<'_> {
                 let Some(code) = sdl_key(key) else {
                     return true;
                 };
-                let mods = i32::from(self.has_shift_down()) * 3
-                    | i32::from(self.has_control_down()) * 192;
+                let mods = java_device::sdl_modifiers(self.modifiers);
                 let action = if event.state == ElementState::Released {
                     0
                 } else if event.repeat {

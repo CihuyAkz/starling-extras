@@ -9567,7 +9567,11 @@ impl Game<'_> {
                         let batch = self.interface_batch([renderer.config.width, renderer.config.height]);
                         let previous = self.cursor;
                         self.cursor = self.interface_point([position.x as f32, position.y as f32], batch.scale);
-                        let _ = java_gui::mouse_move(self.cursor.0, self.cursor.1);
+                        let _ = java_gui::mouse_move(
+                            self.cursor.0,
+                            self.cursor.1,
+                            java_device::sdl_modifiers(self.modifiers) as u32,
+                        );
                         let _ = previous;
                     }
                     return;

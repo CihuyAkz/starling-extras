@@ -63,6 +63,7 @@
     "AbstractWidgetMixin",
     "ScreenMixin",
     "MinecraftCameraMixin",
+    "MinecraftInputStateMixin",
     "CameraMixin",
     "ClientLevelMixin",
     "TextureAtlasMixin",

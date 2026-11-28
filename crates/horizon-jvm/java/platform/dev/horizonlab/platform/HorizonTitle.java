@@ -188,6 +188,9 @@ public final class HorizonTitle {
         if (mc == null || mc.gui == null || mc.font == null) return "{}";
         String kind = in.has("kind") ? in.get("kind").getAsString() : "frame";
         boolean render = kind.equals("frame");
+        int modifiers = in.has("mods") ? in.get("mods").getAsInt() : 0;
+        Integer previousModifiers = HorizonClient.screenInputModifiers();
+        HorizonClient.setScreenInputModifiers(modifiers);
         active.set(true);
         try {
             Screen previousScreen = screen;
@@ -325,9 +328,33 @@ public final class HorizonTitle {
                         listener -> listener.onEndTick(mc));
             }
             if (screen == root && in.has("occupied")) fitModButtons(in.getAsJsonArray("occupied"));
-            int modifiers = in.has("mods") ? in.get("mods").getAsInt() : 0;
             boolean taken = screen != root;
             switch (kind) {
+                case "modmenu" -> {
+                    try {
+                        Class<?> api = Class.forName("com.terraformersmc.modmenu.api.ModMenuApi", true,
+                                HorizonTitle.class.getClassLoader());
+                        var create = api.getMethod("createModsScreen", Screen.class);
+                        setScreen((Screen) create.invoke(null, root));
+                        taken = true;
+                    } catch (Throwable t) {
+                        dev.horizonlab.bridge.Natives.log("Horizon's client: title Mod Menu screen failed: " + t);
+                    }
+                }
+                case "modconfig" -> {
+                    String mod = in.get("mod").getAsString();
+                    var factory = HorizonClient.configScreens().get(mod);
+                    if (factory != null) {
+                        try {
+                            setScreen(factory.apply(root));
+                            taken = true;
+                        } catch (Throwable t) {
+                            dev.horizonlab.bridge.Natives.log("Horizon's client: title " + mod + " settings screen failed: " + t);
+                        }
+                    } else {
+                        dev.horizonlab.bridge.Natives.log("Horizon's client: no title settings screen for " + mod);
+                    }
+                }
                 case "press" -> {
                     int button = in.get("button").getAsInt();
                     nativeNavigation = false;
@@ -454,6 +481,7 @@ public final class HorizonTitle {
             out.addProperty("custom", screen != root);
             return out.toString();
         } finally {
+            HorizonClient.restoreScreenInputModifiers(previousModifiers);
             try { if (render) HorizonGpu.endFrame(); } finally { active.remove(); }
         }
     }

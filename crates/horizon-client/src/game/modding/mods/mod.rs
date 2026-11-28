@@ -1725,6 +1725,10 @@ impl Game<'_> {
             if !self.settings.mods.java_mod_menu {
                 return;
             }
+            if self.player.is_none() && self.title_input_active() {
+                self.java_title_exchange(serde_json::json!({"kind": "modmenu"}));
+                return;
+            }
             let uuid = horizon_protocol::crypto::uuid_string(self.own_uuid());
             let input = serde_json::json!({"kind": "modmenu"}).to_string();
             if let Err(error) = horizon_jvm::events::screen_input(&uuid, &input) {
@@ -1739,6 +1743,10 @@ impl Game<'_> {
             let Some((id, _)) = self.settings.mods.java_configs.get(index).cloned() else {
                 return;
             };
+            if self.player.is_none() && self.title_input_active() {
+                self.java_title_exchange(serde_json::json!({"kind": "modconfig", "mod": id}));
+                return;
+            }
             let uuid = horizon_protocol::crypto::uuid_string(self.own_uuid());
             let input = serde_json::json!({"kind": "modconfig", "mod": id}).to_string();
             if let Err(error) = horizon_jvm::events::screen_input(&uuid, &input) {

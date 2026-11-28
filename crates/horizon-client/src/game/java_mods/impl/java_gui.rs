@@ -626,7 +626,7 @@ pub(in crate::game) fn mouse_input(x: f32, y: f32, button: i32, mods: u32, press
     sent
 }
 
-pub(in crate::game) fn mouse_move(x: f32, y: f32) -> bool {
+pub(in crate::game) fn mouse_move(x: f32, y: f32, mods: u32) -> bool {
     let (button, dx, dy) = {
         let mut ui = UI.lock().unwrap_or_else(|e| e.into_inner());
         let dx = x - ui.pointer[0];
@@ -635,9 +635,9 @@ pub(in crate::game) fn mouse_move(x: f32, y: f32) -> bool {
         (ui.drag_button, dx, dy)
     };
     if let Some(button) = button {
-        input(&format!(r#"{{"kind":"drag","x":{x},"y":{y},"button":{button},"dx":{dx},"dy":{dy}}}"#))
+        input(&format!(r#"{{"kind":"drag","x":{x},"y":{y},"button":{button},"dx":{dx},"dy":{dy},"mods":{mods}}}"#))
     } else {
-        input(&format!(r#"{{"kind":"move","x":{x},"y":{y}}}"#))
+        input(&format!(r#"{{"kind":"move","x":{x},"y":{y},"mods":{mods}}}"#))
     }
 }
 

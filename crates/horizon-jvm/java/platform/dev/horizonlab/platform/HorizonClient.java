@@ -611,6 +611,23 @@ public final class HorizonClient {
         return 1;
     }
 
+    /** Modifier state for the synthetic screen event currently being dispatched. */
+    private static final ThreadLocal<Integer> SCREEN_INPUT_MODIFIERS = new ThreadLocal<>();
+
+    /** The modifier bits of the current bridged screen input, or null outside that dispatch. */
+    public static Integer screenInputModifiers() {
+        return SCREEN_INPUT_MODIFIERS.get();
+    }
+
+    public static void setScreenInputModifiers(int modifiers) {
+        SCREEN_INPUT_MODIFIERS.set(modifiers);
+    }
+
+    public static void restoreScreenInputModifiers(Integer previous) {
+        if (previous == null) SCREEN_INPUT_MODIFIERS.remove();
+        else SCREEN_INPUT_MODIFIERS.set(previous);
+    }
+
     /** Whether this JVM's client is Horizon's headless one. */
     public static boolean headless() {
         return minecraft != null;
@@ -885,6 +902,10 @@ public final class HorizonClient {
             set(net.minecraft.world.entity.player.Player.class, local, "gameProfile", player.getGameProfile());
             set(net.minecraft.client.player.AbstractClientPlayer.class, local, "playerInfo",
                     new net.minecraft.client.multiplayer.PlayerInfo(player.getGameProfile(), false));
+            // Its avatar history (26.3's AvatarRenderer reads avatarState while extracting
+            // first-person render state; this mirror bypasses AbstractClientPlayer's constructor).
+            set(net.minecraft.client.player.AbstractClientPlayer.class, local, "clientAvatarState",
+                    new net.minecraft.client.entity.ClientAvatarState());
             // Its keys (isShiftKeyDown: a collision context's descending): none pressed.
             set(net.minecraft.client.player.LocalPlayer.class, local, "input", new net.minecraft.client.player.ClientInput());
             // Its first-person hands and items, as its constructor makes them (26.3:
@@ -4555,6 +4576,8 @@ public final class HorizonClient {
             frame(id, (int) x, (int) y);
         }
         var event = new net.minecraft.client.input.MouseButtonEvent(x, y, new net.minecraft.client.input.MouseButtonInfo(button, mods));
+        Integer previousModifiers = screenInputModifiers();
+        setScreenInputModifiers(mods);
         try {
             acting = player;
             as(player, () -> {
@@ -4599,6 +4622,7 @@ public final class HorizonClient {
             for (StackTraceElement frame : root.getStackTrace()) Natives.log("    at " + frame);
         } finally {
             acting = null;
+            restoreScreenInputModifiers(previousModifiers);
         }
         long handled = System.nanoTime();
         if (kind.equals("move") || kind.equals("drag")) {

@@ -149,6 +149,10 @@ public final class HorizonDeviceClient {
             HorizonClient.set(ClientPacketListener.class, connection, "level", level);
             local = (LocalPlayer) Natives.allocate(LocalPlayer.class);
             person(local, id, name);
+            // The mirror bypasses AbstractClientPlayer's constructor, which normally creates
+            // the avatar history consumed by AvatarRenderer.
+            HorizonClient.set(net.minecraft.client.player.AbstractClientPlayer.class, local,
+                    "clientAvatarState", new net.minecraft.client.entity.ClientAvatarState());
             HorizonClient.set(LocalPlayer.class, local, "minecraft", mc);
             HorizonClient.set(LocalPlayer.class, local, "connection", connection);
             HorizonClient.set(LocalPlayer.class, local, "input", new net.minecraft.client.player.ClientInput());
@@ -413,6 +417,8 @@ public final class HorizonDeviceClient {
         double y = in.has("y") ? in.get("y").getAsDouble() : mouseY;
         int button = in.has("button") ? in.get("button").getAsInt() : 0;
         int mods = in.has("mods") ? in.get("mods").getAsInt() : 0;
+        Integer previousModifiers = HorizonClient.screenInputModifiers();
+        HorizonClient.setScreenInputModifiers(mods);
         mouseX = x;
         mouseY = y;
         HorizonClient.mouseAt(x, y);
@@ -444,6 +450,8 @@ public final class HorizonDeviceClient {
         } catch (Throwable t) {
             Natives.log("Java mods: the device client's screen " + kind + " failed: " + t);
             HorizonFailures.report("a screen", t);
+        } finally {
+            HorizonClient.restoreScreenInputModifiers(previousModifiers);
         }
         HorizonClient.tasks();
         return shown();
